@@ -93,15 +93,24 @@ def clean(report, install_id):
 
 # ---------------------------------------------------------------- storage
 
+STALE_DAYS = 30
+
+
 def load_all():
+    """Every install's latest report, leaving out installs not heard from in STALE_DAYS (deleted apps,
+    old test runs): their files stay on disk, so a returning install simply reappears."""
     out = []
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=STALE_DAYS)
     for f in sorted(STORE.glob("*.json")):
         if f.name.startswith("."):
             continue
         try:
-            out.append(json.loads(f.read_text()))
+            c = json.loads(f.read_text())
+            seen = dt.datetime.fromisoformat(str(c.get("receivedAt", "")).replace("Z", "+00:00"))
         except (OSError, ValueError):
             continue
+        if seen >= cutoff:
+            out.append(c)
     return out
 
 

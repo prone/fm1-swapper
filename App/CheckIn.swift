@@ -113,10 +113,14 @@ final class CheckInService {
     /// On by default in Debug (developer) builds, off in Release builds.
     var enabled: Bool {
         get {
+            #if targetEnvironment(simulator)
+            // simulator runs (tests) would show up as extra installs: only when a test asks for it
+            if ProcessInfo.processInfo.environment["FM1_CHECKIN_IN_SIMULATOR"] == nil { return false }
+            #endif
             #if DEBUG
-            UserDefaults.standard.object(forKey: "checkin.enabled") as? Bool ?? true
+            return UserDefaults.standard.object(forKey: "checkin.enabled") as? Bool ?? true
             #else
-            UserDefaults.standard.bool(forKey: "checkin.enabled")
+            return UserDefaults.standard.bool(forKey: "checkin.enabled")
             #endif
         }
         set {

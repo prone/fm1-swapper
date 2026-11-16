@@ -305,6 +305,12 @@ struct EmulatorWebView: UIViewRepresentable {
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
         web.scrollView.contentInsetAdjustmentBehavior = .never
+        // The emulator is an instrument: taps, double-taps and focusing its menus must never zoom the page
+        // (the viewport lock in bridgeJS stops WebKit's own zoom; this stops pinching).
+        web.scrollView.pinchGestureRecognizer?.isEnabled = false
+        web.scrollView.minimumZoomScale = 1
+        web.scrollView.maximumZoomScale = 1
+        web.scrollView.bouncesZoom = false
         controller.web = web
         context.coordinator.startMIDI()
         context.coordinator.reloads = controller.reloads
@@ -471,6 +477,17 @@ struct EmulatorWebView: UIViewRepresentable {
     /// Injected before the page's own scripts.
     static let bridgeJS = #"""
     (() => {
+      // --- lock the zoom: a fixed-scale viewport, no double-tap zoom, and 16px+ menus (iOS zooms into
+      // any focused control whose text is smaller than 16px)
+      const lockZoom = () => {
+        let vp = document.querySelector('meta[name="viewport"]');
+        if (!vp) { vp = document.createElement("meta"); vp.name = "viewport"; document.head.append(vp); }
+        vp.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+        const st = document.createElement("style");
+        st.textContent = "html, body { touch-action: manipulation; } select, input { font-size: 16px !important; }";
+        document.head.append(st);
+      };
+      if (document.head) lockZoom(); else document.addEventListener("DOMContentLoaded", lockZoom);
       // --- Web MIDI stand-in: every MIDI input of the iPhone/iPad, forwarded by the app
       const input = { id: "ios-all", name: "All MIDI inputs (app)", manufacturer: "", type: "input",
         state: "connected", connection: "open", onmidimessage: null,
