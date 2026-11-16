@@ -21,7 +21,7 @@ function serviceWorker(): Plugin {
       for (const f of list) h.update(f).update(readFileSync(join(out, f)));
       const sw = readFileSync("sw.template.js", "utf8")
         .replace("__VERSION__", h.digest("hex").slice(0, 12))
-        .replace("__FILES__", JSON.stringify(["./", ...list.map((f) => "./" + f)]));
+        .replace("__FILES__", JSON.stringify(["./", "./emu/", ...list.map((f) => "./" + f)]));
       writeFileSync(join(out, "sw.js"), sw);
     },
   };

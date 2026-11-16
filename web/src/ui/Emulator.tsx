@@ -43,7 +43,7 @@ export function Emulator({ f, tutorial, close }: { f: Firmware; tutorial?: Tutor
         <span class="small dim ellipsis" style={{ maxWidth: "45%" }}>{status}</span>
       </div>
       <div class={"emu-body " + dock}>
-        <iframe ref={frame} src="emu/index.html" title="FM-1 emulator" allow="midi; autoplay" onLoad={onLoad} />
+        <iframe ref={frame} src="emu/" title="FM-1 emulator" allow="midi; autoplay" onLoad={onLoad} />
         {tutorial && <TutorialCard t={tutorial} emu={emu} dock={dock} setDock={(d) => { setDock(d); try { localStorage.setItem("tutorialDock", d); } catch { /* private window */ } }} close={close} frame={frame} />}
       </div>
     </div>

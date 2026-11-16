@@ -27,7 +27,12 @@ self.addEventListener("fetch", (e) => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // the emulator asks for its files with ?v=<build> stamps
-    const hit = await cache.match(req, { ignoreSearch: true }) ?? (req.mode === "navigate" ? await cache.match("./index.html") : undefined);
-    return hit ?? fetch(req);
+    // the app's own page answers for its folder only (the emulator page in emu/ is cached under its own address)
+    const root = new URL("./", self.location).pathname, path = new URL(req.url).pathname;
+    const hit = await cache.match(req, { ignoreSearch: true })
+      ?? (req.mode === "navigate" && (path === root || path === root + "index.html") ? await cache.match("./index.html") : undefined);
+    if (!hit) return fetch(req);
+    // hosts that redirect x/index.html to x/ (Cloudflare Pages): a cached redirect can't answer a page load
+    return hit.redirected ? new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers }) : hit;
   })());
 });
