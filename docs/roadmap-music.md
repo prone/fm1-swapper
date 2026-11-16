@@ -147,7 +147,10 @@ Built from features we have plus 1 and 3.
   VST3/AU/CLAP) would be compiled for iOS and wrapped as an AUv3. fm1-emu has an open AUv3 request, so this should be
   done with its author, not as a private fork.
 
-### 9. FM-1 Rack: several emulated FM-1s alongside the real one (L) · iOS ✓ / Web ✓ (desktop best)
+### 9. FM1 Live: emulated and hardware FM-1s playing together (L) · iOS ✓ / Web ✓ (desktop best)
+A feature area of its own (its own tab): sync several emulated FM-1s and one or more hardware FM-1s to one clock, and
+trigger changes in any of them while playing the hardware live. (Not to be confused with `fm1-live`, the name of
+fm1-emu's Rust emulator core, which this may later run on; see 8b.)
 The idea (2026-11-16): find a pattern or song on the hardware, send it to the iPad, and run it in an emulated
 FM-1, then do that several times. Five emulators with different firmware and patterns play together, the hardware
 FM-1 stays live, and app **macros** change the emulators in time. Like owning several FM-1s.
@@ -163,6 +166,12 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
   - Fallbacks: a timed "blind" restore without acknowledgements (fragile, test only), or writing the archive into
     the emulator's flash snapshot (it already saves/loads whole flash images), which needs each firmware's flash
     layout (per family).
+- **Hardware units are slots too.** Each connected FM-1 (USB, through a hub, or Bluetooth) appears as a hardware
+  slot next to the emulated ones: it gets the clock, mutes (by note filtering or its volume CC), macros (MIDI only:
+  notes, CC, program changes; panel presses work only on emulated slots) and "send to/from" (capture or restore).
+  Several FM-1s report the same identity, so slots are told apart by port and a name the user gives each unit
+  ("left FM-1"). An iPhone has one USB port, so more than one wired FM-1 needs a hub (fine for playing; installs
+  still go direct).
 - **The rack.** N slots, each with firmware, state, MIDI channel and its own route from F1 (SMC-PAD to slot 2, a
   keyboard to slot 4). A mixer per slot (level, pan, mute, solo) and a master to the device output. Each slot's
   flash is saved per rack (a rack is a "set"), and a rack can be saved and loaded.
@@ -195,7 +204,7 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
 | 8 | 7 MIDI capture | Small once 1 and 4 exist |
 | 9 | 8a Screen mirroring (with firmware authors) | Depends on upstream work |
 | 10 | 8b AUv3 emulator (with fm1-emu's author) | Largest; separate track |
-| 11 | 9 FM-1 Rack: spike, then rack + clock, capture (after the fm1-emu MIDI-out change), macros and scenes | Builds on 1, 2, 4, 6; the spike can run any time |
+| 11 | 9 FM1 Live: spike, then slots + clock, capture (after the fm1-emu MIDI-out change), macros and scenes | Builds on 1, 2, 4, 6; the spike can run any time |
 
 Profiles keep growing in the background (a few firmwares per session with `/draft-profile`).
 
