@@ -130,3 +130,16 @@ export async function officialFirmware(): Promise<Firmware> {
   if (!pkg.stock) throw new Error("The downloaded file isn't M-VAVE's official firmware (its checksum doesn't match), so it wasn't added.");
   return (await addPackage(bytes, { fileName: "FM-1.fwsc", sourceURL: hub?.stockURL ?? "" })).firmware;
 }
+
+/** Official V15 exactly (the route base): the library copy, or downloaded and checked against its digest. */
+export async function stockV15(): Promise<Firmware> {
+  const v15 = STOCK.find((s) => s.version === "V15")!;
+  const have = (await store.firmwares()).find((f) => f.sha256 === v15.sha256);
+  if (have) return have;
+  const hub = await loadHub();
+  const bytes = await tryDownload(hub?.stockURL ?? HUB + "fw/mvave/FM-1_015.fwsc");
+  if (!bytes) throw new Error("Couldn't download official V15. Check the connection, or turn off \"Go via official V15\".");
+  const pkg = await readPackage(bytes);
+  if (pkg.stock?.version !== "V15") throw new Error("The downloaded file isn't M-VAVE's official V15 (its checksum doesn't match), so it wasn't used.");
+  return (await addPackage(bytes, { fileName: "FM-1_015.fwsc", sourceURL: hub?.stockURL ?? "" })).firmware;
+}

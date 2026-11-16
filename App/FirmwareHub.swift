@@ -153,6 +153,18 @@ final class FirmwareHub {
         return data
     }
 
+    /// Official V15 exactly: the copy in the library, or downloaded from the hub and checked against its digest.
+    func stockV15(in firmwares: [Firmware], context: ModelContext) async throws -> Firmware {
+        let v15 = StockFirmware.all.first { $0.version == "V15" }!
+        if let f = firmwares.first(where: { $0.sha256 == v15.sha256 && $0.hasPackage }) { return f }
+        await load()
+        let data = try await Catalog.download(stockURL)
+        guard try FirmwarePackage(data: data).stock?.version == "V15" else {
+            throw FM1Error.badPackage("The downloaded file isn't M-VAVE's official V15 (its checksum doesn't match), so it wasn't used.")
+        }
+        return try LibraryImport.add(data, fileName: "FM-1_015.fwsc", sourceURL: stockURL.absoluteString, context: context).firmware
+    }
+
     /// M-VAVE's official firmware: the copy in the library, or V15 from the hub, checked against its known digest.
     func officialFirmware(in firmwares: [Firmware], context: ModelContext) async throws -> Firmware {
         for s in StockFirmware.all.reversed() { if let f = firmwares.first(where: { $0.sha256 == s.sha256 && $0.hasPackage }) { return f } }

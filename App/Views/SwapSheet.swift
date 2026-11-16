@@ -16,9 +16,12 @@ struct SwapSheet: View {
     @AppStorage("includeSamples") private var includeSamples = true
     @AppStorage("myFlashChip") private var myChip: MyFlashChip = .unknown
     @State private var chipAck = false
+    @State private var viaV15 = true
+    @State private var preparing: String?
     @Environment(\.openURL) private var openURL
     private var hub: FirmwareHub { .shared }
 
+    var hasV15: Bool { firmwares.contains { f in f.hasPackage && StockFirmware.all.contains { $0.version == "V15" && $0.sha256 == f.sha256 } } }
     var chip: FlashChipSupport? { hub.chip(sha256: target.sha256) }
     /// Installing a package that may not know this FM-1's flash chip (docs/flash-chips.md).
     var chipRisky: Bool { chip == .olderOnly ? myChip != .older : (chip == nil && myChip == .newer) }
@@ -79,6 +82,19 @@ struct SwapSheet: View {
                         } else if chip == nil {
                             Section { Text(FlashChipSupport.unknownExplanation).font(.footnote).foregroundStyle(.secondary) }
                         }
+                        if DeviceController.viaV15Recommended(from: id, target: target) {
+                            Section {
+                                Toggle(isOn: $viaV15) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Go via official V15 (recommended)")
+                                        Text(hasV15 ? "Installs M-VAVE's V15 first, then \(target.name)." : "Downloads M-VAVE's V15 (about 700 KB, checked), installs it, then \(target.name).")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            } header: { Text("Route") } footer: {
+                                Text("Most community firmware expects to be installed over official V15, and installs from one community firmware straight to another fail most often. It adds about two minutes.")
+                            }
+                        }
                         Section {
                             if let b = target.latestRestorableBackup {
                                 Toggle(isOn: $options.restoreAfter) {
@@ -92,15 +108,30 @@ struct SwapSheet: View {
                             }
                         } header: { Text("After") }
                         Section {
+                            Label("A data USB cable, straight into the \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone") (no hub)", systemImage: "cable.connector")
+                            Label("The FM-1 charged, or on power", systemImage: "battery.75percent")
+                            Label("Other music and MIDI apps closed", systemImage: "xmark.app")
+                            Label("Keep this app open until it's done; the screen stays on", systemImage: "iphone")
+                        } header: { Text("Before you start") }
+                        Section {
+                            if let preparing { Text(preparing).font(.footnote).foregroundStyle(.orange) }
                             Button {
                                 options.includeSamples = includeSamples
-                                started = true
-                                Task { await device.swap(to: target, context: context, options: options) }
+                                Task {
+                                    if viaV15 && DeviceController.viaV15Recommended(from: id, target: target) {
+                                        preparing = "Getting official V15…"
+                                        do { options.viaV15 = try await FirmwareHub.shared.stockV15(in: firmwares, context: context) }
+                                        catch { preparing = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription; return }
+                                        preparing = nil
+                                    } else { options.viaV15 = nil }
+                                    started = true
+                                    await device.swap(to: target, context: context, options: options)
+                                }
                             } label: {
                                 Text("Install \(target.name)").frame(maxWidth: .infinity).padding(.vertical, 4)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(device.busy || (needsAck && !options.continueWithoutBackup) || id.model != target.packageModel || (chipRisky && !chipAck))
+                            .disabled(device.busy || preparing == "Getting official V15…" || (needsAck && !options.continueWithoutBackup) || id.model != target.packageModel || (chipRisky && !chipAck))
                         } footer: {
                             Text(id.model != target.packageModel
                                  ? "This package is for \(target.packageModel.isEmpty ? "another device" : target.packageModel), not \(id.model)."

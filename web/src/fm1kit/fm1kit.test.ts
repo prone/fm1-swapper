@@ -182,6 +182,19 @@ describe("update", () => {
     expect(dev.installed).toEqual(logicalImage(pkg.bytes));
   });
 
+  it("goes via V15: two installs in a row, each verified", async () => {
+    const v15 = await readPackage(makePackage("FM-1_015", 50_000));
+    const target = await readPackage(makePackage("FM-1_918"));
+    const dev = new VirtualFM1("FM-1_8000014");
+    const up = new Updater(new SimProvider(dev), FAST);
+    dev.expectedSize = v15.bytes.length - 20; dev.newIdentity = "FM-1_015";
+    expect((await up.install(v15)).text).toBe("FM-1_015");
+    expect(dev.installed).toEqual(logicalImage(v15.bytes));
+    dev.expectedSize = target.bytes.length - 20; dev.newIdentity = "FM-1_918";
+    expect((await up.install(target)).text).toBe("FM-1_918");
+    expect(dev.installed).toEqual(logicalImage(target.bytes));
+  }, 20_000);
+
   it("refuses a package for another model", async () => {
     const pkg = await readPackage(makePackage("SMK-37_100"));
     const dev = new VirtualFM1("FM-1_015");

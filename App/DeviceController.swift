@@ -168,6 +168,15 @@ final class DeviceController {
         var continueWithoutBackup = false
         var restoreAfter = true
         var includeSamples = true
+        /// Install M-VAVE's official V15 first, then the target. Most community firmware expects to be installed from
+        /// stock V15, and custom-to-custom installs fail most often (Mooring requires V15 first for 119 of 121 packages).
+        var viaV15: Firmware?
+    }
+
+    /// Whether to route an install through official V15: whenever the FM-1 isn't already running it, unless the target is V15.
+    static func viaV15Recommended(from: DeviceIdentity, target: Firmware) -> Bool {
+        let v15 = StockFirmware.all.first { $0.version == "V15" }!
+        return !from.isLoader && from.text != v15.product && target.sha256 != v15.sha256
     }
 
     /// Back up the current firmware's work, install `target`, then restore its last saved settings.
@@ -208,8 +217,43 @@ final class DeviceController {
             }
             dev.link.close()
 
+            // 2a. official V15 first, as a clean base
+            var installFrom = from.text
+            if let v15 = options.viaV15, let v15Data = v15.packageData {
+                let v15Pkg = try FirmwarePackage(data: v15Data)
+                guard v15Pkg.stock?.version == "V15" else { throw FM1Error.badPackage("The V15 file in your library doesn't match the official release.") }
+                let hop = InstallEvent(firmware: v15, from: from.text, to: v15Pkg.product)
+                hop.backupTaken = tookBackup
+                hop.deviceName = UIDevice.current.name
+                hop.message = "Step 1 of 2, on the way to \(target.name)"
+                context.insert(hop)
+                let hopStart = Date()
+                let hopTotal = Double(OTAUpdater.expectedRequests(imageSize: v15Pkg.logicalImage.count))
+                do {
+                    _ = try await updater.install(v15Pkg) { [weak self] step in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            if case let .write(n) = step { self.progress(title, "Step 1 of 2: official V15… keep the cable connected", min(Double(n) / hopTotal, 1)) }
+                            else { self.progress(title, "Step 1 of 2: official V15 – " + step.label.lowercased() + "…", nil) }
+                        }
+                    }
+                } catch {
+                    hop.message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                    hop.duration = Date().timeIntervalSince(hopStart)
+                    try? context.save()
+                    throw error
+                }
+                hop.success = true
+                hop.duration = Date().timeIntervalSince(hopStart)
+                v15.recordInstall()
+                try context.save()
+                installFrom = v15Pkg.product
+                append("installed official V15, now \(target.name)")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+
             // 2. install
-            let event = InstallEvent(firmware: target, from: from.text, to: pkg.product)
+            let event = InstallEvent(firmware: target, from: installFrom, to: pkg.product)
             event.backupTaken = tookBackup
             event.deviceName = UIDevice.current.name
             context.insert(event)
@@ -220,7 +264,7 @@ final class DeviceController {
                     Task { @MainActor in
                         guard let self else { return }
                         switch step {
-                        case let .write(n): self.progress(title, "Writing firmware… keep the cable connected", min(Double(n) / total, 1))
+                        case let .write(n): self.progress(title, (options.viaV15 != nil ? "Step 2 of 2: " : "") + "Writing firmware… keep the cable connected", min(Double(n) / total, 1))
                         case let .verify(n): self.progress(title, "FM-1 is checking the package (\(n))", nil)
                         default: self.progress(title, step.label + "…", nil)
                         }
