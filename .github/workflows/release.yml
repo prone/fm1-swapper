@@ -23,7 +23,10 @@ jobs:
       - name: Tools
         run: brew install xcodegen
       - name: Build unsigned .ipa
-        run: tools/build-ipa.sh "${GITHUB_REF_NAME#v}" | tee build/sha256.txt
+        run: |
+          set -o pipefail
+          mkdir -p build
+          tools/build-ipa.sh "${GITHUB_REF_NAME#v}" | tee build/sha256.txt
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
