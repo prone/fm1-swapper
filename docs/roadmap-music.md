@@ -189,6 +189,24 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
   (2) confirm emulated Felucca/SLOOP follow MIDI clock; (3) prototype the MIDI-out hook in fm1-emu locally and a
   hardware → emulator restore of one Felucca project.
 
+### Emulator performance review (with fm1-emu's author)
+A code review of fm1-emu (MIT, github.com/joakimeriksson/fm1-emu) for performance, before FM1 Live needs several
+emulators at once. Improvements go upstream as contributions, not a private fork.
+
+Known so far (2026-11-16, from the copy we ship):
+- "load 18%" on the iPad is busy time on the emulator's audio thread: about 18% of **one** core (roughly 2% of
+  an iPad Pro), the inverse of "5.7x real time".
+- It already has a WebAssembly JIT (hot blocks compiled to small modules, crates/fm1-core/src/jit_wasm.rs + jit.js)
+  and skips the firmware's idle time (fm1_soc skip_idle), so lowering the emulated clock barely helps.
+- All emulators in one page share one AudioContext render thread, so N instances add up on one core: the main
+  limit for FM1 Live.
+
+To look at: JIT coverage and whether WebKit (iOS) runs the JIT as well as Chrome (measure jit stats, compile time,
+fallbacks); per-quantum overhead and buffer size; one audio thread per emulator (separate contexts, frames or
+web views) or several machines in one worklet with shared work; LCD/LED frame traffic to the page; SIMD in the
+audio path; and the native Rust core (`fm1-live`) on iOS with one thread per instance. Method: a repeatable
+benchmark (Chrome, WebKit/iPad web view, native) with 1, 3 and 5 instances of Felucca, SLOOP and stock.
+
 ## Order
 
 | Step | What | Why then |
@@ -204,6 +222,7 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
 | 8 | 7 MIDI capture | Small once 1 and 4 exist |
 | 9 | 8a Screen mirroring (with firmware authors) | Depends on upstream work |
 | 10 | 8b AUv3 emulator (with fm1-emu's author) | Largest; separate track |
+| — | Emulator performance review (with fm1-emu's author) | Before FM1 Live; any time after the hardware checks |
 | 11 | 9 FM1 Live (last): spike, then emulated + hardware slots on one clock, capture (after the fm1-emu MIDI-out change), macros and scenes | The finale: builds on 1, 2, 4, 6, and on 8b's native engine for more slots |
 
 Profiles keep growing in the background (a few firmwares per session with `/draft-profile`).
