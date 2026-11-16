@@ -20,6 +20,8 @@ for (const f of FILES) {
   await writeFile(new URL(f, OUT), body);
   console.log(`${f}  ${body.length} bytes`);
 }
-const lic = await fetch("https://raw.githubusercontent.com/joakimeriksson/fm1-emu/main/LICENSE");
-await writeFile(new URL("LICENSE", OUT), Buffer.from(await lic.arrayBuffer()));
+const lic = await fetch("https://raw.githubusercontent.com/joakimeriksson/fm1-emu/master/LICENSE");
+const licText = await lic.text();
+if (!lic.ok || !/MIT License/.test(licText)) throw new Error(`fm1-emu LICENSE: HTTP ${lic.status}; not shipping the emulator without its licence`);
+await writeFile(new URL("LICENSE", OUT), licText);
 await writeFile(new URL("SOURCE.txt", OUT), `fm1-emu by Joakim Eriksson, MIT licence (see LICENSE).\nCopied from ${BASE} on ${new Date().toISOString()}.\nSource: https://github.com/joakimeriksson/fm1-emu\n`);
