@@ -1,6 +1,5 @@
 name: FM1Swapper
 options:
-  bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -9,7 +8,6 @@ packages:
     path: Packages/FM1Kit
 settings:
   base:
-    DEVELOPMENT_TEAM: YOURTEAMID
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "1.0"
@@ -18,6 +16,9 @@ targets:
   FM1Swapper:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
     sources:
       - path: App
       - path: Tutorials
@@ -36,12 +37,13 @@ targets:
         LSSupportsOpeningDocumentsInPlace: false
         ITSAppUsesNonExemptEncryption: false
         FM1CloudSync: $(FM1_CLOUD_SYNC)
+        FM1CloudContainer: $(FM1_CLOUD_CONTAINER)
         NSBluetoothAlwaysUsageDescription: Connects to Bluetooth MIDI controllers such as the M-VAVE SMC-PAD.
         NSMicrophoneUsageDescription: Records samples for the slice sampler.
         NSLocalNetworkUsageDescription: Finds the check-in server on your Mac, so your installs can see which firmware each has.
         NSBonjourServices: [_fm1checkin._tcp]
         UTImportedTypeDeclarations:
-          - UTTypeIdentifier: com.example.fm1swapper.fwsc
+          - UTTypeIdentifier: org.fm1swapper.fwsc
             UTTypeDescription: FM-1 firmware package
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
@@ -50,14 +52,13 @@ targets:
           - CFBundleTypeName: FM-1 firmware package
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
-            LSItemContentTypes: [com.example.fm1swapper.fwsc]
+            LSItemContentTypes: [org.fm1swapper.fwsc]
           - CFBundleTypeName: Audio
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.audio]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.fm1swapper
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES

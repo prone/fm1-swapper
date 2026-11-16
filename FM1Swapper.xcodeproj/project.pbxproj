@@ -55,6 +55,7 @@
 		D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorView.swift; sourceTree = "<group>"; };
 		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FM1Swapper-iCloud.entitlements"; sourceTree = "<group>"; };
+		E38EB5C3B93C59D4F160A57D /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +85,14 @@
 				08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		46C474F30EA9BC7B7D5A9CA1 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				E38EB5C3B93C59D4F160A57D /* Base.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		4A7B0C984E95C2A243489A9E /* Products */ = {
@@ -126,6 +135,7 @@
 			children = (
 				194938F457EA65FAB2408A63 /* Tutorials */,
 				849766643E093C4F35DF83D8 /* App */,
+				46C474F30EA9BC7B7D5A9CA1 /* Config */,
 				980317A17A7E106CD02065B4 /* Packages */,
 				4A7B0C984E95C2A243489A9E /* Products */,
 			);
@@ -164,7 +174,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					8B2D7D6873426052A8C2201E = {
-						DevelopmentTeam = YOURTEAMID;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -269,7 +279,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = YOURTEAMID;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -301,6 +310,7 @@
 		};
 		75A6E4E0B503709DBC4717E0 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = E38EB5C3B93C59D4F160A57D /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -311,7 +321,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.fm1swapper;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -354,7 +363,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = YOURTEAMID;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -379,6 +387,7 @@
 		};
 		F0BB4E15C17370DCA1E7F9B2 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = E38EB5C3B93C59D4F160A57D /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -389,7 +398,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.fm1swapper;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

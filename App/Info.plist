@@ -17,7 +17,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.example.fm1swapper.fwsc</string>
+				<string>org.fm1swapper.fwsc</string>
 			</array>
 		</dict>
 		<dict>
@@ -47,6 +47,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>FM1CloudContainer</key>
+	<string>$(FM1_CLOUD_CONTAINER)</string>
 	<key>FM1CloudSync</key>
 	<string>$(FM1_CLOUD_SYNC)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -93,7 +95,7 @@
 			<key>UTTypeDescription</key>
 			<string>FM-1 firmware package</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.example.fm1swapper.fwsc</string>
+			<string>org.fm1swapper.fwsc</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

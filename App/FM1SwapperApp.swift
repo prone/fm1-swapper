@@ -18,8 +18,9 @@ struct FM1SwapperApp: App {
         // unavailable (signed out, simulator without an account), fall back to a local store.
         // Unsigned builds have no iCloud entitlement (CloudKit would trap): build them with FM1_CLOUD_SYNC=NO.
         let syncOn = (Bundle.main.object(forInfoDictionaryKey: "FM1CloudSync") as? String) == "YES"
-        let cloud = ModelConfiguration("FM1Swapper", schema: schema, cloudKitDatabase: .private("iCloud.com.example.fm1swapper"))
-        if syncOn, let c = try? ModelContainer(for: schema, configurations: cloud) {
+        let cloudID = Bundle.main.object(forInfoDictionaryKey: "FM1CloudContainer") as? String ?? ""
+        let cloud = ModelConfiguration("FM1Swapper", schema: schema, cloudKitDatabase: .private(cloudID))
+        if syncOn, !cloudID.isEmpty, let c = try? ModelContainer(for: schema, configurations: cloud) {
             container = c
         } else {
             let local = ModelConfiguration("FM1Swapper", schema: schema, cloudKitDatabase: .none)

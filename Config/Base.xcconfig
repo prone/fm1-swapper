@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Build settings for FM-1 Swapper. Your own signing team and bundle id go in Config/Local.xcconfig
+// (git-ignored; copy Config/Local.example.xcconfig). Without it the app builds as org.fm1swapper.fm1swapper,
+// unsigned for devices.
+
+BUNDLE_ID_PREFIX = org.fm1swapper
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(BUNDLE_ID_PREFIX).fm1swapper
+// iCloud container used when sync is on (FM1_CLOUD_SYNC = YES)
+FM1_CLOUD_CONTAINER = iCloud.$(BUNDLE_ID_PREFIX).fm1swapper

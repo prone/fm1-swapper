@@ -6,7 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let fwsc = UTType(importedAs: "com.example.fm1swapper.fwsc", conformingTo: .data)
+    static let fwsc = UTType(importedAs: "org.fm1swapper.fwsc", conformingTo: .data)
 }
 
 enum LibrarySort: String, CaseIterable, Identifiable {

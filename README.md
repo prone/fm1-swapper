@@ -33,7 +33,8 @@ Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 xcodegen generate                 # after editing project.yml
-open FM1Swapper.xcodeproj         # set your own Team and bundle id in project.yml first
+cp Config/Local.example.xcconfig Config/Local.xcconfig   # your Team ID and bundle id prefix (git-ignored)
+open FM1Swapper.xcodeproj
 cd Packages/FM1Kit && swift test
 python3 tools/validate_tutorials.py
 ```

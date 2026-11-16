@@ -15,8 +15,10 @@ python3 tools/validate_tutorials.py "Tutorials/$ID.json"
 xcodebuild -project FM1Swapper.xcodeproj -scheme FM1Swapper -destination "id=$SIM" -derivedDataPath "$DD" \
   build CODE_SIGNING_ALLOWED=NO FM1_CLOUD_SYNC=NO -quiet
 xcrun simctl boot "$SIM" 2>/dev/null || true
-xcrun simctl install "$SIM" "$DD/Build/Products/Debug-iphonesimulator/FM1Swapper.app"
-xcrun simctl terminate "$SIM" com.example.fm1swapper 2>/dev/null || true
+APP="$DD/Build/Products/Debug-iphonesimulator/FM1Swapper.app"
+BUNDLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+xcrun simctl install "$SIM" "$APP"
+xcrun simctl terminate "$SIM" "$BUNDLE" 2>/dev/null || true
 rm -rf "$OUT"; mkdir -p "$OUT"
 LOG="$OUT/log.txt"
 xcrun simctl spawn "$SIM" log stream --style compact --predicate 'eventMessage CONTAINS "TUTSTEP" OR eventMessage CONTAINS "TUTDONE"' > "$LOG" &
@@ -25,7 +27,7 @@ trap 'kill $LP 2>/dev/null || true' EXIT
 sleep 2
 SIMCTL_CHILD_FM1_DEMO_EMULATOR="$PKG" SIMCTL_CHILD_FM1_DEMO_AUTOSTART=1 \
 SIMCTL_CHILD_FM1_DEMO_TUTORIAL="$ID" SIMCTL_CHILD_FM1_DEMO_NAME="$NAME" \
-  xcrun simctl launch "$SIM" com.example.fm1swapper >/dev/null
+  xcrun simctl launch "$SIM" "$BUNDLE" >/dev/null
 seen=0
 for _ in $(seq 1 600); do
   sleep 0.5
