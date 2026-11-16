@@ -204,7 +204,7 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
 | 8 | 7 MIDI capture | Small once 1 and 4 exist |
 | 9 | 8a Screen mirroring (with firmware authors) | Depends on upstream work |
 | 10 | 8b AUv3 emulator (with fm1-emu's author) | Largest; separate track |
-| 11 | 9 FM1 Live: spike, then slots + clock, capture (after the fm1-emu MIDI-out change), macros and scenes | Builds on 1, 2, 4, 6; the spike can run any time |
+| 11 | 9 FM1 Live (last): spike, then emulated + hardware slots on one clock, capture (after the fm1-emu MIDI-out change), macros and scenes | The finale: builds on 1, 2, 4, 6, and on 8b's native engine for more slots |
 
 Profiles keep growing in the background (a few firmwares per session with `/draft-profile`).
 
