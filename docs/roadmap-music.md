@@ -155,7 +155,7 @@ The idea (2026-11-16): find a pattern or song on the hardware, send it to the iP
 FM-1, then do that several times. Five emulators with different firmware and patterns play together, the hardware
 FM-1 stays live, and app **macros** change the emulators in time. Like owning several FM-1s.
 
-- **Capture from hardware → emulator.** "Send to Rack" takes a backup of what the FM-1 is running (the archive
+- **Capture from hardware → emulator.** "Send to FM1 Live" takes a backup of what the FM-1 is running (the archive
   protocols we already have: Felucca family, FM1 Open; not stock) and loads it into a new rack slot running the same
   firmware package. The reverse, "send this slot to the FM-1", is a restore.
   - Finding (fm1-emu, checked 2026-11-16): the emulator takes MIDI in, including SysEx and clock (`fm1_midi` per
@@ -172,19 +172,19 @@ FM-1 stays live, and app **macros** change the emulators in time. Like owning se
   Several FM-1s report the same identity, so slots are told apart by port and a name the user gives each unit
   ("left FM-1"). An iPhone has one USB port, so more than one wired FM-1 needs a hub (fine for playing; installs
   still go direct).
-- **The rack.** N slots, each with firmware, state, MIDI channel and its own route from F1 (SMC-PAD to slot 2, a
+- **Slots and sets.** N slots, each with firmware, state, MIDI channel and its own route from F1 (SMC-PAD to slot 2, a
   keyboard to slot 4). A mixer per slot (level, pan, mute, solo) and a master to the device output. Each slot's
-  flash is saved per rack (a rack is a "set"), and a rack can be saved and loaded.
+  flash is saved with the set, and a set can be saved and loaded.
 - **One clock for everything.** The app clock (feature 1) drives every slot and the hardware FM-1, so patterns stay
   locked. The hardware plays through its own output, so record with latency compensation (feature 2).
 - **Macros and scenes.** Buttons, or SMC-PAD pads, that run a list of actions on chosen slots, quantised to the next
   beat, bar or 4 bars: send notes/CC/program changes, press panel controls (the tutorial engine's `__fm1do` already
   drives buttons, knobs and keys), mute/unmute slots, change tempo. **Scenes** store mute/level states and switch
-  together. Setlists (6) can recall a rack.
+  together. Setlists (6) can recall a set.
 - **Performance limits.** Each emulator is a full CPU emulation. On iPad one instance showed about 18% load at
   100 MHz; all emulators in one page share one audio thread, so 3 to 5 slots is the likely limit on iPad and fewer
   on iPhone (to be measured in the spike). Desktop Chrome handles more. The native engine from 8b (fm1-emu's Rust
-  core) would run slots far more cheaply, so the rack should be built so that engine can replace the web view later.
+  core) would run slots far more cheaply, so FM1 Live should be built so that engine can replace the web view later.
 - **Spike first (S):** (1) run 2–5 emulators in one web view on iPad and iPhone and measure load and glitches;
   (2) confirm emulated Felucca/SLOOP follow MIDI clock; (3) prototype the MIDI-out hook in fm1-emu locally and a
   hardware → emulator restore of one Felucca project.
