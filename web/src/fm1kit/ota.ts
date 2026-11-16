@@ -12,6 +12,8 @@ export const HANDSHAKE = [0xf0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7f, 
 export const UPGRADE = [0xf0, 0x22, 0x24, 0x35, 0x7f, 0xf7];
 export const FINISH_CHECK = 0xe0000000, FINISH_WRITE = 0xf0000000, MAX_DATA = 512;
 
+export const RESCUE_URL = "https://thefirmwarehub.com/tools/rescue/#chip";
+
 export class FM1Error extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
@@ -164,6 +166,11 @@ export class Updater {
     await sleep(this.timing.afterUpgrade);
     const s1 = await this.serve(dev.link, image, FINISH_CHECK, this.timing.idleCheck, (n) => onStep({ kind: "verify", n }));
     dev.link.close();
+    if (!s1.finished && !s1.lost && s1.served === 0) {
+      throw new FM1Error("refused", "The FM-1's current firmware didn't start the update. Nothing was written. "
+        + "On a newer FM-1 (flash chip 0xB36014), a firmware that only knows the older chip can't update itself, and trying again won't help: "
+        + `the way out is download mode and M-Flasher (${RESCUE_URL}). Otherwise, check that this firmware supports updates over USB.`);
+    }
     if (!s1.finished) {
       throw new FM1Error(s1.lost ? "lost" : "stopped", `The FM-1 ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests. Nothing was written.`);
     }
@@ -186,6 +193,11 @@ export class Updater {
     await sleep(this.timing.afterUpgrade);
     const s2 = await this.serve(ota.link, image, FINISH_WRITE, this.timing.idleWrite, (n) => onStep({ kind: "write", n }));
     ota.link.close();
+    if (!s2.finished && !s2.lost && s2.served === 0) {
+      throw new FM1Error("refused", "The update loader didn't start writing. The FM-1 is in update mode and nothing new was written. "
+        + "On a newer FM-1 (flash chip 0xB36014), this package's loader may not support the chip; installing it again won't help. "
+        + `Power-cycle the FM-1, then follow the rescue guide (download mode and M-Flasher): ${RESCUE_URL}`);
+    }
     if (!s2.finished) {
       throw new FM1Error(s2.lost ? "lost" : "stopped", `The update loader ${s2.lost ? "was disconnected" : "stopped"} after ${s2.served} requests. Replug the FM-1 and choose Resume to finish.`);
     }

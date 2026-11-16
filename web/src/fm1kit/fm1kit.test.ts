@@ -22,6 +22,7 @@ function makePackage(product: string, size = 60_000): Uint8Array {
 class VirtualFM1 {
   loader = false; attached = true; installed: Uint8Array | null = null;
   expectedSize = 0; newIdentity = ""; dropAfter = -1;
+  refuse: "" | "app" | "loader" = "";   // a firmware/loader that doesn't know the flash chip answers nothing
   fromHost = new Inbox();
   link: SimLink | null = null;
   felucca = new Map<number, Uint8Array>();
@@ -51,6 +52,8 @@ class VirtualFM1 {
   }
 
   async runUpdate() {
+    if (this.refuse === "app" && !this.loader) return;
+    if (this.refuse === "loader" && this.loader) return;
     if (!this.loader) {
       for (let a = 0; a < 4096; a += 512) if (!(await this.fetch(a, 512))) return;
       await this.fetch(0xe0000000, 8);
@@ -195,6 +198,25 @@ describe("update", () => {
     expect(dev.loader).toBe(true);
     expect((await up.resume(pkg))?.text).toBe("FM-1_8000014");
     expect(dev.installed).toEqual(logicalImage(pkg.bytes));
+  }, 20_000);
+});
+
+describe("flash chip refusals", () => {
+  it("explains a firmware that won't start an update, and writes nothing", async () => {
+    const pkg = await readPackage(makePackage("FM-1_918"));
+    const dev = new VirtualFM1("FM-1_915"); dev.refuse = "app";
+    const e = await new Updater(new SimProvider(dev), FAST).install(pkg).catch((x) => x);
+    expect(e).toMatchObject({ code: "refused" });
+    expect(String(e.message)).toContain("0xB36014");
+    expect(dev.installed).toBeNull();
+  });
+
+  it("explains an update loader that won't write", async () => {
+    const pkg = await readPackage(makePackage("FM-1_918"));
+    const dev = new VirtualFM1("FM-1_015"); dev.refuse = "loader";
+    const e = await new Updater(new SimProvider(dev), FAST).install(pkg).catch((x) => x);
+    expect(e).toMatchObject({ code: "refused" });
+    expect(dev.loader).toBe(true);
   }, 20_000);
 });
 

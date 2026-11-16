@@ -7,11 +7,15 @@ import { readArchiveFile } from "../fm1kit/archive";
 import { backupRecord } from "../device";
 import { store } from "../store";
 import { DeviceBusy, FileDrop, Library, fmtDateTime, useDevice } from "./common";
+import { officialFirmware } from "../catalog";
+import { MyChip, RESCUE_URL, myChip, setMyChip } from "../hub";
 
-export function DeviceView({ lib, open }: { lib: Library; open: (id: string) => void }) {
+export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swap?: boolean) => void }) {
   const s = useDevice();
   const [samples, setSamples] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+  const [chip, setChip] = useState<MyChip>(myChip());
+  const [getting, setGetting] = useState(false);
   const id = s.identity;
   const fam = id ? familyOf(id) : null;
   const installed = id ? lib.firmwares.find((f) => f.product === id.text && f.sha256) : undefined;
@@ -93,6 +97,34 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string) => 
               {msg && <div class="banner warn">{msg}</div>}
             </>
           )}
+        </>
+      )}
+      {id && !loader && fam !== "official" && (
+        <>
+          <h2>Back to official firmware</h2>
+          <div class="card">
+            <div>Put M-VAVE's own firmware back (V15, checked against its known checksum). It works on every FM-1.</div>
+            <div class="btnrow"><button class="btn" disabled={!!s.busy || getting} onClick={async () => {
+              setGetting(true); setMsg(null);
+              try { const f = await officialFirmware(); open(f.id, true); } catch (e) { setMsg((e as Error).message); } finally { setGetting(false); }
+            }}>{getting ? "Downloading…" : "Back to official firmware…"}</button></div>
+          </div>
+        </>
+      )}
+      {s.midi === "ready" && (
+        <>
+          <h2>Flash chip</h2>
+          <div class="card">
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ flex: 1 }}>This FM-1's flash chip</span>
+              <select value={chip} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as MyChip; setMyChip(v); setChip(v); }}>
+                <option value="unknown">I don't know</option><option value="old">Older unit (0x856014)</option><option value="new">Newer unit (0xB36014)</option>
+              </select>
+            </div>
+            <p class="small dim" style={{ marginBottom: 0 }}>FM-1s sold since autumn 2026 have a different flash chip. Some firmware only knows the older one: on a newer FM-1 it loses
+              saves at power-off and can't update itself. The chip can't be read over USB, so tell the app which you have (M-Flasher shows it in download mode),
+              and installs of firmware that don't support it will warn you. <a href={RESCUE_URL} target="_blank" rel="noopener noreferrer">More, and the rescue guide ↗</a></p>
+          </div>
         </>
       )}
       {s.log.length > 0 && (<><h2>Activity</h2><div class="card mono log">{s.log.join("\n")}</div></>)}

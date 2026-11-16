@@ -78,7 +78,12 @@ export function DeviceBusy({ s }: { s: DeviceState }) {
   return (
     <div class={"banner " + (s.error ? "err" : "warn")} role="status">
       {s.busy ? <><div style={{ marginBottom: 8 }}>{s.busy}…{s.progress != null && ` ${Math.round(s.progress * 100)}%`}</div><Bar value={s.progress} /></>
-        : <div style={{ display: "flex", gap: 10 }}><span style={{ flex: 1 }}>{s.error}</span><button class="linkbtn" onClick={() => device.clearError()}>Dismiss</button></div>}
+        : <div style={{ display: "flex", gap: 10 }}><span style={{ flex: 1 }}>{linkify(s.error ?? "")}</span><button class="linkbtn" onClick={() => device.clearError()}>Dismiss</button></div>}
     </div>
   );
+}
+
+/** Plain text with its https links made clickable (error messages point to rescue guides). */
+export function linkify(text: string) {
+  return text.split(/(https:\/\/[^\s)]+)/).map((part, i) => i % 2 ? <a key={i} href={part} target="_blank" rel="noopener noreferrer">{part}</a> : part);
 }

@@ -3,7 +3,8 @@
 // Where firmware comes from (mirrors App/Catalog.swift). Browsers can only download from servers that allow it
 // (CORS): The Firmware Hub, GitHub Pages and raw.githubusercontent.com do; GitHub release files and M-VAVE's server
 // don't, so those open as a normal download for the user to drop into the app.
-import { Family, familyOf, parseIdentity, readPackage } from "./fm1kit/package";
+import { Family, STOCK, familyOf, parseIdentity, readPackage } from "./fm1kit/package";
+import { HUB, HubFirmware, loadHub } from "./hub";
 import { workbenchPackages } from "./fm1kit/workbench";
 import { Firmware, store, uid } from "./store";
 
@@ -105,4 +106,27 @@ export async function importFile(file: File): Promise<string[]> {
   }
   const r = await addPackage(new Uint8Array(await file.arrayBuffer()), { fileName: file.name });
   return [`${r.isNew ? "Added" : "Already have"} ${r.firmware.name}${r.warning ? ` — ${r.warning}` : ""}`];
+}
+
+/** Downloads a package from The Firmware Hub and checks it against the SHA-256 the hub publishes before adding it. */
+export async function addFromHub(e: HubFirmware): Promise<AddResult> {
+  const bytes = await tryDownload(HUB + e.pkg);
+  if (!bytes) throw new Error("The Firmware Hub couldn't be reached. Check the connection and try again.");
+  const pkg = await readPackage(bytes);
+  if (pkg.sha256 !== e.sha256) throw new Error(`The download doesn't match the checksum The Firmware Hub publishes for ${e.name} ${e.version}, so it wasn't added.`);
+  return addPackage(bytes, { fileName: e.pkg.split("/").pop()!, name: `${e.name} ${e.version}`.trim(), author: e.author, version: e.version,
+    repo: e.repo, sourceURL: HUB + e.pkg, summary: e.what });
+}
+
+/** M-VAVE's official firmware: the copy in the library, or V15 downloaded from The Firmware Hub and checked against its known digest. */
+export async function officialFirmware(): Promise<Firmware> {
+  const all = await store.firmwares();
+  const have = STOCK.slice().reverse().map((s) => all.find((f) => f.sha256 === s.sha256)).find(Boolean);
+  if (have) return have;
+  const hub = await loadHub();
+  const bytes = await tryDownload(hub?.stockURL ?? HUB + "fw/mvave/FM-1_015.fwsc");
+  if (!bytes) throw new Error("Couldn't download the official firmware. Check the connection, or add FM-1.fwsc from M-VAVE's site.");
+  const pkg = await readPackage(bytes);
+  if (!pkg.stock) throw new Error("The downloaded file isn't M-VAVE's official firmware (its checksum doesn't match), so it wasn't added.");
+  return (await addPackage(bytes, { fileName: "FM-1.fwsc", sourceURL: hub?.stockURL ?? "" })).firmware;
 }

@@ -23,9 +23,10 @@ function App() {
   const dev = useDevice();
   const [tab, setTab] = useState<Tab>("Library");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [swapNow, setSwapNow] = useState(false);
   const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial } | null>(null);
   useEffect(() => { if (lib.loaded && !lib.firmwares.length && tab === "Library") setTab("Get firmware"); }, [lib.loaded]);
-  const open = (id: string) => { setOpenId(id); setTab("Library"); scrollTo(0, 0); };
+  const open = (id: string, swap = false) => { setOpenId(id); setSwapNow(swap); setTab("Library"); scrollTo(0, 0); };
 
   return (
     <>
@@ -44,7 +45,7 @@ function App() {
           </div>
         )}
         {tab === "Device" && <DeviceView lib={lib} open={open} />}
-        {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={setOpenId} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
+        {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={(id) => { setOpenId(id); setSwapNow(false); }} swapNow={swapNow} swapped={() => setSwapNow(false)} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
         {tab === "Get firmware" && <GetFirmware lib={lib} opened={open} />}
         {tab === "History" && <HistoryView lib={lib} open={open} />}
         <footer class="small faint" style={{ marginTop: 40 }}>

@@ -7,11 +7,13 @@ import { device } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { FeluccaArchive } from "../fm1kit/archive";
 import { tutorialFor } from "../tutorial";
+import { CHIP_TEXT, Chip, MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
+import { ChipBadge } from "./GetFirmware";
 import { DeviceBusy, FileDrop, Library, Stars, ago, fmtBytes, fmtDate, fmtDateTime, saveFile, useDevice } from "./common";
 
 type Sort = "recent" | "name" | "rating" | "installed";
 
-export function LibraryView({ lib, openId, setOpenId, tryIt }: { lib: Library; openId: string | null; setOpenId: (id: string | null) => void; tryIt: (f: Firmware, tutorial: boolean) => void }) {
+export function LibraryView({ lib, openId, setOpenId, tryIt, swapNow, swapped }: { lib: Library; openId: string | null; setOpenId: (id: string | null) => void; tryIt: (f: Firmware, tutorial: boolean) => void; swapNow?: boolean; swapped?: () => void }) {
   const [filter, setFilter] = useState<TryStatus | null>(null);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("recent");
@@ -23,7 +25,7 @@ export function LibraryView({ lib, openId, setOpenId, tryIt }: { lib: Library; o
     .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "rating" ? b.rating - a.rating || a.name.localeCompare(b.name)
       : sort === "installed" ? (b.lastInstalledAt ?? 0) - (a.lastInstalledAt ?? 0) : b.addedAt - a.addedAt), [lib.firmwares, filter, q, sort]);
 
-  if (open) return <Detail f={open} lib={lib} back={() => setOpenId(null)} tryIt={tryIt} />;
+  if (open) return <Detail f={open} lib={lib} back={() => setOpenId(null)} tryIt={tryIt} swapNow={swapNow} swapped={swapped} />;
 
   const add = async (files: File[]) => {
     const out: string[] = [];
@@ -90,9 +92,13 @@ export function LibraryView({ lib, openId, setOpenId, tryIt }: { lib: Library; o
   );
 }
 
-function Detail({ f, lib, back, tryIt }: { f: Firmware; lib: Library; back: () => void; tryIt: (f: Firmware, tutorial: boolean) => void }) {
+function Detail({ f, lib, back, tryIt, swapNow, swapped }: { f: Firmware; lib: Library; back: () => void; tryIt: (f: Firmware, tutorial: boolean) => void; swapNow?: boolean; swapped?: () => void }) {
   const dev = useDevice();
-  const [swap, setSwap] = useState(false);
+  const hub = useHub();
+  const [swap, setSwap] = useState(!!swapNow && !!f.sha256);
+  const h = f.sha256 ? hub?.bySha.get(f.sha256) ?? (f.repo ? hub?.byRepo.get(f.repo.toLowerCase()) : undefined) : undefined;
+  const exact = !!(f.sha256 && hub?.bySha.has(f.sha256));
+  const chip = f.sha256 ? chipOf(hub, f.sha256) : undefined;
   const [notes, setNotes] = useState(f.notes);
   const save = (p: Partial<Firmware>) => store.saveFirmware(Object.assign(f, p));
   const backups = lib.backups.filter((b) => b.firmwareId === f.id).sort((a, b) => b.date - a.date);
@@ -159,14 +165,23 @@ function Detail({ f, lib, back, tryIt }: { f: Firmware; lib: Library; back: () =
       <h2>Package</h2>
       <div class="rows">
         <div><span class="row-main">Identity</span><span class="dim">{f.product}</span></div>
+        {f.sha256 && <div style={{ alignItems: "flex-start" }}><span class="row-main">Flash chip<div class="small dim">{CHIP_TEXT[chip ?? "unknown"]}</div></span><ChipBadge chip={chip} /></div>}
+        {f.sha256 && <div><span class="row-main">Checksum</span><span class="small dim">{exact ? "✓ Matches The Firmware Hub's published SHA-256" : chip ? "✓ M-VAVE's official release" : "Not in The Firmware Hub's list"}</span></div>}
         {f.sha256 && <div><span class="row-main">Size</span><span class="dim">{fmtBytes(f.size)}</span></div>}
         {f.sha256 && <div><span class="row-main">SHA-256</span><span class="mono dim ellipsis" style={{ maxWidth: "50%" }} title={f.sha256}>{f.sha256}</span></div>}
         <div><span class="row-main">Added</span><span class="dim">{fmtDate(f.addedAt)}</span></div>
         {f.repo && <div><a href={`https://github.com/${f.repo}`} target="_blank" rel="noopener noreferrer">github.com/{f.repo}</a></div>}
+        {h && (h.editor || h.play || h.cheat || h.talk) && <div style={{ flexWrap: "wrap", gap: 14 }}>
+          {h.editor && <a href={h.editor} target="_blank" rel="noopener noreferrer">Editor ↗</a>}
+          {h.cheat && <a href={h.cheat} target="_blank" rel="noopener noreferrer">Manual ↗</a>}
+          {h.play && <a href={h.play} target="_blank" rel="noopener noreferrer">Play in browser ↗</a>}
+          {h.talk && <a href={h.talk} target="_blank" rel="noopener noreferrer">Discussions ↗</a>}
+          {!exact && <span class="small faint">(links for {h.name} {h.version})</span>}
+        </div>}
         {f.sha256 && <div><button class="linkbtn" onClick={async () => { const b = await store.packageBytes(f.sha256); if (b) saveFile(f.fileName || `${f.product}.fwsc`, b); }}>Download .fwsc</button></div>}
         <div><button class="linkbtn" style={{ color: "var(--red)" }} onClick={() => { if (confirm(`Delete ${f.name} and its backups from this browser?`)) { void store.deleteFirmware(f); back(); } }}>Delete from library</button></div>
       </div>
-      {swap && <SwapDialog f={f} lib={lib} close={() => setSwap(false)} />}
+      {swap && <SwapDialog f={f} lib={lib} chip={chip} close={() => { setSwap(false); swapped?.(); }} />}
     </>
   );
 }
@@ -187,7 +202,31 @@ function BackupRow({ b, f }: { b: Backup; f: Firmware }) {
   );
 }
 
-function SwapDialog({ f, lib, close }: { f: Firmware; lib: Library; close: () => void }) {
+function ChipWarning({ chip, mine, setMine, ack, setAck }: { chip: Chip | undefined; mine: MyChip; setMine: (c: MyChip) => void; ack: boolean; setAck: (b: boolean) => void }) {
+  if (chip === "new") return null;
+  const risky = chip === "old" ? mine !== "old" : mine === "new";
+  if (!risky && chip !== "old") return chip === "any" ? null : <div class="small faint" style={{ margin: "6px 0" }}>{CHIP_TEXT.unknown}.</div>;
+  if (!risky) return null;
+  return (
+    <div class="banner warn small">
+      <b>{chip === "old" ? "This firmware only knows the first FM-1s' flash chip." : "Flash chip support for this package is unknown."}</b>{" "}
+      Newer FM-1s (sold since autumn 2026, flash chip 0xB36014) keep its saves in RAM only, and it can't update itself afterwards:
+      getting off it then needs download mode and M-Flasher (<a href={RESCUE_URL} target="_blank" rel="noopener noreferrer">guide</a>).
+      <div style={{ marginTop: 8 }}>Your FM-1:{" "}
+        <select value={mine} onChange={(e) => { const v = (e.target as HTMLSelectElement).value as MyChip; setMyChip(v); setMine(v); }}>
+          <option value="unknown">I don't know</option><option value="old">An older unit (0x856014)</option><option value="new">A newer unit (0xB36014)</option>
+        </select>
+      </div>
+      <div class="faint" style={{ marginTop: 4 }}>The chip can't be read over USB; M-Flasher shows it in download mode. A unit bought before autumn 2026 has the older chip.</div>
+      {(mine !== "old") && <label class="check"><input type="checkbox" checked={ack} onChange={(e) => setAck((e.target as HTMLInputElement).checked)} />I understand, install anyway</label>}
+    </div>
+  );
+}
+
+function SwapDialog({ f, lib, chip, close }: { f: Firmware; lib: Library; chip: Chip | undefined; close: () => void }) {
+  const [mine, setMine] = useState<MyChip>(myChip());
+  const [ack, setAck] = useState(false);
+  const needAck = (chip === "old" && mine !== "old") || (chip === undefined && mine === "new");
   const dev = useDevice();
   const ref = useRef<HTMLDialogElement>(null);
   const [backupFirst, setBackupFirst] = useState(true);
@@ -204,12 +243,13 @@ function SwapDialog({ f, lib, close }: { f: Firmware; lib: Library; close: () =>
           <p class="dim" style={{ marginTop: 0 }}>The FM-1 is running <b>{curName}</b>. It will restart a few times; keep the USB cable in until it's done (about a minute).</p>
           {curFam && supportsArchive(curFam) && <label class="check"><input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst((e.target as HTMLInputElement).checked)} />Back up {curName}'s work first</label>}
           {curFam === "official" && <div class="banner warn small">M-VAVE's official firmware can't be backed up. Its patterns are usually erased by other firmware.</div>}
+          <ChipWarning chip={chip} mine={mine} setMine={setMine} ack={ack} setAck={setAck} />
           {hasBackup && <label class="check"><input type="checkbox" checked={restoreAfter} onChange={(e) => setRestoreAfter((e.target as HTMLInputElement).checked)} />Put back my latest {f.name} backup afterwards</label>}
         </>
       )}
       <div class="btnrow">
         <button class="btn" onClick={close}>Cancel</button>
-        <button class="btn primary" disabled={!cur || !!dev.busy} onClick={() => { close(); void device.install(f, { backupFirst, restoreAfter: restoreAfter && hasBackup }); }}>Install</button>
+        <button class="btn primary" disabled={!cur || !!dev.busy || (needAck && !ack)} onClick={() => { close(); void device.install(f, { backupFirst, restoreAfter: restoreAfter && hasBackup }); }}>Install</button>
       </div>
     </dialog>
   );
