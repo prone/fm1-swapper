@@ -75,7 +75,7 @@ struct LibraryView: View {
         firmwares.filter { f in
             (filter == nil || f.status == filter) &&
                 (search.isEmpty || f.name.localizedCaseInsensitiveContains(search) || f.product.localizedCaseInsensitiveContains(search)
-                    || f.author.localizedCaseInsensitiveContains(search))
+                    || f.author.localizedCaseInsensitiveContains(search) || f.summary.localizedCaseInsensitiveContains(search))
         }
         .sorted { reversed ? sort.ordered($1, $0) : sort.ordered($0, $1) }
     }
@@ -116,8 +116,9 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            .task(id: firmwares.count) { await DescriptionFiller.fill(firmwares, context: context) }
             .navigationDestination(for: Firmware.self) { FirmwareDetailView(firmware: $0) }
-            .searchable(text: $search, prompt: "Name, identity, author")
+            .searchable(text: $search, prompt: "Name, description, author")
             .toolbar {
                 if working { ProgressView() }
                 Menu {

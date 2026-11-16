@@ -41,6 +41,8 @@ final class Firmware {
     var sourceURL: String = ""
     var repo: String = ""
     var notes: String = ""
+    /// One- or two-sentence description (from the catalog or the GitHub repo, editable).
+    var summary: String = ""
     var rating: Int = 0
     var statusRaw: String = TryStatus.notTried.rawValue
     var addedAt: Date = Date()

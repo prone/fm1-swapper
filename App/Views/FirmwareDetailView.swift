@@ -45,6 +45,8 @@ struct FirmwareDetailView: View {
                         TextField("Name", text: $firmware.name).font(.title2.weight(.semibold))
                         Text([firmware.author, firmware.family.displayName].filter { !$0.isEmpty }.joined(separator: " · "))
                             .font(.subheadline).foregroundStyle(.secondary)
+                        TextField("Description", text: $firmware.summary, axis: .vertical)
+                            .font(.callout).lineLimit(1...5)
                     }
                     Spacer()
                     if onDevice { Text("ON DEVICE").font(.caption.weight(.bold)).foregroundStyle(.green) }

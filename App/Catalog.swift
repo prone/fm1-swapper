@@ -154,3 +154,71 @@ enum LibraryImport {
         return base.isEmpty || base == "FM-1" ? "Firmware \(pkg.product)" : base
     }
 }
+
+/// Fills in missing firmware descriptions: the featured list first, then the community
+/// catalog (matched by repo or download URL), then the GitHub repo's own description.
+@MainActor
+enum DescriptionFiller {
+    private static var community: [CatalogEntry]?
+    private static var running = false
+
+    static func featured(for f: Firmware) -> FeaturedFirmware? {
+        let repo = f.repo.lowercased(), src = f.sourceURL.lowercased()
+        if f.package?.stock != nil || f.family == .official { return Catalog.featured.first { $0.id == "official" } }
+        if f.family == .fm1Open || repo == "m-vave/fm1_open" { return Catalog.featured.first { $0.id == "fm1open" } }
+        return Catalog.featured.first { item in
+            guard let r = item.repo?.lowercased() else { return false }
+            return repo == r || src.contains("github.com/\(r)/")
+        }
+    }
+
+    /// "owner/name" from a GitHub URL.
+    static func repo(fromURL s: String) -> String? {
+        guard let u = URL(string: s), u.host?.hasSuffix("github.com") == true else { return nil }
+        let parts = u.path.split(separator: "/")
+        return parts.count >= 2 ? "\(parts[0])/\(parts[1])" : nil
+    }
+
+    static func fill(_ firmwares: [Firmware], context: ModelContext) async {
+        let missing = firmwares.filter { $0.summary.isEmpty }
+        guard !missing.isEmpty, !running else { return }
+        running = true
+        defer { running = false }
+        for f in missing {
+            if f.repo.isEmpty, let r = repo(fromURL: f.sourceURL) { f.repo = r }
+            if let item = featured(for: f) { f.summary = item.blurb; continue }
+            if f.family == .felucca, f.repo.isEmpty { f.summary = Catalog.featured.first { $0.id == "felucca" }?.blurb ?? ""; continue }
+        }
+        var rest = missing.filter { $0.summary.isEmpty }
+        if !rest.isEmpty {
+            if community == nil { community = try? await Catalog.loadCommunity() }
+            for f in rest {
+                let repo = f.repo.lowercased()
+                let entry = community?.first { e in
+                    (!repo.isEmpty && e.repo?.lowercased() == repo) ||
+                        (!f.sourceURL.isEmpty && (e.upstream_releases ?? []).contains { $0.url == f.sourceURL })
+                }
+                if let e = entry {
+                    if f.repo.isEmpty, let r = e.repo { f.repo = r }
+                    if f.author.isEmpty { f.author = e.owner }
+                    if let d = e.description, !d.isEmpty { f.summary = d }
+                }
+            }
+            rest = rest.filter { $0.summary.isEmpty && !$0.repo.isEmpty }
+            for f in rest {
+                if let d = await githubDescription(f.repo) { f.summary = d }
+            }
+        }
+        try? context.save()
+    }
+
+    static func githubDescription(_ repo: String) async -> String? {
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)") else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let d = j["description"] as? String,
+              !d.isEmpty else { return nil }
+        return d
+    }
+}

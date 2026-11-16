@@ -188,7 +188,10 @@ struct FirmwareRow: View {
                             .background(.green.opacity(0.2), in: Capsule()).foregroundStyle(.green)
                     }
                 }
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if !firmware.summary.isEmpty {
+                    Text(firmware.summary).font(.caption).foregroundStyle(.primary.opacity(0.8)).lineLimit(2)
+                }
+                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             if firmware.rating > 0 {
