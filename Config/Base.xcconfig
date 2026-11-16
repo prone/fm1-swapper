@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Build settings for FM-1 Swapper. Your own signing team and bundle id go in Config/Local.xcconfig
-// (git-ignored; copy Config/Local.example.xcconfig). Without it the app builds as org.fm1swapper.fm1swapper,
+// (git-ignored; copy Config/Local.example.xcconfig). Without it the app builds as org.fm1swapper,
 // unsigned for devices.
 
-BUNDLE_ID_PREFIX = org.fm1swapper
+BUNDLE_ID_PREFIX = org
 DEVELOPMENT_TEAM =
 
 #include? "Local.xcconfig"

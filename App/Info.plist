@@ -44,9 +44,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>FM1CloudContainer</key>
 	<string>$(FM1_CLOUD_CONTAINER)</string>
 	<key>FM1CloudSync</key>

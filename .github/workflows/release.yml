@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Tag a version (git tag v1.2.3 && git push --tags) to build an unsigned .ipa and attach it to a release.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: FM1Kit tests
+        run: cd Packages/FM1Kit && swift test
+      - name: Tutorials
+        run: python3 tools/validate_tutorials.py
+  ipa:
+    needs: test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: brew install xcodegen
+      - name: Build unsigned .ipa
+        run: tools/build-ipa.sh "${GITHUB_REF_NAME#v}" | tee build/sha256.txt
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" "build/FM1Swapper-$V.ipa" --title "FM-1 Swapper $V" \
+            --notes-file .github/RELEASE_NOTES.md --prerelease --verify-tag || \
+          gh release upload "$GITHUB_REF_NAME" "build/FM1Swapper-$V.ipa" --clobber

@@ -13,6 +13,14 @@ An iPhone and iPad app for the M-VAVE FM-1 pocket synth and its many community f
 
 Not affiliated with or endorsed by M-VAVE. M-VAVE, FM-1 and SMC-PAD are trademarks of their owners. Installing firmware is at your own risk; keep a copy of M-VAVE's official firmware so you can always go back.
 
+## Install
+
+Download `FM1Swapper-<version>.ipa` from the [Releases](../../releases) page and install it with **AltStore**,
+**SideStore** or **Sideloadly**, which sign it with your own Apple ID (free accounts re-sign every 7 days; AltStore and
+SideStore do that for you). iOS 18 or later. Or build it yourself with Xcode (below).
+
+To connect: a USB-C cable to the FM-1 (or a Lightning-to-USB camera adapter); the SMC-PAD pairs over Bluetooth.
+
 ## Layout
 
 - `Packages/FM1Kit` — a reusable Swift package (iOS and macOS) for talking to the FM-1 and SMC-PAD:
@@ -38,6 +46,9 @@ open FM1Swapper.xcodeproj
 cd Packages/FM1Kit && swift test
 python3 tools/validate_tutorials.py
 ```
+
+`tools/build-ipa.sh <version>` builds the unsigned `.ipa` (neutral bundle id, no personal signing); tagging
+`v<version>` runs `.github/workflows/release.yml`, which tests, builds and attaches it to a pre-release.
 
 Optional real-file tests: `FM1_TEST_FWSC=felucca-1.8.2.fwsc FM1_TEST_WORKBENCH=FM1-Open-V14-Workbench.html swift test`.
 
