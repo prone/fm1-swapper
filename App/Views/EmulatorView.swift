@@ -49,6 +49,7 @@ struct EmulatorScreen: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(ControllerHub.self) private var pads
     @Query(sort: \EmulatorSave.date, order: .reverse) private var allSaves: [EmulatorSave]
     @AppStorage("emuKeepOnClose") private var keepOnClose = true
     @State private var emu = EmulatorController()
@@ -65,7 +66,7 @@ struct EmulatorScreen: View {
 
     var body: some View {
         NavigationStack {
-            EmulatorWebView(controller: emu, package: package, fileName: fileName)
+            EmulatorWebView(controller: emu, package: package, fileName: fileName, pads: pads)
                 .ignoresSafeArea(edges: .bottom)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
@@ -181,6 +182,7 @@ struct EmulatorWebView: UIViewRepresentable {
     let controller: EmulatorController
     let package: Data
     let fileName: String
+    let pads: ControllerHub
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -212,6 +214,7 @@ struct EmulatorWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
         coordinator.monitor?.stop()
+        coordinator.parent.pads.emulatorSink.set(nil)
         web.stopLoading()
     }
 
@@ -308,6 +311,11 @@ struct EmulatorWebView: UIViewRepresentable {
                 Task { @MainActor in self?.enqueue(bytes) }
             }
             monitor = m
+            // SMC-PADs arrive mapped through the pad router instead of raw
+            if parent.pads.sendToEmulator {
+                m.exclude = ControllerRouter.smcPadPattern
+                parent.pads.emulatorSink.set { [weak self] bytes in Task { @MainActor in self?.enqueue(bytes) } }
+            }
         }
 
         private func enqueue(_ bytes: [UInt8]) {

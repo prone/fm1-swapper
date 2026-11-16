@@ -49,6 +49,7 @@ final class Firmware {
     @Relationship(deleteRule: .nullify, inverse: \InstallEvent.firmware) var installs: [InstallEvent]? = []
     @Relationship(deleteRule: .cascade, inverse: \Backup.firmware) var backups: [Backup]? = []
     @Relationship(deleteRule: .cascade, inverse: \EmulatorSave.firmware) var emulatorSaves: [EmulatorSave]? = []
+    @Relationship(deleteRule: .cascade, inverse: \ControllerProfile.firmware) var controllerProfiles: [ControllerProfile]? = []
 
     init(name: String, product: String) {
         self.name = name
@@ -156,6 +157,30 @@ final class EmulatorSave {
     }
 
     var fileName: String { "\(firmwareName.replacingOccurrences(of: "/", with: "-")) \(date.formatted(.iso8601.year().month().day())).fm1save" }
+}
+
+/// A pad/knob mapping for one controller model, either the model's default (firmware nil)
+/// or the one used while a particular firmware is on the FM-1.
+@Model
+final class ControllerProfile {
+    var name: String = ""
+    var modelRaw: String = ControllerModel.smcPad.rawValue
+    var updatedAt: Date = Date()
+    var mappingData: Data?
+    var firmware: Firmware?
+
+    init(name: String, mapping: ControllerMapping, firmware: Firmware?) {
+        self.name = name
+        modelRaw = mapping.model.rawValue
+        mappingData = mapping.encoded()
+        self.firmware = firmware
+    }
+
+    var model: ControllerModel { ControllerModel(rawValue: modelRaw) ?? .generic }
+    var mapping: ControllerMapping {
+        get { mappingData.flatMap(ControllerMapping.decode) ?? .defaultLayout(for: model, name: name) }
+        set { mappingData = newValue.encoded(); updatedAt = Date() }
+    }
 }
 
 extension ModelContext {

@@ -22,6 +22,13 @@ Each firmware page, and every package in "Get firmware", has a **Try** button. I
 
 Simulator test: `SIMCTL_CHILD_FM1_DEMO_EMULATOR=/path/x.fwsc SIMCTL_CHILD_FM1_DEMO_AUTOSTART=1 xcrun simctl launch <sim> com.example.fm1swapper` (Debug builds only).
 
+## SMC-PAD and SMC-PAD Pocket (Pads tab)
+
+- `FM1Kit/Controller.swift`: `ControllerModel` (detected from the port name: "pocket" → Pocket), `ControllerMapping` (per model; the Pocket has 16 pads and no knobs), `MappingEngine` (note/CC/program/step-CC outputs, relative knobs, a Shift pad layer), and `ControllerRouter` (CoreMIDI in from the pads, mapped out to the FM-1 destination and the emulator; pad lights; identity probe).
+- `App/ControllerHub.swift` + `App/Views/PadsView.swift`: Bluetooth MIDI pairing (CABTMIDICentralViewController), output toggles, profiles per model (and optionally per firmware, picked automatically when that firmware is on the FM-1), Learn, an editor for each control, and a Lab (identity request, MIDI/SysEx log you can share, light test, raw send).
+- Output to the FM-1 pauses while the app installs or backs up.
+- **Still unknown, pending hardware:** each model's real default notes and CCs (the defaults are guesses; use Learn), how the pad lights are driven, the identity reply bytes (`ControllerModel.detect(portName:identity:)`), and M-VAVE MIDI Suite's configuration SysEx. Next step: capture these in the Lab (and by sniffing MIDI Suite on the Mac), then add a pad-settings editor.
+
 ## Build
 
 ```sh

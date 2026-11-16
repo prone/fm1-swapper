@@ -348,6 +348,8 @@ public final class MIDIInputMonitor: @unchecked Sendable {
     private var connected: Set<MIDIEndpointRef> = []
     private let lock = NSLock()
     public var onMessage: (@Sendable ([UInt8]) -> Void)?
+    /// Sources to leave out (e.g. a controller that ControllerRouter already maps).
+    public var exclude: NSRegularExpression? { didSet { connectAll() } }
 
     public init() {
         MIDIClientCreateWithBlock("FM1Kit Monitor" as CFString, &client) { [weak self] n in
@@ -372,7 +374,10 @@ public final class MIDIInputMonitor: @unchecked Sendable {
 
     public func connectAll() {
         lock.lock(); defer { lock.unlock() }
-        let now = Set((0..<MIDIGetNumberOfSources()).map { MIDIGetSource($0) })
+        let now = Set((0..<MIDIGetNumberOfSources()).map { MIDIGetSource($0) }.filter { s in
+            let n = CoreMIDIProvider.name(of: s)
+            return exclude?.firstMatch(in: n, range: NSRange(n.startIndex..., in: n)) == nil
+        })
         for s in now.subtracting(connected) { MIDIPortConnectSource(port, s, nil) }
         for s in connected.subtracting(now) { MIDIPortDisconnectSource(port, s) }
         connected = now

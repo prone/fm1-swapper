@@ -256,3 +256,66 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(out, [[0x90, 0x3C, 0x64], [0xC0, 0x05], [0xF8], [0xE0, 0x00, 0x40]])
     }
 }
+
+final class MappingTests: XCTestCase {
+    func testPadsAndKnobs() {
+        var m = ControllerMapping.smcPadDefault()
+        m.channel = 1
+        var e = MappingEngine(mapping: m)
+        // pad 1 (note 36 ch10) -> note 48 ch2
+        var r = e.transform([0x99, 36, 100])
+        XCTAssertEqual(r.messages, [[0x91, 48, 100]]); XCTAssertEqual(r.control, "pad-0")
+        r = e.transform([0x99, 36, 0])
+        XCTAssertEqual(r.messages, [[0x81, 48, 0]])
+        r = e.transform([0x89, 37, 0])
+        XCTAssertEqual(r.messages, [[0x81, 49, 0]])
+        // knob 1 (CC70 ch1) -> CC70 ch2
+        r = e.transform([0xB0, 70, 33])
+        XCTAssertEqual(r.messages, [[0xB1, 70, 33]]); XCTAssertEqual(r.value, 33)
+        // unmapped passes through; system realtime does not
+        XCTAssertEqual(e.transform([0xE0, 0, 64]).messages, [[0xE0, 0, 64]])
+        XCTAssertEqual(e.transform([0xF8]).messages, [])
+    }
+
+    func testRelativeKnobAndRemap() {
+        var m = ControllerMapping.smcPadDefault()
+        m.controls[16].knobMode = .relativeTwos
+        m.controls[16].output = .cc
+        m.controls[16].number = 21
+        m.controls[0].output = .program
+        m.controls[0].number = 5
+        var e = MappingEngine(mapping: m)
+        XCTAssertEqual(e.transform([0xB0, 70, 3]).messages, [[0xB0, 21, 67]])
+        XCTAssertEqual(e.transform([0xB0, 70, 127]).messages, [[0xB0, 21, 66]])
+        XCTAssertEqual(e.transform([0x99, 36, 90]).messages, [[0xC0, 5]])
+        XCTAssertEqual(e.transform([0x89, 36, 0]).messages, [])
+        let back = ControllerMapping.decode(m.encoded())
+        XCTAssertEqual(back, m)
+    }
+
+    func testPocketShiftLayer() {
+        let m = ControllerMapping.defaultLayout(for: .smcPadPocket)
+        XCTAssertEqual(m.controls.count, 16)
+        var e = MappingEngine(mapping: m)
+        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0x90, 48, 100]])   // pad 1 plays
+        XCTAssertEqual(e.transform([0x99, 51, 100]).messages, [])                  // hold shift (pad 16)
+        XCTAssertEqual(e.transform([0x99, 44, 100]).messages, [[0xB0, 70, 72]])    // pad 9: CC70 up
+        XCTAssertEqual(e.transform([0x89, 44, 0]).messages, [])
+        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0xB0, 70, 64]])    // pad 1: CC70 down
+        XCTAssertEqual(e.transform([0x89, 51, 0]).messages, [])                    // release shift
+        XCTAssertEqual(e.transform([0x99, 37, 90]).messages, [[0x90, 49, 90]])
+    }
+
+    func testModelDetection() {
+        XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD Pocket"), .smcPadPocket)
+        XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD Bluetooth"), .smcPad)
+        XCTAssertEqual(ControllerModel.detect(portName: "M-VAVE PAD"), .smcPad)
+        XCTAssertEqual(ControllerModel.detect(portName: "Arturia KeyStep"), .generic)
+    }
+
+    func testUMPEncoding() {
+        XCTAssertEqual(ControllerRouter.ump([0x91, 48, 100]), 0x2091_3064)
+        XCTAssertEqual(ControllerRouter.ump([0xC0, 5]), 0x20C0_0500)
+        XCTAssertEqual(ControllerRouter.ump([0xFA]), 0x10FA_0000)
+    }
+}

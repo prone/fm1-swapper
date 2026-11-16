@@ -6,10 +6,11 @@ import SwiftUI
 struct FM1SwapperApp: App {
     let container: ModelContainer
     @State private var device = DeviceController()
+    @State private var pads = ControllerHub()
     @State private var importMessage: String?
 
     init() {
-        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self])
+        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self, ControllerProfile.self])
         // iCloud (CloudKit private database) keeps the iPhone and iPad in sync. If iCloud is
         // unavailable (signed out, simulator without an account), fall back to a local store.
         // Unsigned builds have no iCloud entitlement (CloudKit would trap): build them with FM1_CLOUD_SYNC=NO.
@@ -27,6 +28,8 @@ struct FM1SwapperApp: App {
         WindowGroup {
             RootView()
                 .environment(device)
+                .environment(pads)
+                .onAppear { let hub = pads; device.onBusyChange = { busy in hub.setDeviceBusy(busy) } }
                 .onOpenURL { url in importFile(url) }
                 .alert("Import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
                     Button("OK") { importMessage = nil }
@@ -67,11 +70,15 @@ struct RootView: View {
         #endif
     }
 
+    // Debug builds: SIMCTL_CHILD_FM1_DEMO_TAB=2 opens on that tab.
+    @State private var tab = Int(ProcessInfo.processInfo.environment["FM1_DEMO_TAB"] ?? "") ?? 0
+
     var tabs: some View {
-        TabView {
-            Tab("Device", systemImage: "pianokeys") { DeviceView() }
-            Tab("Library", systemImage: "square.stack.3d.up") { LibraryView() }
-            Tab("History", systemImage: "clock.arrow.circlepath") { HistoryView() }
+        TabView(selection: $tab) {
+            Tab("Device", systemImage: "pianokeys", value: 0) { DeviceView() }
+            Tab("Library", systemImage: "square.stack.3d.up", value: 1) { LibraryView() }
+            Tab("Pads", systemImage: "square.grid.4x3.fill", value: 2) { PadsView() }
+            Tab("History", systemImage: "clock.arrow.circlepath", value: 3) { HistoryView() }
         }
         .tabViewStyle(.sidebarAdaptable)
     }

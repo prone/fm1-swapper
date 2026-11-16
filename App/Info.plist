@@ -41,6 +41,8 @@
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Connects to Bluetooth MIDI controllers such as the M-VAVE SMC-PAD.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

@@ -20,7 +20,10 @@ final class DeviceController {
     }
 
     private(set) var connection: Connection = .none
-    private(set) var phase: Phase = .idle
+    private(set) var phase: Phase = .idle { didSet { if busy != wasBusy { wasBusy = busy; onBusyChange?(busy) } } }
+    private var wasBusy = false
+    /// Tells the pad router to stop sending to the FM-1 while it is being written.
+    var onBusyChange: ((Bool) -> Void)?
     private(set) var log: [String] = []
     var busy: Bool { if case .working = phase { true } else { false } }
 
