@@ -1,4 +1,6 @@
 // swift-tools-version: 5.9
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import PackageDescription
 
 // FM1Kit: talk to an M-VAVE FM-1 over USB-MIDI SysEx.

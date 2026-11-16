@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Observation
 import SwiftUI
@@ -16,7 +18,9 @@ final class TutorialPlayer {
 
     init(tutorial: Tutorial) { self.tutorial = tutorial }
 
-    var step: Tutorial.Step { tutorial.steps[index] }
+    var step: Tutorial.Step {
+        tutorial.steps.indices.contains(index) ? tutorial.steps[index] : Tutorial.Step(title: tutorial.title, text: "This tutorial has no steps.")
+    }
     var isFirst: Bool { index == 0 }
     var isLast: Bool { index == tutorial.steps.count - 1 }
     var progress: Double { Double(index + 1) / Double(max(tutorial.steps.count, 1)) }

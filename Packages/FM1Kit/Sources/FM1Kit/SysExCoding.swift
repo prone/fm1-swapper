@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import Foundation
 
 /// Byte codecs used by the FM-1 SysEx protocols.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import CoreMIDI
 import AVFoundation
 import FM1Kit
@@ -12,6 +14,9 @@ struct SamplerView: View {
     @Query(sort: \SampleKit.createdAt, order: .reverse) private var kits: [SampleKit]
     @State private var kitID: PersistentIdentifier?
     @State private var loaded: LoadedKit?
+    /// The edited kit's settings (normalised), mirrored here so SwiftUI redraws without decoding JSON.
+    @State private var settings: KitSettings?
+    @State private var saveTask: Task<Void, Never>?
     @State private var loadError: String?
     @State private var selectedPad = 0
     @State private var importing = false
@@ -40,21 +45,21 @@ struct SamplerView: View {
                         Picker("Kit", selection: Binding(get: { kit.persistentModelID }, set: { kitID = $0 })) {
                             ForEach(kits) { Text($0.name).tag($0.persistentModelID) }
                         }
-                        if let loaded {
-                            WaveformSlices(kit: kit, loaded: loaded, selected: $selectedPad) { changed in
+                        if let loaded, let settings {
+                            WaveformSlices(settings: settings, loaded: loaded, selected: $selectedPad) { changed in
                                 save(kit, changed)
                             } audition: { pad in hub.sampler.play(loaded, pad: pad, velocity: 110) }
                             .frame(height: 150)
                             .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
                             HStack {
                                 Button("Slice at hits") {
-                                    var s = kit.settings
+                                    var s = settings
                                     s.starts = SliceDetector.transients(loaded.mono, sampleRate: loaded.sampleRate); s.slicing = "transients"
                                     save(kit, s)
                                 }
                                 Spacer()
                                 Button("Slice evenly") {
-                                    var s = kit.settings
+                                    var s = settings
                                     s.starts = SliceDetector.equal(frames: loaded.mono.count); s.slicing = "equal"
                                     save(kit, s)
                                 }
@@ -69,15 +74,15 @@ struct SamplerView: View {
                         Text("Drag a marker to move a slice. Tap the waveform or a pad to hear it.")
                     }
 
-                    if let loaded {
+                    if let loaded, let settings {
                         Section("Pads") {
-                            SamplerPadGrid(selected: $selectedPad, kit: kit) { pad in
+                            SamplerPadGrid(selected: $selectedPad, pads: settings.pads) { pad in
                                 selectedPad = pad
                                 hub.sampler.play(loaded, pad: pad, velocity: 110)
                             }
                             .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
-                            PadSettingsEditor(settings: Binding(get: { kit.settings.pads[selectedPad] },
-                                                                set: { v in var s = kit.settings; s.pads[selectedPad] = v; save(kit, s) }),
+                            PadSettingsEditor(settings: Binding(get: { settings.pads[selectedPad] },
+                                                                set: { v in var s = settings; s.pads[selectedPad] = v; save(kit, s) }),
                                               pad: selectedPad)
                         }
                     }
@@ -94,7 +99,7 @@ struct SamplerView: View {
                         Button("Rename…") { newName = kit.name; renaming = true }
                         Button("Delete kit", role: .destructive) {
                             for m in ControllerModel.allCases where hub.kit(for: m) == kit { hub.assign(nil, to: m, context: context) }
-                            context.delete(kit); try? context.save(); kitID = nil
+                            hub.forgetKit(kit); context.delete(kit); try? context.save(); kitID = nil
                         }
                     }
                 }
@@ -150,33 +155,42 @@ struct SamplerView: View {
     }
 
     func load() async {
-        loaded = nil; loadError = nil
-        guard let kit, let data = kit.audio else { return }
-        let name = kit.fileName, settings = kit.settingsData == nil ? nil : kit.settings, format = hub.sampler.format
+        loaded = nil; settings = nil; loadError = nil
+        guard let kit else { return }
+        let id = kit.persistentModelID
         do {
-            let l = try await Task.detached(priority: .userInitiated) { try LoadedKit(data: data, fileName: name, settings: settings, engineFormat: format) }.value
-            if kit.settingsData == nil || kit.frames == 0 {
-                kit.frames = l.mono.count; kit.sampleRate = l.sampleRate; kit.settings = l.settings
-                try? context.save()
-            }
+            let l = try await hub.loadedKit(kit)
+            guard !Task.isCancelled, self.kit?.persistentModelID == id else { return }   // switched kits meanwhile
             loaded = l
+            settings = l.settings
             hub.sampler.start()
         } catch {
             loadError = error.localizedDescription
         }
     }
 
+    /// Applies new settings at once (the shared decoded kit plays them), and saves to the store a
+    /// moment after the last change, so dragging a slider doesn't write on every tick.
     func save(_ kit: SampleKit, _ s: KitSettings) {
-        kit.settings = s
-        try? context.save()
-        loaded?.update(s)
-        for m in ControllerModel.allCases where hub.kit(for: m) == kit { hub.sampler.kit(for: m)?.update(s) }
+        settings = s
+        if let loaded {
+            if loaded.settings.starts == s.starts { loaded.update(s) }                  // cheap: no re-cut
+            else { Task.detached(priority: .userInitiated) { loaded.update(s) } }       // re-cut off the main thread
+        }
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            kit.settings = s
+            try? context.save()
+        }
     }
 
     func importAudio(_ url: URL, name: String? = nil) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { loadError = "Couldn't read that file."; return }
+        let data: Data
+        do { data = try readImport(url, maxBytes: ImportLimit.audio) } catch { loadError = error.localizedDescription; return }
         let kit = SampleKit(name: name ?? url.deletingPathExtension().lastPathComponent, fileName: url.lastPathComponent, audio: data)
         context.insert(kit)
         try? context.save()
@@ -219,30 +233,29 @@ struct PlayFromRow: View {
 struct SamplerPadGrid: View {
     @Environment(ControllerHub.self) private var hub
     @Binding var selected: Int
-    let kit: SampleKit
+    let pads: [PadSettings]
     let tap: (Int) -> Void
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
-            VStack(spacing: 8) {
-                ForEach([12, 8, 4, 0], id: \.self) { row in
-                    HStack(spacing: 8) {
-                        ForEach(row..<(row + 4), id: \.self) { pad in
-                            let lit = ControllerModel.allCases.contains { hub.flashed($0, pad) }
-                            let ps = kit.settings.pads[pad]
-                            Button { tap(pad) } label: {
-                                VStack(spacing: 2) {
-                                    Text("\(pad + 1)").font(.headline)
-                                    Text([ps.mode == .gate ? "gate" : nil, ps.choke ? nil : "poly", ps.pitch != 0 ? "\(ps.pitch > 0 ? "+" : "")\(ps.pitch)" : nil]
-                                        .compactMap { $0 }.joined(separator: " "))
-                                        .font(.system(size: 9)).foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 54)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(lit ? Color.orange : sliceColor(pad).opacity(0.3)))
-                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected == pad ? Color.accentColor : .clear, lineWidth: 3))
+        VStack(spacing: 8) {
+            ForEach([12, 8, 4, 0], id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(row..<(row + 4), id: \.self) { pad in
+                        let lit = hub.isFlashing(pad)
+                        let ps = pads.indices.contains(pad) ? pads[pad] : PadSettings()
+                        Button { tap(pad) } label: {
+                            VStack(spacing: 2) {
+                                Text("\(pad + 1)").font(.headline)
+                                Text([ps.mode == .gate ? "gate" : nil, ps.choke ? nil : "poly", ps.pitch != 0 ? "\(ps.pitch > 0 ? "+" : "")\(ps.pitch)" : nil]
+                                    .compactMap { $0 }.joined(separator: " "))
+                                    .font(.system(size: 9)).foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(lit ? Color.orange : sliceColor(pad).opacity(0.3)))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected == pad ? Color.accentColor : .clear, lineWidth: 3))
+                            .animation(.easeOut(duration: 0.1), value: lit)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -271,7 +284,7 @@ struct PadSettingsEditor: View {
 
 /// Waveform with the 16 slice markers; drag a marker to move it, tap a slice to hear it.
 struct WaveformSlices: View {
-    let kit: SampleKit
+    let settings: KitSettings
     let loaded: LoadedKit
     @Binding var selected: Int
     let onChange: (KitSettings) -> Void
@@ -282,7 +295,7 @@ struct WaveformSlices: View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             let frames = max(loaded.mono.count, 1)
-            let starts = kit.settings.starts.enumerated().map { i, f in drag?.index == i ? drag!.frame : f }
+            let starts = settings.starts.enumerated().map { i, f in drag?.index == i ? drag!.frame : f }
             let x = { (f: Int) -> CGFloat in CGFloat(f) / CGFloat(frames) * w }
             ZStack(alignment: .topLeading) {
                 Canvas { g, size in
@@ -291,7 +304,7 @@ struct WaveformSlices: View {
                         g.fill(Path(CGRect(x: a, y: 0, width: max(0, b - a), height: size.height)),
                                with: .color(sliceColor(i).opacity(i == selected ? 0.35 : 0.12)))
                     }
-                    let peaks = SliceDetector.peaks(loaded.mono, buckets: Int(size.width))
+                    let peaks = loaded.peaks(buckets: Int(size.width))
                     var p = Path()
                     for (i, pk) in peaks.enumerated() {
                         let xx = CGFloat(i) * size.width / CGFloat(max(peaks.count, 1))
@@ -315,7 +328,7 @@ struct WaveformSlices: View {
                                 let f = Int((v.location.x + x(starts[i])) / w * CGFloat(frames))
                                 drag = (i, min(max(f, lo), hi))
                             }.onEnded { _ in
-                                if let d = drag { var s = kit.settings; s.starts[d.index] = d.frame; drag = nil; onChange(s); selected = d.index; audition(d.index) }
+                                if let d = drag { var s = settings; s.starts[d.index] = d.frame; drag = nil; onChange(s); selected = d.index; audition(d.index) }
                             })
                     }
                 }
@@ -338,7 +351,7 @@ struct RecorderSheet: View {
     @State private var recorder: AVAudioRecorder?
     @State private var start: Date?
     @State private var denied = false
-    private let url = FileManager.default.temporaryDirectory.appendingPathComponent("recording-\(UUID().uuidString).m4a")
+    @State private var url = FileManager.default.temporaryDirectory.appendingPathComponent("recording-\(UUID().uuidString).m4a")
 
     var body: some View {
         NavigationStack {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import Foundation
 import XCTest
 @testable import FM1Kit
@@ -325,5 +327,53 @@ final class MappingTests: XCTestCase {
         XCTAssertEqual(ControllerRouter.ump([0x91, 48, 100]), 0x2091_3064)
         XCTAssertEqual(ControllerRouter.ump([0xC0, 5]), 0x20C0_0500)
         XCTAssertEqual(ControllerRouter.ump([0xFA]), 0x10FA_0000)
+    }
+}
+
+final class ValidationTests: XCTestCase {
+    func part(_ id: String, _ n: Int) -> DeviceArchive.Part { .init(id: id, label: id, data: Data(count: n)) }
+
+    func testFM1OpenRejectsBadParts() {
+        let ok = DeviceArchive(format: "fm1open-backup", family: .fm1Open, firmware: "x",
+                               parts: [part("project", 4264), part("timbre-0", 223), part("dx7-3", 4096), part("samples", 300)])
+        XCTAssertNoThrow(try FM1OpenArchive.validate(ok))
+        for bad in [part("project", 70000), part("timbre-9", 223), part("dx7-0", 10), part("samples", 0), part("evil", 1)] {
+            let a = DeviceArchive(format: "fm1open-backup", family: .fm1Open, firmware: "x", parts: [bad])
+            XCTAssertThrowsError(try FM1OpenArchive.validate(a), bad.id)
+        }
+        var corrupt = ok
+        corrupt.parts[0].data[0] = 1          // CRC no longer matches
+        XCTAssertThrowsError(try FM1OpenArchive.validate(corrupt))
+    }
+
+    func testFeluccaRejectsBadArchives() {
+        let ids = FeluccaArchive.ids
+        func archive(_ f: (inout [DeviceArchive.Part]) -> Void) -> DeviceArchive {
+            var parts = ids.map { part("\($0)", $0 < 2 ? 100 : 0) }
+            f(&parts)
+            return DeviceArchive(format: "felucca-backup", family: .felucca, firmware: "x", parts: parts)
+        }
+        XCTAssertNoThrow(try FeluccaArchive.validate(archive { _ in }))
+        XCTAssertThrowsError(try FeluccaArchive.validate(archive { $0.swapAt(2, 3) }))                  // out of order
+        XCTAssertThrowsError(try FeluccaArchive.validate(archive { $0[2] = self.part("2", 5000) }))      // too large
+        XCTAssertThrowsError(try FeluccaArchive.validate(archive { $0[10] = self.part("32", 100) }))    // short sample
+        XCTAssertThrowsError(try FeluccaArchive.validate(archive { $0[0] = self.part("0", 0) }))        // no current music
+    }
+
+    func testNativeJSONRejectsOutOfRangeNumbers() {
+        let objs = FeluccaArchive.ids.map { id -> [String: Any] in ["id": Int(id), "size": 0, "crc": -1, "data": ""] }
+        let json = try! JSONSerialization.data(withJSONObject: ["format": "felucca-backup", "version": 1, "objects": objs])
+        XCTAssertThrowsError(try FeluccaArchive.fromNativeJSON(json))                     // throws, doesn't trap
+        var big = objs; big[0]["id"] = 300
+        let json2 = try! JSONSerialization.data(withJSONObject: ["format": "felucca-backup", "version": 1, "objects": big])
+        XCTAssertThrowsError(try FeluccaArchive.fromNativeJSON(json2))
+    }
+
+    func testSMCPadNameFilter() {
+        XCTAssertTrue(SMCPadBLEChannel.isSMCPadName("SMC-PAD"))
+        XCTAssertTrue(SMCPadBLEChannel.isSMCPadName("SMC PAD Pocket"))
+        XCTAssertFalse(SMCPadBLEChannel.isSMCPadName("Launchpad X"))
+        XCTAssertFalse(SMCPadBLEChannel.isSMCPadName("Keypad"))
+        XCTAssertFalse(SMCPadBLEChannel.isSMCPadName(nil))
     }
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -35,9 +37,9 @@ struct DeviceView: View {
                             Task { await device.backup(context: context, includeSamples: includeSamples) }
                         } label: { Label("Back up now", systemImage: "externaldrive.badge.plus") }
                             .disabled(device.busy || !id.family.supportsArchive && id.family != .unknown)
-                        if let fw = currentFirmware, !fw.sortedBackups.filter({ $0.archive != nil }).isEmpty {
+                        if let fw = currentFirmware, fw.latestRestorableBackup != nil {
                             Menu {
-                                ForEach(fw.sortedBackups.filter { $0.archive != nil }) { b in
+                                ForEach(fw.sortedBackups.filter(\.isRestorable)) { b in
                                     Button("\(b.label) · \(b.date.formatted(date: .abbreviated, time: .shortened))") {
                                         Task { await device.restore(b, context: context, includeSamples: includeSamples) }
                                     }
@@ -222,6 +224,8 @@ struct InstallsSection: View {
 
     var body: some View {
         Section {
+            Toggle("Share with my other installs", isOn: Binding(get: { svc.enabled }, set: { svc.enabled = $0 }))
+            if svc.enabled {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("This \(UIDevice.current.model): \(svc.deviceLabel)").font(.subheadline)
@@ -234,8 +238,9 @@ struct InstallsSection: View {
             ForEach(svc.others) { r in
                 NavigationLink { InstallDetail(report: r) } label: { CheckInRow(report: r) }
             }
+            }
         } header: { Text("Installs") } footer: {
-            Text("Each install reports its FM-1 firmware and library to the check-in server on the Mac (tools/checkin_server.py), and shows the others here. Read-only: no install changes another.")
+            Text("Off by default. When on, this install reports its FM-1 firmware and library to a check-in server on your Mac (tools/checkin_server.py, same Wi-Fi) and shows your other installs here. Read-only: no install changes another.")
         }
         .sheet(isPresented: $editing) { CheckInSettings() }
     }

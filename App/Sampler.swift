@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import AVFoundation
 import FM1Kit
 import Foundation
@@ -45,12 +47,23 @@ final class SampleKit {
 }
 
 /// A kit decoded for playback: mono samples for drawing and slicing, and stereo buffers per slice.
+/// The slices and settings are swapped together under a lock, so the CoreMIDI thread always plays a
+/// consistent snapshot while the UI edits.
 final class LoadedKit: @unchecked Sendable {
+    /// Longest sample accepted: about 70 MB of decoded audio, a safe amount on any iPhone.
+    static let maxSeconds = 120.0
+
+    struct Snapshot { let settings: KitSettings; let slices: [AVAudioPCMBuffer] }
+
     let mono: [Float]
     let sampleRate: Double
     let source: AVAudioPCMBuffer
-    private(set) var slices: [AVAudioPCMBuffer] = []
-    private(set) var settings: KitSettings
+    private let lock = NSLock()
+    private var current: Snapshot
+    private var peakCache: [Int: [(min: Float, max: Float)]] = [:]
+
+    var settings: KitSettings { lock.withLock { current.settings } }
+    var snapshot: Snapshot { lock.withLock { current } }
 
     init(data: Data, fileName: String, settings: KitSettings?, engineFormat: AVAudioFormat) throws {
         let ext = (fileName as NSString).pathExtension.isEmpty ? "m4a" : (fileName as NSString).pathExtension
@@ -58,6 +71,9 @@ final class LoadedKit: @unchecked Sendable {
         try data.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let file = try AVAudioFile(forReading: url)
+        guard Double(file.length) <= file.processingFormat.sampleRate * Self.maxSeconds else {
+            throw NSError(domain: "Sampler", code: 4, userInfo: [NSLocalizedDescriptionKey: "Samples can be up to two minutes long."])
+        }
         guard file.length > 0, let raw = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
             throw NSError(domain: "Sampler", code: 1, userInfo: [NSLocalizedDescriptionKey: "That file has no audio."])
         }
@@ -90,25 +106,41 @@ final class LoadedKit: @unchecked Sendable {
         }
         if let err { throw err }
         source = out
-        self.settings = settings ?? KitSettings(starts: SliceDetector.transients(m, sampleRate: sampleRate))
-        cut()
+        let s = (settings ?? KitSettings(starts: SliceDetector.transients(m, sampleRate: sampleRate))).normalized(frames: n)
+        current = Snapshot(settings: s, slices: Self.cut(source: out, sourceRate: sampleRate, starts: s.starts))
     }
 
-    func update(_ s: KitSettings) { settings = s; cut() }
+    /// New settings. Slices are re-cut only when the slice points moved (volume or pitch changes
+    /// just swap the settings). Safe to call from any thread.
+    func update(_ new: KitSettings) {
+        let s = new.normalized(frames: mono.count)
+        let old = snapshot
+        let slices = old.settings.starts == s.starts ? old.slices : Self.cut(source: source, sourceRate: sampleRate, starts: s.starts)
+        lock.withLock { current = Snapshot(settings: s, slices: slices) }
+    }
+
+    /// Min/max per bucket for drawing, cached per width.
+    func peaks(buckets: Int) -> [(min: Float, max: Float)] {
+        if let p = lock.withLock({ peakCache[buckets] }) { return p }
+        let p = SliceDetector.peaks(mono, buckets: buckets)
+        lock.withLock { peakCache[buckets] = p }
+        return p
+    }
 
     /// Slice buffers in engine frames, with a short fade at both ends against clicks.
-    private func cut() {
-        let ratio = source.format.sampleRate / sampleRate
+    static func cut(source: AVAudioPCMBuffer, sourceRate: Double, starts: [Int]) -> [AVAudioPCMBuffer] {
+        let ratio = source.format.sampleRate / sourceRate
         let total = Int(source.frameLength)
-        let starts = settings.starts.map { min(total, Int(Double($0) * ratio)) }
-        slices = starts.indices.map { i in
-            let a = starts[i], b = i + 1 < starts.count ? starts[i + 1] : total
-            let len = max(1, b - a)
-            let buf = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: AVAudioFrameCount(len))!
-            buf.frameLength = AVAudioFrameCount(len)
+        let s = starts.map { min(total, max(0, Int(Double($0) * ratio))) }
+        return s.indices.map { i in
+            let a = s[i], b = i + 1 < s.count ? max(a, s[i + 1]) : total
+            let len = b - a
+            let buf = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: AVAudioFrameCount(max(len, 1)))!
+            buf.frameLength = AVAudioFrameCount(max(len, 1))
             let fade = min(len / 4, Int(source.format.sampleRate * 0.003))
             for c in 0..<Int(source.format.channelCount) {
                 guard let src = source.floatChannelData?[c], let dst = buf.floatChannelData?[c] else { continue }
+                if len == 0 { dst[0] = 0; continue }       // an empty slice plays one frame of silence
                 for j in 0..<len {
                     var g: Float = 1
                     if j < fade { g = Float(j) / Float(fade) } else if j >= len - fade { g = Float(len - j) / Float(fade) }
@@ -118,8 +150,19 @@ final class LoadedKit: @unchecked Sendable {
             return buf
         }
     }
+}
 
-    func slice(_ i: Int) -> AVAudioPCMBuffer? { slices.indices.contains(i) ? slices[i] : nil }
+extension KitSettings {
+    /// Exactly 16 ascending slice starts within the sample and 16 pad settings, whatever was synced.
+    func normalized(frames: Int) -> KitSettings {
+        var s = self
+        var st = starts.map { min(max(0, $0), max(frames - 1, 0)) }.sorted()
+        if st.count != 16 || st.first != 0 { st = SliceDetector.equal(frames: frames) }
+        s.starts = st
+        if pads.count < 16 { s.pads += Array(repeating: PadSettings(), count: 16 - pads.count) }
+        if pads.count > 16 { s.pads = Array(pads.prefix(16)) }
+        return s
+    }
 }
 
 /// The slice sampler's audio: 16 voices (player + varispeed) into the main mixer. Triggered from
@@ -129,15 +172,20 @@ final class SlicePlayer: @unchecked Sendable {
     let format: AVAudioFormat
     private var voices: [(player: AVAudioPlayerNode, speed: AVAudioUnitVarispeed)] = []
     private var voicePad: [Int?]
+    /// Bumped each time a voice starts, so a late completion from an earlier play can't free it.
+    private var voiceGen: [UInt64]
     private var nextVoice = 0
     private let lock = NSLock()
     private var kits: [ControllerModel: LoadedKit] = [:]
     /// Called on any thread when a pad plays (for the on-screen pads).
     var onTrigger: (@Sendable (ControllerModel, Int) -> Void)?
+    /// While the mic records, the session stays in play-and-record; playback must not switch it back.
+    static var recording = false
 
     init(voiceCount: Int = 16) {
         format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
         voicePad = Array(repeating: nil, count: voiceCount)
+        voiceGen = Array(repeating: 0, count: voiceCount)
         for _ in 0..<voiceCount {
             let p = AVAudioPlayerNode(), v = AVAudioUnitVarispeed()
             engine.attach(p); engine.attach(v)
@@ -145,9 +193,14 @@ final class SlicePlayer: @unchecked Sendable {
             engine.connect(v, to: engine.mainMixerNode, format: format)
             voices.append((p, v))
         }
+        let nc = NotificationCenter.default
+        // a call, Siri or a route change stops the engine: forget the voices, restart on the next hit
+        nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] _ in self?.clearVoices() }
+        nc.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in self?.clearVoices() }
     }
 
     static func configureSession(recording: Bool = false) {
+        Self.recording = recording
         let s = AVAudioSession.sharedInstance()
         try? s.setCategory(recording ? .playAndRecord : .playback, mode: .default,
                            options: recording ? [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP] : [.mixWithOthers])
@@ -155,11 +208,24 @@ final class SlicePlayer: @unchecked Sendable {
         try? s.setActive(true)
     }
 
-    func start() {
-        guard !engine.isRunning else { return }
-        Self.configureSession()
+    /// Starts the engine if needed; false when it can't run right now (e.g. during a phone call).
+    @discardableResult
+    func start() -> Bool {
+        if engine.isRunning { return true }
+        if !Self.recording { Self.configureSession() }
         engine.prepare()
-        try? engine.start()
+        do { try engine.start() } catch { return false }
+        return engine.isRunning
+    }
+
+    /// Stops rendering (in the background, when no pads are connected) to save battery.
+    func pause() {
+        clearVoices()
+        if engine.isRunning { engine.pause() }
+    }
+
+    private func clearVoices() {
+        lock.withLock { for i in voicePad.indices { voicePad[i] = nil; voiceGen[i] &+= 1 } }
     }
 
     func setKit(_ kit: LoadedKit?, for model: ControllerModel) {
@@ -178,37 +244,49 @@ final class SlicePlayer: @unchecked Sendable {
 
     /// Plays a slice of any kit (the Sampler screen auditions the kit being edited).
     func play(_ kit: LoadedKit, pad: Int, velocity: UInt8) {
-        guard let buf = kit.slice(pad) else { return }
-        let ps = kit.settings.pads.indices.contains(pad) ? kit.settings.pads[pad] : PadSettings()
-        if !engine.isRunning { start() }
-        lock.lock()
-        if velocity == 0 {
-            if ps.mode == .gate { for (i, p) in voicePad.enumerated() where p == pad { voices[i].player.stop(); voicePad[i] = nil } }
-            lock.unlock()
-            return
+        let snap = kit.snapshot
+        guard snap.slices.indices.contains(pad) else { return }
+        let buf = snap.slices[pad]
+        let pads = snap.settings.pads
+        let ps = pads.indices.contains(pad) ? pads[pad] : PadSettings()
+        guard start() else { return }
+
+        // decide under the lock, call into AVFoundation outside it (stop() can wait on completions)
+        var toStop: [Int] = []
+        var voice = -1
+        var gen: UInt64 = 0
+        lock.withLock {
+            if velocity == 0 {
+                if ps.mode == .gate { for (i, p) in voicePad.enumerated() where p == pad { toStop.append(i); voicePad[i] = nil; voiceGen[i] &+= 1 } }
+                return
+            }
+            // choke: stop every voice playing a choking pad (and always this pad's own last voice)
+            for (i, p) in voicePad.enumerated() {
+                guard let p else { continue }
+                let other = pads.indices.contains(p) ? pads[p] : PadSettings()
+                if p == pad || (ps.choke && other.choke) { toStop.append(i); voicePad[i] = nil; voiceGen[i] &+= 1 }
+            }
+            voice = voicePad.firstIndex(where: { $0 == nil }) ?? nextVoice
+            nextVoice = (voice + 1) % voices.count
+            voicePad[voice] = pad
+            voiceGen[voice] &+= 1
+            gen = voiceGen[voice]
         }
-        // choke: stop every voice playing a choking pad (and always this pad's own last voice)
-        for (i, p) in voicePad.enumerated() {
-            guard let p else { continue }
-            let other = kit.settings.pads.indices.contains(p) ? kit.settings.pads[p] : PadSettings()
-            if p == pad || (ps.choke && other.choke) { voices[i].player.stop(); voicePad[i] = nil }
-        }
-        let i = voicePad.firstIndex(where: { $0 == nil }) ?? nextVoice
-        nextVoice = (i + 1) % voices.count
-        voicePad[i] = pad
-        lock.unlock()
-        let v = voices[i]
+        for i in toStop where i != voice { voices[i].player.stop() }
+        guard voice >= 0 else { return }
+        let v = voices[voice], i = voice
         v.player.stop()
         v.player.volume = ps.volume * (0.25 + 0.75 * Float(velocity) / 127)
         v.speed.rate = Float(pow(2, Double(ps.pitch) / 12))
         v.player.scheduleBuffer(buf, at: nil, options: .interrupts) { [weak self] in
-            self?.lock.withLock { if self?.voicePad[i] == pad { self?.voicePad[i] = nil } }
+            guard let self else { return }
+            self.lock.withLock { if self.voiceGen[i] == gen { self.voicePad[i] = nil } }
         }
         v.player.play()
     }
 
     func stopAll() {
-        lock.withLock { for i in voicePad.indices { voicePad[i] = nil } }
+        clearVoices()
         voices.forEach { $0.player.stop() }
     }
 }

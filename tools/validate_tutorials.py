@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 FM-1 Swapper contributors
 """Check Tutorials/*.json against the format in Tutorials/README.md.
 
   python3 tools/validate_tutorials.py [file ...]

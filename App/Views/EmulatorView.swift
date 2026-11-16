@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import AVFoundation
 import CryptoKit
 import FM1Kit
@@ -53,8 +55,10 @@ final class EmulatorController {
         do {
             let r = try await web.callAsyncJavaScript("return await window.__fm1action(kind, arg)", arguments: ["kind": kind, "arg": arg],
                                                       contentWorld: .page) as? [String: Any] ?? [:]
-            let result = ActionResult(ok: r["ok"] as? Bool ?? false, message: r["message"] as? String ?? "",
+            var result = ActionResult(ok: r["ok"] as? Bool ?? false, message: String((r["message"] as? String ?? "").prefix(300)),
                                       name: r["name"] as? String, text: r["text"] as? String)
+            // the page is third-party: never store an oversized "save" it hands back
+            if let t = result.text, t.utf8.count > 8 << 20 { result = ActionResult(ok: false, message: "That save is too large to keep (over 8 MB).") }
             saveStatus = result.message
             return result
         } catch {
@@ -85,12 +89,18 @@ struct EmulatorScreen: View {
     @State private var importing = false
     @State private var closing = false
     @State private var player: TutorialPlayer?
+    @State private var sharing: ShareItems?
     @State private var startedTutorial = false
 
     private var availableTutorial: Tutorial? { tutorial ?? firmware.flatMap(TutorialLibrary.tutorial(for:)) }
 
     static let pageURL = URL(string: "https://joakimeriksson.github.io/fm1-emu/?embed=1")!
-    private var sha: String { SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined() }
+    /// SHA-256 of the package, computed once (it keys the emulator saves).
+    @State private var shaCache: String?
+    private var sha: String {
+        if let s = shaCache ?? firmware.map(\.sha256), !s.isEmpty { return s }
+        return SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined()
+    }
     private var saves: [EmulatorSave] { allSaves.filter { $0.packageSHA == sha } }
 
     var body: some View {
@@ -113,6 +123,7 @@ struct EmulatorScreen: View {
                         }
                     }
                 }
+                .shareSheet($sharing)
                 .overlay(alignment: .bottom) {
                     if let player { TutorialCard(player: player) { Task { await closeTutorial() } } }
                 }
@@ -129,6 +140,7 @@ struct EmulatorScreen: View {
                 }
         }
         .onAppear {
+            if shaCache == nil, firmware == nil { shaCache = SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined() }
             // play through the silent switch, like an instrument
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try? AVAudioSession.sharedInstance().setActive(true)
@@ -150,7 +162,9 @@ struct EmulatorScreen: View {
             guard case let .success(url) = r else { return }
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { emu.saveStatus = "Could not read that file."; return }
+            guard let data = try? readImport(url, maxBytes: ImportLimit.emulatorSave), let text = String(data: data, encoding: .utf8) else {
+                emu.saveStatus = "Could not read that file (saves are up to 8 MB)."; return
+            }
             Task { _ = await emu.action("import", text) }
         }
     }
@@ -170,8 +184,10 @@ struct EmulatorScreen: View {
             }
             Section {
                 Button { importing = true } label: { Label("Import .fm1save file…", systemImage: "doc.badge.arrow.up") }
-                if let latest = saves.first, let d = latest.payload {
-                    ShareLink(items: ExportFiles.urls([(latest.fileName, d)])) { Label("Share latest save", systemImage: "square.and.arrow.up") }
+                if let latest = saves.first {
+                    Button { if let d = latest.payload { sharing = ShareItems(files: [(latest.fileName, d)]) } } label: {
+                        Label("Share latest save", systemImage: "square.and.arrow.up")
+                    }
                 }
                 Toggle("Keep a copy when closing", isOn: $keepOnClose)
             }
@@ -274,7 +290,9 @@ struct EmulatorWebView: UIViewRepresentable {
         config.userContentController.addUserScript(WKUserScript(source: Self.bridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController.add(context.coordinator, name: "fm1tutorial")
         let web = WKWebView(frame: .zero, configuration: config)
+        #if DEBUG
         web.isInspectable = true
+        #endif
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
         web.scrollView.contentInsetAdjustmentBehavior = .never
@@ -304,7 +322,9 @@ struct EmulatorWebView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let d = message.body as? [String: Any], let name = d["name"] as? String else { return }
+            // only the emulator page's own main frame may report touches
+            guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == EmulatorScreen.pageURL.host,
+                  let d = message.body as? [String: Any], let name = d["name"] as? String, name.count <= 32 else { return }
             controller.onUserEvent?(name, d["down"] as? Bool ?? true)
         }
 
@@ -364,10 +384,24 @@ struct EmulatorWebView: UIViewRepresentable {
         }
 
         // Links off the emulator page (GitHub, reports) open in Safari.
+        /// The emulator page (https://joakimeriksson.github.io/fm1-emu/…) and its own subframes stay in
+        /// the view; the injected bridge must never run on another site. Plain web links open in Safari;
+        /// every other scheme (tel:, sms:, other apps) is refused.
+        static func isEmulatorPage(_ url: URL) -> Bool {
+            // (URL.path drops the trailing slash: "/fm1-emu/?embed=1" has the path "/fm1-emu")
+            url.scheme == "https" && url.host == EmulatorScreen.pageURL.host && (url.path == "/fm1-emu" || url.path.hasPrefix("/fm1-emu/"))
+        }
+
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-            guard let url = action.request.url, action.navigationType == .linkActivated,
-                  url.host != EmulatorScreen.pageURL.host || action.targetFrame == nil else { return .allow }
-            await UIApplication.shared.open(url)
+            guard let url = action.request.url else { return .cancel }
+            let mainFrame = action.targetFrame?.isMainFrame ?? false
+            if mainFrame, Self.isEmulatorPage(url) { return .allow }
+            if !mainFrame, action.targetFrame != nil, ["about", "blob", "data"].contains(url.scheme ?? "") || Self.isEmulatorPage(url) {
+                return .allow
+            }
+            if action.navigationType == .linkActivated || action.targetFrame == nil, ["https", "http"].contains(url.scheme ?? "") {
+                await UIApplication.shared.open(url)
+            }
             return .cancel
         }
 
@@ -534,35 +568,48 @@ struct EmulatorWebView: UIViewRepresentable {
           canvas().dispatchEvent(new WheelEvent("wheel", { clientX: p.cx, clientY: p.cy, deltaY: dy, bubbles: true, cancelable: true }));
       };
 
-      // spotlight: a dimmed page with holes over the named controls
+      // spotlight: a canvas pinned over the panel canvas itself (same parent, same box), drawn in the
+      // panel's own 1280 x 820 coordinates, so it stays aligned however the page is zoomed or scrolled
       let spot = null, spotNames = [], spotRaf = 0;
       const drawSpot = () => {
-        if (!spot) return;
-        const rects = spotNames.map(ctl).filter(Boolean).map(toPage).filter(Boolean);
-        const pad = 6, dpr = devicePixelRatio || 1;
-        let cv = spot.firstChild;
-        if (!cv) { cv = document.createElement("canvas"); cv.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh"; spot.append(cv); }
-        if (cv.width !== innerWidth * dpr || cv.height !== innerHeight * dpr) { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; }
-        const g = cv.getContext("2d");
-        g.setTransform(dpr, 0, 0, dpr, 0, 0);
-        g.clearRect(0, 0, innerWidth, innerHeight);
+        const panel = canvas();
+        if (!spot || !panel) return;
+        const dpr = devicePixelRatio || 1;
+        const cssW = panel.offsetWidth, cssH = panel.offsetHeight;
+        Object.assign(spot.style, { left: panel.offsetLeft + "px", top: panel.offsetTop + "px", width: cssW + "px", height: cssH + "px" });
+        if (spot.width !== Math.round(cssW * dpr) || spot.height !== Math.round(cssH * dpr)) {
+          spot.width = Math.round(cssW * dpr); spot.height = Math.round(cssH * dpr);
+        }
+        const g = spot.getContext("2d");
+        const k = spot.width / (panel.width || 1280);                 // panel units -> overlay pixels
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, spot.width, spot.height);
+        const rects = spotNames.map(ctl).filter(Boolean);
         if (rects.length) {
+          const pad = 6, r = 10;
+          g.setTransform(k, 0, 0, k, 0, 0);
           g.fillStyle = "rgba(0,0,0,0.6)";
-          g.fillRect(0, 0, innerWidth, innerHeight);
+          g.fillRect(0, 0, panel.width || 1280, panel.height || 820);
           g.globalCompositeOperation = "destination-out";
-          for (const r of rects) { g.beginPath(); g.roundRect(r.left - pad, r.top - pad, r.width + 2 * pad, r.height + 2 * pad, 10); g.fill(); }
+          for (const c of rects) { g.beginPath(); g.roundRect(c.x - pad, c.y - pad, c.w + 2 * pad, c.h + 2 * pad, r); g.fill(); }
           g.globalCompositeOperation = "source-over";
-          g.strokeStyle = "#f2a33a"; g.lineWidth = 3;
-          for (const r of rects) { g.beginPath(); g.roundRect(r.left - pad, r.top - pad, r.width + 2 * pad, r.height + 2 * pad, 10); g.stroke(); }
+          g.strokeStyle = "#f2a33a"; g.lineWidth = 4;
+          for (const c of rects) { g.beginPath(); g.roundRect(c.x - pad, c.y - pad, c.w + 2 * pad, c.h + 2 * pad, r); g.stroke(); }
         }
         spotRaf = requestAnimationFrame(drawSpot);
       };
       window.__fm1spot = (names) => {
         spotNames = names || [];
-        if (!spot) { spot = document.createElement("div"); spot.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:9999"; document.body.append(spot); }
+        const panel = canvas();
+        if (!spot && panel) {
+          spot = document.createElement("canvas");
+          spot.style.cssText = "position:absolute;pointer-events:none;z-index:2";
+          panel.parentElement.append(spot);
+          const start = $("start"); if (start) start.style.zIndex = "3";   // the Start button stays on top
+        }
         cancelAnimationFrame(spotRaf); drawSpot();
         const first = spotNames.map(ctl).filter(Boolean)[0];
-        if (first) { const p = toPage(first); if (p && (p.top < 0 || p.top + p.height > innerHeight)) canvas()?.scrollIntoView({ block: "center", behavior: "smooth" }); }
+        if (first) { const p = toPage(first); if (p && (p.top < 0 || p.top + p.height > innerHeight)) panel?.scrollIntoView({ block: "center", behavior: "smooth" }); }
         return spotNames.filter((n) => !ctl(n));      // unknown names, for the app to report
       };
 

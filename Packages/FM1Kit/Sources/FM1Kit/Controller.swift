@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import CoreMIDI
 import Foundation
 
@@ -301,22 +303,39 @@ public final class ControllerRouter: @unchecked Sendable {
     private var outPort = MIDIPortRef()
     private let lock = NSLock()
     private var engines: [ControllerModel: MappingEngine] = [:]
-    private var connectedSources: Set<MIDIEndpointRef> = []
-    private var sysexAssembler = SysEx7Assembler()
+    /// Connected sources and what we know about each (looked up once, not per message).
+    private struct Source { let name: String; let model: ControllerModel; let playPort: Bool; var sysex = SysEx7Assembler() }
+    private var sources: [MIDIEndpointRef: Source] = [:]
+
+    // State shared between the main thread and the CoreMIDI thread: always read and written under `lock`.
+    private var _outputUIDs: Set<MIDIUniqueID> = []
+    private var _enabled = true
+    private var _onOutput: (@Sendable ([UInt8]) -> Void)?
+    private var _onInput: (@Sendable (_ source: String, _ message: [UInt8], _ result: MappingEngine.Result) -> Void)?
+    private var _onSysEx: (@Sendable (_ source: String, _ message: [UInt8]) -> Void)?
+    private var _onPad: (@Sendable (_ model: ControllerModel, _ pad: Int, _ velocity: UInt8) -> Void)?
 
     /// Controller sources whose names match this are routed.
-    public var controllerPattern: NSRegularExpression
+    public let controllerPattern: NSRegularExpression
     /// Where mapped messages go on CoreMIDI (the FM-1), by destination unique ID.
-    public var outputUIDs: Set<MIDIUniqueID> = []
-    public var enabled = true
+    public var outputUIDs: Set<MIDIUniqueID> { get { lock.withLock { _outputUIDs } } set { lock.withLock { _outputUIDs = newValue } } }
+    public var enabled: Bool { get { lock.withLock { _enabled } } set { lock.withLock { _enabled = newValue } } }
 
     /// Mapped output, for in-app instruments (the emulator). Called on a CoreMIDI thread.
-    public var onOutput: (@Sendable ([UInt8]) -> Void)?
+    public var onOutput: (@Sendable ([UInt8]) -> Void)? { get { lock.withLock { _onOutput } } set { lock.withLock { _onOutput = newValue } } }
     /// Every raw controller message with its mapping result. Called on a CoreMIDI thread.
-    public var onInput: (@Sendable (_ source: String, _ message: [UInt8], _ result: MappingEngine.Result) -> Void)?
-    public var onSysEx: (@Sendable (_ source: String, _ message: [UInt8]) -> Void)?
+    public var onInput: (@Sendable (_ source: String, _ message: [UInt8], _ result: MappingEngine.Result) -> Void)? {
+        get { lock.withLock { _onInput } } set { lock.withLock { _onInput = newValue } }
+    }
+    /// SysEx from any connected pad port, including the configuration port (identity replies).
+    public var onSysEx: (@Sendable (_ source: String, _ message: [UInt8]) -> Void)? {
+        get { lock.withLock { _onSysEx } } set { lock.withLock { _onSysEx = newValue } }
+    }
     /// Pad hits for the in-app sampler, on the CoreMIDI thread (pad index 0-15, velocity 0 = release).
-    public var onPad: (@Sendable (_ model: ControllerModel, _ pad: Int, _ velocity: UInt8) -> Void)?
+    public var onPad: (@Sendable (_ model: ControllerModel, _ pad: Int, _ velocity: UInt8) -> Void)? {
+        get { lock.withLock { _onPad } } set { lock.withLock { _onPad = newValue } }
+    }
+    /// Set once before any devices change; called on a CoreMIDI thread.
     public var onSetupChanged: (@Sendable () -> Void)?
 
     public static let smcPadPattern = try! NSRegularExpression(pattern: "smc|m-?vave.*pad", options: .caseInsensitive)
@@ -328,15 +347,23 @@ public final class ControllerRouter: @unchecked Sendable {
             if n.pointee.messageID == .msgSetupChanged { self?.reconnect(); self?.onSetupChanged?() }
         }
         MIDIInputPortCreateWithProtocol(client, "FM1Kit Controller In" as CFString, ._1_0, &inPort) { [weak self] list, refCon in
-            guard let self else { return }
-            let src = refCon.map { MIDIEndpointRef(UInt32(Int(bitPattern: $0))) }
-            let name = src.map { CoreMIDIProvider.name(of: $0) } ?? "?"
+            guard let self, let refCon else { return }
+            let src = MIDIEndpointRef(UInt32(Int(bitPattern: refCon)))
             for packet in list.unsafeSequence() {
                 let count = Int(packet.pointee.wordCount)
                 let off = MemoryLayout<MIDIEventPacket>.offset(of: \MIDIEventPacket.words)!
                 let words = UnsafeBufferPointer(start: (UnsafeRawPointer(packet) + off).assumingMemoryBound(to: UInt32.self), count: count)
-                for s in self.sysexAssembler.feed(words) { self.onSysEx?(name, s) }
-                for m in UMPToMIDI1.messages(words) { self.handle(m, from: name) }
+                // per-source SysEx reassembly, so two pads can't interleave
+                let (info, sysex, onSysEx): (Source?, [[UInt8]], (@Sendable (String, [UInt8]) -> Void)?) = self.lock.withLock {
+                    guard var info = self.sources[src] else { return (nil, [], nil) }
+                    let done = info.sysex.feed(words)
+                    self.sources[src] = info
+                    return (info, done, self._onSysEx)
+                }
+                guard let info else { continue }
+                for s in sysex { onSysEx?(info.name, s) }
+                // the configuration port only answers SysEx; its other traffic isn't playing
+                if info.playPort { for m in UMPToMIDI1.messages(words) { self.handle(m, from: info) } }
             }
         }
         MIDIOutputPortCreate(client, "FM1Kit Controller Out" as CFString, &outPort)
@@ -381,28 +408,34 @@ public final class ControllerRouter: @unchecked Sendable {
         return byName.map { Endpoint(name: $0.key, sourceUID: $0.value.0, destinationUID: $0.value.1) }.sorted { $0.name < $1.name }
     }
 
-    /// Listens to the configuration port too, for SysEx replies (identity) only.
+    /// Connects every pad port: the playing ports for notes and CCs, and the configuration port
+    /// ("…Private") for SysEx replies (identity) only.
     public func reconnect() {
-        lock.lock(); defer { lock.unlock() }
-        var want: Set<MIDIEndpointRef> = []
+        var found: [MIDIEndpointRef: String] = [:]
         for i in 0..<MIDIGetNumberOfSources() {
             let s = MIDIGetSource(i)
             let n = CoreMIDIProvider.name(of: s)
-            if matches(n), ControllerModel.isPlayPort(n) { want.insert(s) }
+            if matches(n) { found[s] = n }
         }
-        for s in want.subtracting(connectedSources) {
+        lock.lock(); defer { lock.unlock() }
+        for (s, n) in found where sources[s] == nil {
+            sources[s] = Source(name: n, model: ControllerModel.detect(portName: n), playPort: ControllerModel.isPlayPort(n))
             MIDIPortConnectSource(inPort, s, UnsafeMutableRawPointer(bitPattern: Int(s)))
         }
-        for s in connectedSources.subtracting(want) { MIDIPortDisconnectSource(inPort, s) }
-        connectedSources = want
+        for s in sources.keys where found[s] == nil {
+            MIDIPortDisconnectSource(inPort, s)
+            sources[s] = nil
+        }
     }
 
-    private func handle(_ m: [UInt8], from source: String) {
+    private func handle(_ m: [UInt8], from source: Source) {
         guard let first = m.first, first < 0xF8 || first == 0xFA || first == 0xFC else { return } // drop clock/active sensing
-        let model = ControllerModel.detect(portName: source)
-        let (result, mapping): (MappingEngine.Result, ControllerMapping) = lock.withLock {
+        let model = source.model
+        let (result, mapping, onPad, onInput, onOutput, outputs, enabled):
+            (MappingEngine.Result, ControllerMapping, (@Sendable (ControllerModel, Int, UInt8) -> Void)?,
+             (@Sendable (String, [UInt8], MappingEngine.Result) -> Void)?, (@Sendable ([UInt8]) -> Void)?, Set<MIDIUniqueID>, Bool) = lock.withLock {
             if engines[model] == nil { engines[model] = MappingEngine(mapping: .defaultLayout(for: model)) }
-            return (engines[model]!.transform(m), engines[model]!.mapping)
+            return (engines[model]!.transform(m), engines[model]!.mapping, _onPad, _onInput, _onOutput, _outputUIDs, _enabled)
         }
         // the sampler gets pad hits first: lowest latency
         var forward = true
@@ -412,11 +445,11 @@ public final class ControllerRouter: @unchecked Sendable {
             onPad?(model, pad, m[0] & 0xF0 == 0x90 ? m[2] : 0)
             forward = mapping.padTarget == .both
         }
-        onInput?(source, m, result)
+        onInput?(source.name, m, result)
         guard enabled, forward else { return }
         for out in result.messages {
             onOutput?(out)
-            for uid in outputUIDs { send(out, toUID: uid) }
+            for uid in outputs { send(out, toUID: uid) }
         }
     }
 

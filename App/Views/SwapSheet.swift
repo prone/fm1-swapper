@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -75,10 +77,10 @@ struct SwapSheet: View {
                                 Text("Install \(target.name)").frame(maxWidth: .infinity).padding(.vertical, 4)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(device.busy || (needsAck && !options.continueWithoutBackup) || id.model != target.package?.model)
+                            .disabled(device.busy || (needsAck && !options.continueWithoutBackup) || id.model != target.packageModel)
                         } footer: {
-                            Text(id.model != target.package?.model
-                                 ? "This package is for \(target.package?.model ?? "another device"), not \(id.model)."
+                            Text(id.model != target.packageModel
+                                 ? "This package is for \(target.packageModel.isEmpty ? "another device" : target.packageModel), not \(id.model)."
                                  : "Takes about two minutes. Keep the app open and the cable connected. If it is interrupted, the FM-1 waits in update mode and you can resume from the Device tab. Installing firmware is at your own risk.")
                         }
                     }

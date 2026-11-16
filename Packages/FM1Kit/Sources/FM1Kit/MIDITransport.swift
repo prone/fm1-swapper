@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import CoreMIDI
 import Foundation
 
@@ -86,6 +88,9 @@ public final class SysExInbox: @unchecked Sendable {
 
 /// Reassembles UMP SysEx7 packets into complete F0...F7 messages.
 struct SysEx7Assembler {
+    /// Largest SysEx message kept (FM-1 and SMC-PAD messages are well under 2 KB).
+    static let maxMessage = 1 << 20
+
     private var buffer: [UInt8] = []
     private var active = false
 
@@ -107,7 +112,9 @@ struct SysEx7Assembler {
                 switch status {
                 case 0: done.append([0xF0] + bytes + [0xF7]); active = false; buffer.removeAll()
                 case 1: buffer = Array(bytes); active = true
-                case 2: if active { buffer.append(contentsOf: bytes) }
+                case 2:
+                    if active { buffer.append(contentsOf: bytes) }
+                    if buffer.count > Self.maxMessage { buffer.removeAll(); active = false }   // runaway SysEx: drop it
                 case 3:
                     if active { done.append([0xF0] + buffer + bytes + [0xF7]) }
                     active = false; buffer.removeAll()
@@ -347,7 +354,12 @@ public final class MIDIInputMonitor: @unchecked Sendable {
     private var port = MIDIPortRef()
     private var connected: Set<MIDIEndpointRef> = []
     private let lock = NSLock()
-    public var onMessage: (@Sendable ([UInt8]) -> Void)?
+    private var _onMessage: (@Sendable ([UInt8]) -> Void)?
+    /// Called on a CoreMIDI thread for every channel or system message.
+    public var onMessage: (@Sendable ([UInt8]) -> Void)? {
+        get { lock.withLock { _onMessage } }
+        set { lock.withLock { _onMessage = newValue } }
+    }
     /// Sources to leave out (e.g. a controller that ControllerRouter already maps).
     public var exclude: NSRegularExpression? { didSet { connectAll() } }
 

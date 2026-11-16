@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import CoreAudioKit
 import FM1Kit
 import SwiftData
@@ -95,16 +97,13 @@ struct PadsView: View {
             .sheet(isPresented: $pairing, onDismiss: { hub.refresh() }) { BluetoothMIDIPairing().ignoresSafeArea() }
             .sheet(item: $editing) { c in ControlEditor(model: model, controlID: c.id) }
             .onAppear {
-                hub.contextForLearn = context
                 if let m = hub.connected.first?.model, m != .generic { model = m }
-                hub.selectProfiles(context: context, firmware: currentFirmware)
                 #if DEBUG
                 if let id = ProcessInfo.processInfo.environment["FM1_DEMO_EDIT"], editing == nil {
                     editing = hub.mapping(model).controls.first { $0.id == id }
                 }
                 #endif
             }
-            .onChange(of: device.identity?.text) { hub.selectProfiles(context: context, firmware: currentFirmware) }
             .onChange(of: hub.connected) { if let m = hub.connected.first?.model, m != .generic { model = m } }
         }
     }
@@ -348,6 +347,7 @@ struct PadLabView: View {
     @Environment(ControllerHub.self) private var hub
     let model: ControllerModel
     @State private var testNote = 36
+    @State private var sharing: ShareItems?
     @State private var rgb: (Double, Double, Double) = (240, 0, 140)
     @State private var raw = ""
 
@@ -394,12 +394,13 @@ struct PadLabView: View {
                 HStack {
                     Text("MIDI log")
                     Spacer()
-                    ShareLink(item: hub.logText) { Image(systemName: "square.and.arrow.up") }
+                    Button { sharing = ShareItems(text: hub.logText, name: "smc-pad-log.txt") } label: { Image(systemName: "square.and.arrow.up") }
                     Button("Clear") { hub.clearLog() }.font(.caption)
                 }
             }
         }
         .navigationTitle("Pad lab")
+        .shareSheet($sharing)
     }
 }
 

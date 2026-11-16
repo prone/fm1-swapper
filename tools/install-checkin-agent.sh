@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 FM-1 Swapper contributors
 # Run the check-in server at login (launchd agent local.fm1swapper.checkin). Undo with --remove.
 set -euo pipefail
 LABEL=local.fm1swapper.checkin
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# the path goes into XML: escape &, < and >
+XROOT="$(printf '%s' "$ROOT" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
 if [[ "${1:-}" == "--remove" ]]; then
   launchctl bootout "gui/$UID/$LABEL" 2>/dev/null || true; rm -f "$PLIST"; echo "removed"; exit 0
 fi
@@ -12,8 +16,8 @@ cat > "$PLIST" <<PL
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>/usr/bin/python3</string><string>$ROOT/tools/checkin_server.py</string></array>
-  <key>WorkingDirectory</key><string>$ROOT</string>
+  <key>ProgramArguments</key><array><string>/usr/bin/python3</string><string>$XROOT/tools/checkin_server.py</string></array>
+  <key>WorkingDirectory</key><string>$XROOT</string>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$HOME/Library/Logs/fm1-checkin.log</string>
   <key>StandardErrorPath</key><string>$HOME/Library/Logs/fm1-checkin.log</string>

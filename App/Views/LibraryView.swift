@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -47,7 +49,7 @@ enum LibrarySort: String, CaseIterable, Identifiable {
             let x = order.firstIndex(of: a.status) ?? 9, y = order.firstIndex(of: b.status) ?? 9
             return x == y ? tie : x < y
         case .installs:
-            let x = a.successfulInstalls.count, y = b.successfulInstalls.count
+            let x = a.installCount, y = b.installCount
             return x == y ? tie : x > y
         case .author:
             let c = a.author.localizedStandardCompare(b.author)
@@ -65,7 +67,11 @@ struct LibraryView: View {
     @AppStorage("librarySortReversed") private var reversed = false
     @State private var search = ""
     @State private var importing = false
-    @State private var showCatalog = ProcessInfo.processInfo.environment["FM1_DEMO_CATALOG"] != nil // debug: open on launch
+    #if DEBUG
+    @State private var showCatalog = ProcessInfo.processInfo.environment["FM1_DEMO_CATALOG"] != nil // simulator testing
+    #else
+    @State private var showCatalog = false
+    #endif
     @State private var showURL = false
     @State private var urlText = ""
     @State private var message: String?
@@ -142,7 +148,7 @@ struct LibraryView: View {
                     let scoped = url.startAccessingSecurityScopedResource()
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                     do {
-                        let r = try LibraryImport.add(try Data(contentsOf: url), fileName: url.lastPathComponent, context: context)
+                        let r = try LibraryImport.add(try readImport(url, maxBytes: ImportLimit.firmware), fileName: url.lastPathComponent, context: context)
                         lines.append((r.isNew ? "Added " : "Already have ") + r.firmware.name + (r.warning.map { " — \($0)" } ?? ""))
                     } catch {
                         lines.append("\(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
@@ -169,7 +175,7 @@ struct LibraryView: View {
     }
 
     func download() {
-        guard let url = URL(string: urlText.trimmingCharacters(in: .whitespaces)), url.scheme?.hasPrefix("http") == true else {
+        guard let url = URL(string: urlText.trimmingCharacters(in: .whitespaces)), url.scheme == "https" else {
             message = "That is not a web link."
             return
         }

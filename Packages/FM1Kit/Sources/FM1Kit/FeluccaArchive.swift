@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca web/fm1backup.js)
+// Copyright (C) 2026 FM-1 Swapper contributors (Swift port, modified)
 import Foundation
 
 /// Felucca's complete musical archive (after Felucca web/fm1backup.js): current music,
@@ -109,10 +112,7 @@ public struct FeluccaArchive: Sendable {
 
     public func restore(_ archive: DeviceArchive, progress: @escaping ArchiveProgress = { _, _ in }) async throws {
         // Validate everything before the first destructive request.
-        guard archive.format == "felucca-backup", Self.ids(count: archive.parts.count) != nil else {
-            throw FM1Error.badPackage("Not a complete Felucca backup.")
-        }
-        for p in archive.parts where SysExCoding.crc32(p.data) != p.crc { throw FM1Error.badPackage("Backup checksum mismatch.") }
+        try Self.validate(archive)
         let info = try await supportsArchive()
         guard info.supported else { throw FM1Error.unsupported("This Felucca (\(info.version)) cannot restore complete backups. Update Felucca first.") }
 
@@ -190,22 +190,42 @@ public struct FeluccaArchive: Sendable {
     }
 
     /// Import a file saved by Felucca's own installer or editor.
+    /// Every part is a known object, in the manifest's order, within the device's size limits, with a
+    /// matching checksum; sample slots carry at least their 512-byte header. Imported files are untrusted.
+    public static func validate(_ archive: DeviceArchive) throws {
+        guard archive.format == "felucca-backup", let ids = ids(count: archive.parts.count) else {
+            throw FM1Error.badPackage("Not a complete Felucca backup.")
+        }
+        for (p, id) in zip(archive.parts, ids) {
+            guard p.id == "\(id)" else { throw FM1Error.badPackage("Unexpected object \(p.id) in the backup.") }
+            guard p.data.count <= (id >= 32 ? 81920 : 3840) else { throw FM1Error.badPackage("Object \(id) is too large.") }
+            if id >= 32, !p.data.isEmpty, p.data.count < 512 { throw FM1Error.badPackage("Short sample backup.") }
+            guard SysExCoding.crc32(p.data) == p.crc else { throw FM1Error.badPackage("Backup checksum mismatch.") }
+        }
+        guard !archive.parts[0].data.isEmpty, !archive.parts[1].data.isEmpty else {
+            throw FM1Error.badPackage("The backup is missing the current music or settings.")
+        }
+    }
+
     public static func fromNativeJSON(_ data: Data) throws -> DeviceArchive {
         guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], j["format"] as? String == "felucca-backup",
               let objs = j["objects"] as? [[String: Any]], ids(count: objs.count) != nil else {
             throw FM1Error.badPackage("Not a complete Felucca backup.")
         }
         let parts: [DeviceArchive.Part] = try objs.map { o in
-            guard let id = o["id"] as? Int, let s = o["data"] as? String, let d = Data(base64Encoded: s),
-                  let crc = o["crc"] as? Int, SysExCoding.crc32(d) == UInt32(crc) else { throw FM1Error.badPackage("Backup checksum mismatch.") }
-            return .init(id: "\(id)", label: label(UInt8(id)), data: d)
+            guard let rawID = o["id"] as? Int, let id = UInt8(exactly: rawID), let s = o["data"] as? String,
+                  let d = Data(base64Encoded: s), let rawCRC = o["crc"] as? Int, let crc = UInt32(exactly: rawCRC),
+                  SysExCoding.crc32(d) == crc else { throw FM1Error.badPackage("Backup checksum mismatch.") }
+            return .init(id: "\(id)", label: label(id), data: d)
         }
         let created = (j["created"] as? String).flatMap { s -> Date? in
             let f = ISO8601DateFormatter()
             f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             return f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
         } ?? Date()
-        return DeviceArchive(format: "felucca-backup", family: .felucca, firmware: j["firmware"] as? String ?? "Felucca",
+        let archive = DeviceArchive(format: "felucca-backup", family: .felucca, firmware: j["firmware"] as? String ?? "Felucca",
                              created: created, parts: parts)
+        try validate(archive)
+        return archive
     }
 }

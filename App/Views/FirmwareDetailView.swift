@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -20,6 +22,37 @@ enum ExportFiles {
         var out: [(String, Data)] = [("FM1-backup-\(b.identity)-\(day).fm1backup.json", payload)]
         if let a = b.archive, let extra = try? a.exportFiles() { out += extra }
         return out
+    }
+}
+
+/// Files to share, written only when the user taps Share (never while a view renders).
+struct ShareItems: Identifiable {
+    let id = UUID()
+    let urls: [URL]
+    init(files: [(name: String, data: Data)]) { urls = ExportFiles.urls(files) }
+    init(text: String, name: String) { urls = ExportFiles.urls([(name, Data(text.utf8))]) }
+}
+
+struct ActivitySheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+extension View {
+    func shareSheet(_ item: Binding<ShareItems?>) -> some View {
+        sheet(item: item) { ActivitySheet(items: $0.urls).presentationDetents([.medium, .large]) }
+    }
+}
+
+/// A share button that prepares its files on tap.
+struct ShareFilesButton<Label: View>: View {
+    let files: () -> [(name: String, data: Data)]
+    @ViewBuilder let label: () -> Label
+    @State private var items: ShareItems?
+    var body: some View {
+        Button { items = ShareItems(files: files()) } label: { label() }
+            .shareSheet($items)
     }
 }
 
@@ -77,7 +110,7 @@ struct FirmwareDetailView: View {
                 }
                 if !firmware.hasPackage {
                     Button("Add the .fwsc file for this firmware") { importingPackage = true }
-                    if let u = URL(string: firmware.sourceURL), !firmware.sourceURL.isEmpty { Button("Open download page") { openURL(u) } }
+                    if let u = URL(string: firmware.sourceURL), isWebLink(u) { Button("Open download page") { openURL(u) } }
                 }
             }
 
@@ -139,10 +172,8 @@ struct FirmwareDetailView: View {
                                 Text(s.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if let d = s.payload {
-                                ShareLink(items: ExportFiles.urls([(s.fileName, d)])) { Image(systemName: "square.and.arrow.up") }
-                                    .buttonStyle(.borderless)
-                            }
+                            ShareFilesButton(files: { s.payload.map { [(s.fileName, $0)] } ?? [] }) { Image(systemName: "square.and.arrow.up") }
+                                .buttonStyle(.borderless)
                         }
                     }
                     .onDelete { idx in
@@ -158,17 +189,17 @@ struct FirmwareDetailView: View {
             Section("Package") {
                 LabeledContent("Identity", value: firmware.product)
                 if !firmware.version.isEmpty { LabeledContent("Version", value: firmware.version) }
-                if let p = firmware.packageData { LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(p.count), countStyle: .file)) }
+                if firmware.hasPackage { LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(firmware.packageSize), countStyle: .file)) }
                 if !firmware.sha256.isEmpty {
                     LabeledContent("SHA-256") { Text(firmware.sha256.prefix(16) + "…").font(.caption.monospaced()).textSelection(.enabled) }
                 }
-                if firmware.package?.stock != nil { Label("Unmodified official M-VAVE file", systemImage: "checkmark.seal").foregroundStyle(.green) }
+                if firmware.isStock { Label("Unmodified official M-VAVE file", systemImage: "checkmark.seal").foregroundStyle(.green) }
                 LabeledContent("Added", value: firmware.addedAt.formatted(date: .abbreviated, time: .omitted))
-                if let u = URL(string: firmware.sourceURL), !firmware.sourceURL.isEmpty { Button("Source") { openURL(u) } }
-                if let p = firmware.packageData {
-                    ShareLink(items: ExportFiles.urls([(firmware.fileName.isEmpty ? "\(firmware.product).fwsc" : firmware.fileName, p)])) {
-                        Label("Share .fwsc", systemImage: "square.and.arrow.up")
-                    }
+                if let u = URL(string: firmware.sourceURL), isWebLink(u) { Button("Source") { openURL(u) } }
+                if firmware.hasPackage {
+                    ShareFilesButton(files: {
+                        firmware.packageData.map { [(firmware.fileName.isEmpty ? "\(firmware.product).fwsc" : firmware.fileName, $0)] } ?? []
+                    }) { Label("Share .fwsc", systemImage: "square.and.arrow.up") }
                 }
             }
         }
@@ -192,13 +223,13 @@ struct FirmwareDetailView: View {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
-                let data = try Data(contentsOf: url)
+                let data = try readImport(url, maxBytes: ImportLimit.firmware)
                 let pkg = try FirmwarePackage(data: data)
                 guard pkg.product == firmware.product else {
                     message = "That file is \(pkg.product), but this firmware reports \(firmware.product). Import it from the Library instead."
                     return
                 }
-                firmware.packageData = data
+                firmware.setPackage(data)
                 firmware.sha256 = pkg.sha256
                 firmware.fileName = url.lastPathComponent
                 try context.save()
@@ -213,7 +244,7 @@ struct FirmwareDetailView: View {
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? readImport(url, maxBytes: ImportLimit.backup) else { continue }
             let b: Backup
             if let a = try? FeluccaArchive.fromNativeJSON(data), let made = try? Backup.from(a, label: url.deletingPathExtension().lastPathComponent, kind: "import") {
                 b = made // Felucca's own backup file: restorable
@@ -252,10 +283,10 @@ struct BackupRow: View {
                 .font(.caption).foregroundStyle(.secondary)
             if !backup.partsSummary.isEmpty { Text(backup.partsSummary).font(.caption2).foregroundStyle(.tertiary).lineLimit(2) }
             HStack(spacing: 16) {
-                if backup.archive != nil, onDevice {
+                if backup.isRestorable, onDevice {
                     Button("Restore to FM-1") { confirmRestore = true }.disabled(device.busy)
                 }
-                ShareLink(items: ExportFiles.urls(ExportFiles.files(for: backup))) { Label("Export", systemImage: "square.and.arrow.up") }
+                ShareFilesButton(files: { ExportFiles.files(for: backup) }) { Label("Export", systemImage: "square.and.arrow.up") }
             }
             .font(.caption).buttonStyle(.borderless)
         }

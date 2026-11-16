@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Foundation
 import SwiftData
 
-// SwiftData models, synced through the iCloud private database (CloudKit) so the
-// iPhone and iPad share one library. CloudKit rules: every property has a default,
-// relationships are optional, no unique constraints.
+// SwiftData models. They follow CloudKit's rules (every property has a default, relationships
+// are optional, no unique constraints) so the library can sync through the iCloud private
+// database when sync is turned on (FM1_CLOUD_SYNC in project.yml; off by default).
 
 enum TryStatus: String, CaseIterable, Codable, Identifiable {
     case notTried, tried, favorite, keeper, notForMe
@@ -48,6 +50,10 @@ final class Firmware {
     var addedAt: Date = Date()
     var fileName: String = ""
     @Attribute(.externalStorage) var packageData: Data?
+    /// Scalars kept beside the blob and relationships so lists never load the package or fault in history.
+    var packageSize: Int = 0
+    var lastInstalledAt: Date?
+    var installCount: Int = 0
     @Relationship(deleteRule: .nullify, inverse: \InstallEvent.firmware) var installs: [InstallEvent]? = []
     @Relationship(deleteRule: .cascade, inverse: \Backup.firmware) var backups: [Backup]? = []
     @Relationship(deleteRule: .cascade, inverse: \EmulatorSave.firmware) var emulatorSaves: [EmulatorSave]? = []
@@ -64,17 +70,40 @@ final class Firmware {
         get { TryStatus(rawValue: statusRaw) ?? .notTried }
         set { statusRaw = newValue.rawValue }
     }
-    var hasPackage: Bool { packageData != nil }
+    var hasPackage: Bool { packageSize > 0 }
+    /// Decodes and hashes the whole file: only for installing, never in list rows.
     var package: FirmwarePackage? { packageData.flatMap { try? FirmwarePackage(data: $0) } }
+    var isStock: Bool { StockFirmware.all.contains { $0.sha256 == sha256 } }
+    /// The device model the package is for ("FM-1"), from its identity.
+    var packageModel: String { String(product.split(separator: "_").first ?? "") }
+
+    func setPackage(_ data: Data?) {
+        packageData = data
+        packageSize = data?.count ?? 0
+    }
+
+    func recordInstall(at date: Date = Date()) {
+        lastInstalledAt = date
+        installCount += 1
+    }
+
+    /// Fills the scalar fields for records made before they existed (runs once per record).
+    func migrateScalars() {
+        if packageSize == 0, let d = packageData { packageSize = d.count }
+        if lastInstalledAt == nil, let last = (installs ?? []).filter(\.success).map(\.date).max() {
+            lastInstalledAt = last
+            installCount = (installs ?? []).filter(\.success).count
+        }
+    }
 
     var successfulInstalls: [InstallEvent] { (installs ?? []).filter(\.success).sorted { $0.date < $1.date } }
     var firstInstalled: Date? { successfulInstalls.first?.date }
-    var lastInstalled: Date? { successfulInstalls.last?.date }
+    var lastInstalled: Date? { lastInstalledAt }
     var sortedBackups: [Backup] { (backups ?? []).sorted { $0.date > $1.date } }
-    var latestRestorableBackup: Backup? { sortedBackups.first { $0.archive != nil } }
+    var latestRestorableBackup: Backup? { sortedBackups.first { $0.isRestorable } }
     var displayVersion: String { version.isEmpty ? product : version }
     /// The emulator treats a file named FM-1.fwsc as M-VAVE's own firmware.
-    var emulatorFileName: String { package?.stock != nil ? "FM-1.fwsc" : "\(name.replacingOccurrences(of: "/", with: "-")).fwsc" }
+    var emulatorFileName: String { isStock ? "FM-1.fwsc" : "\(name.replacingOccurrences(of: "/", with: "-")).fwsc" }
 }
 
 @Model
@@ -120,6 +149,8 @@ final class Backup {
     }
 
     var family: FirmwareFamily { FirmwareFamily(rawValue: familyRaw) ?? .unknown }
+    /// Device and imported archives can be written back; attached files can't. (Cheap: no decoding.)
+    var isRestorable: Bool { kindRaw != "file" }
     /// The device archive, when this backup can be written back over MIDI.
     var archive: DeviceArchive? {
         guard kindRaw != "file", let payload else { return nil }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -189,7 +191,7 @@ struct CommunityDetail: View {
                 LabeledContent("Author", value: entry.owner)
                 if let l = entry.license { LabeledContent("License", value: l) }
                 if let f = entry.fork_of { LabeledContent("Fork of", value: f) }
-                if let u = entry.url.flatMap(URL.init(string:)) { Button("Open on GitHub") { openURL(u) } }
+                if let u = entry.url.flatMap(URL.init(string:)), isWebLink(u) { Button("Open on GitHub") { openURL(u) } }
             }
             Section("Packages") {
                 ForEach(entry.packages, id: \.self) { r in
@@ -221,7 +223,7 @@ struct FeaturedDetail: View {
                 Text(item.blurb)
                 LabeledContent("By", value: item.author)
                 Text(item.howToGet).font(.footnote).foregroundStyle(.secondary)
-                if let u = URL(string: item.website) { Button("Open website") { openURL(u) } }
+                if let u = URL(string: item.website), isWebLink(u) { Button("Open website") { openURL(u) } }
             }
             if item.id == "official", let u = URL(string: Catalog.officialFWSC) {
                 Section {

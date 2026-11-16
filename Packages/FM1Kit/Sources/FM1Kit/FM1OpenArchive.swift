@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import Foundation
 
 /// M-VAVE's open-source FM1 Open firmware: the project transfer protocol in app/transfer.c.
@@ -79,6 +81,7 @@ public final class FM1OpenArchive: @unchecked Sendable {
     }
 
     func write(kind: Kind, target: UInt8, bytes: [UInt8]) async throws {
+        guard bytes.count <= 0xFFFF else { throw FM1Error.badPackage("A backup part is too large.") }
         _ = try await command(3, [kind.rawValue, target, UInt8(bytes.count & 0xFF), UInt8(bytes.count >> 8)])
         do {
             var at = 0
@@ -108,7 +111,7 @@ public final class FM1OpenArchive: @unchecked Sendable {
         let tuning = (try? await command(21))?.first == 1
 
         let sampleInfo = includeSamples ? try? await command(11) : nil
-        let sampleSize = sampleInfo.map { $0.count >= 5 && $0[0] == 2 ? Int(SysExCoding.le32($0, 1)) : 0 } ?? 0
+        let sampleSize = min(sampleInfo.map { $0.count >= 5 && $0[0] == 2 ? Int(SysExCoding.le32($0, 1)) : 0 } ?? 0, Self.maxSampleBank)
         let total = 4300 + Self.tracks * Self.timbreBytes + (hasLibrary ? 4 * Self.dx7GroupBytes : 0) + sampleSize
         var done = 0
         func step(_ n: Int) { done += n; progress(done, total) }
@@ -156,8 +159,31 @@ public final class FM1OpenArchive: @unchecked Sendable {
         return DeviceArchive(format: "fm1open-backup", family: .fm1Open, firmware: firmware, parts: parts, info: info)
     }
 
+    /// Largest sample bank this app reads or writes (the FM1 Open sample region is about 1 MB).
+    static let maxSampleBank = 4 << 20
+
+    /// Every part is known, the right size for its kind and matches its checksum. Imported files are
+    /// untrusted, and the sample bank is written first, so nothing is sent until all of it passes.
+    public static func validate(_ archive: DeviceArchive) throws {
+        guard archive.format == "fm1open-backup" else { throw FM1Error.badPackage("Not an FM1 Open backup.") }
+        for p in archive.parts {
+            let n = p.data.count
+            let ok: Bool
+            switch p.id {
+            case "project": ok = [4048, 4064, 4264].contains(n)
+            case "samples": ok = n > 0 && n <= maxSampleBank
+            default:
+                if p.id.hasPrefix("timbre-"), let t = Int(p.id.dropFirst(7)), (0..<tracks).contains(t) { ok = n == timbreBytes }
+                else if p.id.hasPrefix("dx7-"), let g = Int(p.id.dropFirst(4)), (0..<4).contains(g) { ok = n == dx7GroupBytes }
+                else { ok = false }
+            }
+            guard ok else { throw FM1Error.badPackage("Unexpected part \(p.id) (\(n) bytes) in the backup.") }
+            guard SysExCoding.crc32(p.data) == p.crc else { throw FM1Error.badPackage("Backup checksum mismatch.") }
+        }
+    }
+
     public func restore(_ archive: DeviceArchive, includeSamples: Bool = true, progress: @escaping ArchiveProgress = { _, _ in }) async throws {
-        for p in archive.parts where SysExCoding.crc32(p.data) != p.crc { throw FM1Error.badPackage("Backup checksum mismatch.") }
+        try Self.validate(archive)
         let total = archive.parts.filter { includeSamples || $0.id != "samples" }.reduce(0) { $0 + $1.data.count }
         var done = 0
         func step(_ n: Int) { done += n; progress(done, total) }

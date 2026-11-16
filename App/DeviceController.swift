@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Foundation
 import Observation
@@ -83,6 +85,9 @@ final class DeviceController {
     private func run(_ title: String, _ body: () async throws -> String) async {
         guard !busy else { return }
         UIApplication.shared.isIdleTimerDisabled = true
+        // keep running for the short time iOS allows if the app is sent to the background mid-write
+        let bg = UIApplication.shared.beginBackgroundTask(withName: title)
+        defer { UIApplication.shared.endBackgroundTask(bg) }
         phase = .working(title: title, detail: "Connecting…", progress: nil)
         append("— \(title)")
         do {
@@ -98,7 +103,18 @@ final class DeviceController {
         await refresh()
     }
 
+    private var lastProgress = Date.distantPast
+
+    /// Progress arrives once per OTA request or backup chunk (thousands per install): publish only
+    /// whole-percent steps or text changes, at most ~10 times a second, so views aren't re-rendered
+    /// for every packet.
     private func progress(_ title: String, _ detail: String, _ value: Double?) {
+        if case let .working(t, _, old) = phase, t == title, value != 1, Date().timeIntervalSince(lastProgress) < 0.1 {
+            // same operation within 100 ms: skip unless the bar moved a whole percent
+            let step = { (v: Double?) in v.map { Int($0 * 100) } ?? -1 }
+            if step(old) == step(value) { return }
+        }
+        lastProgress = Date()
         phase = .working(title: title, detail: detail, progress: value)
     }
 
@@ -218,6 +234,7 @@ final class DeviceController {
             }
             event.success = true
             event.duration = Date().timeIntervalSince(started)
+            target.recordInstall()
             if target.status == .notTried { target.status = .tried }
             try context.save()
 
@@ -257,6 +274,7 @@ final class DeviceController {
             let e = InstallEvent(firmware: target, from: "update loader", to: id.text)
             e.success = true
             e.message = "Resumed an interrupted install"
+            target.recordInstall()
             e.deviceName = UIDevice.current.name
             context.insert(e)
             if target.status == .notTried { target.status = .tried }

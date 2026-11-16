@@ -1,7 +1,27 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Foundation
 import Observation
 import SwiftData
+
+/// MIDI input collected on the CoreMIDI thread and drained on the main thread in batches.
+final class InputBatch: @unchecked Sendable {
+    typealias Entry = (String, [UInt8], MappingEngine.Result)
+    private let lock = NSLock()
+    private var items: [Entry] = []
+    private var scheduled = false
+    /// true when the caller should schedule a drain (the first item since the last one).
+    func add(_ e: Entry) -> Bool {
+        lock.withLock {
+            if items.count < 2000 { items.append(e) }
+            if scheduled { return false }
+            scheduled = true
+            return true
+        }
+    }
+    func take() -> [Entry] { lock.withLock { scheduled = false; defer { items.removeAll() }; return items } }
+}
 
 /// Thread-safe slot for the emulator's MIDI input (the router calls it on a CoreMIDI thread).
 final class MIDISink: @unchecked Sendable {
@@ -44,10 +64,17 @@ final class ControllerHub {
     private(set) var active: [ControllerModel: ControllerProfile] = [:]
     let router: ControllerRouter
     let emulatorSink = MIDISink()
+    private let inputBatch = InputBatch()
     /// The in-app slice sampler the pads can play (per layout: Pads target).
     let sampler = SlicePlayer()
-    /// Pads lit on screen by the sampler, "model/pad-n" -> time.
-    private(set) var samplerFlash: [String: Date] = [:]
+    /// Sampler pads lit on screen right now (cleared ~150 ms after each hit).
+    private(set) var samplerFlash: Set<Int> = []
+    private var flashGen: [Int: Int] = [:]
+    /// One decoded copy of each kit, shared by the Sampler screen and the pads.
+    private var kitCache: [PersistentIdentifier: LoadedKit] = [:]
+    private var kitLoads: [PersistentIdentifier: Task<LoadedKit, Error>] = [:]
+    /// The kit each model should end up with (a slower, older load must not win).
+    private var kitWanted: [ControllerModel: PersistentIdentifier?] = [:]
     /// Kits being decoded, by model.
     private(set) var loadingKit: Set<ControllerModel> = []
 
@@ -63,8 +90,15 @@ final class ControllerHub {
             sink(m)
             _ = self
         }
+        // knob sweeps send hundreds of messages a second: hand them to the main thread in batches
+        let batch = inputBatch
         router.onInput = { [weak self] source, raw, result in
-            Task { @MainActor in self?.received(source: source, raw: raw, result: result) }
+            if batch.add((source, raw, result)) {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    for e in batch.take() { self?.received(source: e.0, raw: e.1, result: e.2) }
+                }
+            }
         }
         router.onSysEx = { [weak self] source, m in
             Task { @MainActor in
@@ -81,8 +115,8 @@ final class ControllerHub {
         router.onSetupChanged = { [weak self] in Task { @MainActor in self?.refresh() } }
         let player = sampler
         router.onPad = { model, pad, velocity in player.trigger(model: model, pad: pad, velocity: velocity) }
-        sampler.onTrigger = { [weak self] model, pad in
-            Task { @MainActor in self?.samplerFlash["\(model.rawValue)/pad-\(pad)"] = Date() }
+        sampler.onTrigger = { [weak self] _, pad in
+            Task { @MainActor in self?.flash(pad) }
         }
         refresh()
         if lights { startLights() }
@@ -141,25 +175,52 @@ final class ControllerHub {
 
     func kit(for model: ControllerModel) -> SampleKit? { active[model]?.kit }
 
-    /// Decodes a kit off the main thread and hands it to the sampler for this model.
-    func loadKit(_ kit: SampleKit?, for model: ControllerModel) {
-        guard let kit, let data = kit.audio else { sampler.setKit(nil, for: model); return }
+    /// The decoded kit (shared, cached); decodes off the main thread once.
+    func loadedKit(_ kit: SampleKit) async throws -> LoadedKit {
+        let id = kit.persistentModelID
+        if let k = kitCache[id] { return k }
+        if let t = kitLoads[id] { return try await t.value }
+        guard let data = kit.audio else { throw NSError(domain: "Sampler", code: 5, userInfo: [NSLocalizedDescriptionKey: "This kit has no audio."]) }
         let name = kit.fileName, settings = kit.settingsData == nil ? nil : kit.settings, format = sampler.format
+        let task = Task.detached(priority: .userInitiated) { try LoadedKit(data: data, fileName: name, settings: settings, engineFormat: format) }
+        kitLoads[id] = task
+        defer { kitLoads[id] = nil }
+        let loaded = try await task.value
+        kitCache[id] = loaded
+        if kit.settingsData == nil || kit.frames == 0 {
+            kit.frames = loaded.mono.count
+            kit.sampleRate = loaded.sampleRate
+            kit.settings = loaded.settings
+        }
+        return loaded
+    }
+
+    /// Hands a model's kit to the sampler (decoding it if needed).
+    func loadKit(_ kit: SampleKit?, for model: ControllerModel) {
+        kitWanted[model] = kit?.persistentModelID
+        guard let kit else { sampler.setKit(nil, for: model); return }
+        if let cached = kitCache[kit.persistentModelID], sampler.kit(for: model) === cached { return }
         loadingKit.insert(model)
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let loaded = try? LoadedKit(data: data, fileName: name, settings: settings, engineFormat: format)
-            await MainActor.run {
-                guard let self else { return }
-                self.loadingKit.remove(model)
-                if let loaded, kit.settingsData == nil {
-                    kit.frames = loaded.mono.count
-                    kit.sampleRate = loaded.sampleRate
-                    kit.settings = loaded.settings
-                }
-                self.sampler.setKit(loaded, for: model)
-            }
+        Task {
+            defer { loadingKit.remove(model) }
+            guard let loaded = try? await loadedKit(kit), kitWanted[model] == kit.persistentModelID else { return }
+            sampler.setKit(loaded, for: model)
         }
     }
+
+    func forgetKit(_ kit: SampleKit) { kitCache[kit.persistentModelID] = nil }
+
+    private func flash(_ pad: Int) {
+        samplerFlash.insert(pad)
+        let g = (flashGen[pad] ?? 0) + 1
+        flashGen[pad] = g
+        Task {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if flashGen[pad] == g { samplerFlash.remove(pad) }
+        }
+    }
+
+    func isFlashing(_ pad: Int) -> Bool { samplerFlash.contains(pad) }
 
     /// Plays this kit from a model's pads (creating its editable layout if needed).
     func assign(_ kit: SampleKit?, to model: ControllerModel, context: ModelContext) {
@@ -173,14 +234,17 @@ final class ControllerHub {
         update(model, context: context) { $0.padTarget = t }
     }
 
-    func flashed(_ model: ControllerModel, _ pad: Int) -> Bool {
-        guard let d = samplerFlash["\(model.rawValue)/pad-\(pad)"] else { return false }
-        return Date().timeIntervalSince(d) < 0.15
-    }
 
     /// The profile being edited for a model, created on first edit.
     func editableProfile(_ model: ControllerModel, context: ModelContext) -> ControllerProfile {
         if let p = active[model] { return p }
+        // reuse this model's default layout if it exists (it may just not be selected yet)
+        let raw = model.rawValue
+        if let existing = (try? context.fetch(FetchDescriptor<ControllerProfile>(predicate: #Predicate { $0.modelRaw == raw })))?
+            .filter({ $0.firmware == nil }).max(by: { $0.updatedAt < $1.updatedAt }) {
+            active[model] = existing
+            return existing
+        }
         let p = ControllerProfile(name: "\(model.displayName) default", mapping: .defaultLayout(for: model), firmware: nil)
         context.insert(p)
         try? context.save()

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca web/fm1ota.js and tools/fm1_install.py)
+// Copyright (C) 2026 FM-1 Swapper contributors (Swift port, modified)
 import Foundation
 
 /// The FM-1 USB-MIDI update protocol (after Felucca's tools/fm1_install.py and web/fm1ota.js,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import CoreBluetooth
 import Foundation
 
@@ -135,10 +137,16 @@ public final class SMCPadBLEChannel: NSObject, SincoChannel, CBCentralManagerDel
         p.writeValue(Data(logical), for: c, type: .withoutResponse)
     }
 
+    /// Only peripherals named like an SMC-PAD ("SMC-PAD", "SMC-PAD Pocket"…). Many unrelated devices
+    /// use the same JieLi AE40 service, so the name is the first filter and the session then checks
+    /// the device's own identity before touching its flash.
+    static func isSMCPadName(_ name: String?) -> Bool {
+        (name ?? "").lowercased().replacingOccurrences(of: " ", with: "-").hasPrefix("smc-pad")
+    }
+
     private func wanted(_ p: CBPeripheral) -> Bool {
-        let n = (p.name ?? "").lowercased()
-        guard n.contains("smc") || n.contains("pad") else { return false }
-        return nameFilter.map { n.contains($0.lowercased()) } ?? true
+        guard Self.isSMCPadName(p.name) else { return false }
+        return nameFilter.map { (p.name ?? "").lowercased().contains($0.lowercased()) } ?? true
     }
 
     private func connectKnown() {
@@ -211,7 +219,8 @@ public final class SMCPadBLEChannel: NSObject, SincoChannel, CBCentralManagerDel
 }
 
 /// USB: the pad's "SMC-PAD-Private" CoreMIDI port, packets 7-bit packed in SysEx.
-public final class SMCPadUSBChannel: SincoChannel {
+/// Used from the main thread only (its reader task hops back to the main actor for every callback).
+public final class SMCPadUSBChannel: SincoChannel, @unchecked Sendable {
     private let provider: MIDIPortProvider
     private var link: SysExLink?
     private var reader: Task<Void, Never>?
@@ -226,27 +235,34 @@ public final class SMCPadUSBChannel: SincoChannel {
     }
 
     public func start() {
-        guard link == nil, let c = Self.privatePort(in: provider), let l = try? provider.open(c) else {
-            onStateChange?("No SMC-PAD-Private USB port.")
+        guard link == nil, reader == nil, let c = Self.privatePort(in: provider) else {
+            if link == nil { onStateChange?("No SMC-PAD-Private USB port.") }
             return
         }
-        link = l
-        onStateChange?("open")
-        reader = Task { [weak self] in
+        // opening a CoreMIDI port waits briefly for it to settle: do it off the main thread
+        let provider = self.provider
+        reader = Task { @MainActor [weak self] in
+            guard let l = await Task.detached(operation: { try? provider.open(c) }).value else {
+                self?.reader = nil
+                self?.onStateChange?("Couldn't open the SMC-PAD-Private USB port.")
+                return
+            }
+            self?.link = l
+            self?.onStateChange?("open")
             while !Task.isCancelled {
-                guard let l = self?.link else { return }
                 if let m = await l.read(timeout: 1), let u = Sinco.fromSysex(m) {
                     var b = u
-                    let frames = Sinco.frames(&b)
-                    await MainActor.run { frames.forEach { self?.onFrame?($0) } }
+                    for f in Sinco.frames(&b) { self?.onFrame?(f) }
                 }
-                if l.isLost { await MainActor.run { self?.onStateChange?("The pad's USB port went away.") }; return }
+                if l.isLost { self?.onStateChange?("The pad's USB port went away."); return }
+                if self == nil { return }
             }
         }
     }
 
     public func stop() {
         reader?.cancel()
+        reader = nil
         link?.close()
         link = nil
     }
@@ -283,7 +299,10 @@ public final class SMCPadLightSession {
             if s.contains("disconnect") || s.contains("went away") { self.reset(); self.state = .failed(s) }
         }
         channel.onFrame = { [weak self] f in
-            if let n = SMCPadProtocol.name(fromReply: f) { self?.deviceName = n; self?.onName?(n) }
+            guard let self, let n = SMCPadProtocol.name(fromReply: f) else { return }
+            self.deviceName = n
+            self.onName?(n)
+            self.identity(n)
         }
     }
 
@@ -300,6 +319,7 @@ public final class SMCPadLightSession {
     }
 
     private func reset() {
+        identityTimeout?.invalidate()
         pump?.invalidate(); keepAlive?.invalidate()
         pump = nil; keepAlive = nil
         unlocked = false
@@ -307,9 +327,36 @@ public final class SMCPadLightSession {
         lastWrite.removeAll()
     }
 
+    private var identified = false
+    private var identityTimeout: Timer?
+
+    /// Asks the device for its name first; the settings reads and colour writes only start once it
+    /// answers as an SMC-PAD, so the session never writes to another device's flash.
     private func beginUnlock() {
         reset()
-        let steps = SMCPadProtocol.unlock
+        identified = false
+        state = .connecting("Checking the device…")
+        channel.write(Sinco.queryName)
+        identityTimeout?.invalidate()
+        identityTimeout = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.identified else { return }
+                self.channel.stop()
+                self.state = .failed("That device didn't answer as an SMC-PAD, so nothing was sent to it.")
+            }
+        }
+    }
+
+    private func identity(_ name: String) {
+        guard !identified else { return }
+        identityTimeout?.invalidate()
+        guard name.uppercased().hasPrefix("SMC-PAD") else {
+            channel.stop()
+            state = .failed("The device says it is \(name), not an SMC-PAD, so nothing was sent to it.")
+            return
+        }
+        identified = true
+        let steps = Array(SMCPadProtocol.unlock.dropFirst())   // the name query is already done
         queue = steps
         state = .unlocking(0, steps.count)
         startPump()
@@ -327,7 +374,7 @@ public final class SMCPadLightSession {
         if !queue.isEmpty {
             channel.write(queue.removeFirst())
             if !unlocked {
-                let total = SMCPadProtocol.unlock.count
+                let total = SMCPadProtocol.unlock.count - 1
                 state = .unlocking(total - queue.count, total)
                 if queue.isEmpty { finishUnlock() }
             }

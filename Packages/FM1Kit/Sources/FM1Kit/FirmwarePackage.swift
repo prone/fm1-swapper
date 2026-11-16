@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca web/fm1pkg.js and tools/fm1_install.py)
+// Copyright (C) 2026 FM-1 Swapper contributors (Swift port, modified)
 import CryptoKit
 import Foundation
 

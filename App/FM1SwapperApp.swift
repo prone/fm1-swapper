@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -45,9 +47,12 @@ struct FM1SwapperApp: App {
     func importFile(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        // files shared into the app land in Documents/Inbox: remove our copy once imported
+        defer { if url.path.contains("/Documents/Inbox/") { try? FileManager.default.removeItem(at: url) } }
         do {
-            let data = try Data(contentsOf: url)
-            if let t = UTType(filenameExtension: url.pathExtension), t.conforms(to: .audio) {
+            let isAudio = UTType(filenameExtension: url.pathExtension)?.conforms(to: .audio) ?? false
+            let data = try readImport(url, maxBytes: isAudio ? ImportLimit.audio : ImportLimit.firmware)
+            if isAudio {
                 let kit = SampleKit(name: url.deletingPathExtension().lastPathComponent, fileName: url.lastPathComponent, audio: data)
                 container.mainContext.insert(kit)
                 try container.mainContext.save()
@@ -81,13 +86,54 @@ struct CheckInDriver: ViewModifier {
     }
 
     func schedule() {
+        guard CheckInService.shared.enabled else { return }
         let ctx = context, dev = device, hub = pads
         CheckInService.shared.schedule { CheckInReport.make(context: ctx, device: dev, pads: hub) }
     }
 
     func send() {
+        guard CheckInService.shared.enabled else { return }
         let r = CheckInReport.make(context: context, device: device, pads: pads)
         Task { await CheckInService.shared.send(r) }
+    }
+}
+
+/// Loads the SMC-PAD layouts and sampler kits at launch (not only when the Pads tab opens), switches
+/// to a firmware's own layout when that firmware is on the FM-1, and rests the sampler in the background.
+struct PadProfileDriver: ViewModifier {
+    @Environment(DeviceController.self) private var device
+    @Environment(ControllerHub.self) private var pads
+    @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var phase
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                // one-time fill of scalar fields added for performance
+                for f in (try? context.fetch(FetchDescriptor<Firmware>())) ?? [] { f.migrateScalars() }
+                try? context.save()
+                pads.contextForLearn = context
+                select()
+                // share files from earlier sessions
+                let tmp = FileManager.default.temporaryDirectory
+                for u in (try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil)) ?? [] where u.lastPathComponent.hasPrefix("export-") {
+                    try? FileManager.default.removeItem(at: u)
+                }
+            }
+            .onChange(of: device.identity?.text) { select() }
+            .onChange(of: phase) {
+                if phase == .background, pads.connected.isEmpty { pads.sampler.pause() }
+            }
+    }
+
+    func select() {
+        var firmware: Firmware?
+        if let id = device.identity, !id.isLoader {
+            let text = id.text
+            firmware = (try? context.fetch(FetchDescriptor<Firmware>(predicate: #Predicate { $0.product == text })))?
+                .max { ($0.lastInstalledAt ?? .distantPast) < ($1.lastInstalledAt ?? .distantPast) }
+        }
+        pads.selectProfiles(context: context, firmware: firmware)
     }
 }
 
@@ -100,6 +146,7 @@ struct RootView: View {
     var body: some View {
         tabs
             .modifier(CheckInDriver())
+            .modifier(PadProfileDriver())
         #if DEBUG
             .fullScreenCover(isPresented: Binding(get: { demo != nil }, set: { if !$0 { demo = nil } })) {
                 if let d = demo {
@@ -111,8 +158,12 @@ struct RootView: View {
         #endif
     }
 
-    // Debug builds: SIMCTL_CHILD_FM1_DEMO_TAB=2 opens on that tab.
+    #if DEBUG
+    // simulator testing: SIMCTL_CHILD_FM1_DEMO_TAB=2 opens on that tab
     @State private var tab = Int(ProcessInfo.processInfo.environment["FM1_DEMO_TAB"] ?? "") ?? 0
+    #else
+    @State private var tab = 0
+    #endif
 
     var tabs: some View {
         TabView(selection: $tab) {

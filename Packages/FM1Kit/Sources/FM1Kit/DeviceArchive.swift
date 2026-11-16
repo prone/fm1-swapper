@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import Foundation
 
 /// A firmware's saved work, read from the device over MIDI. Each firmware family

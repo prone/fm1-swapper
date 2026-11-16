@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 FM-1 Swapper contributors
 # Play a tutorial in the iPad simulator, every step's "Show me" demo included, and screenshot each
 # step for review.  tools/tutorial-check.sh <tutorial-id> <package.fwsc> [out-dir]
 # Needs a Debug simulator build (see README). The package is the firmware the tutorial is for.
 set -euo pipefail
-ID="$1"; PKG="$2"; OUT="${3:-build/tutorial-check/$ID}"
+ID="$1"; PKG="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; OUT="${3:-build/tutorial-check/$ID}"
+[[ "$ID" =~ ^[a-z0-9-]+$ ]] || { echo "tutorial id must be lowercase letters, digits and dashes" >&2; exit 2; }
 SIM="${SIM:-$(xcrun simctl list devices available | grep -m1 'iPad Pro 13' | grep -oE '[0-9A-F-]{36}')}"
 DD="${DD:-build/dd}"
 NAME="$(basename "$PKG")"   # name M-VAVE's package FM-1.fwsc so the emulator treats it as stock
@@ -20,7 +23,7 @@ xcrun simctl spawn "$SIM" log stream --style compact --predicate 'eventMessage C
 LP=$!
 trap 'kill $LP 2>/dev/null || true' EXIT
 sleep 2
-SIMCTL_CHILD_FM1_DEMO_EMULATOR="$(cd "$(dirname "$PKG")" && pwd)/$(basename "$PKG")" SIMCTL_CHILD_FM1_DEMO_AUTOSTART=1 \
+SIMCTL_CHILD_FM1_DEMO_EMULATOR="$PKG" SIMCTL_CHILD_FM1_DEMO_AUTOSTART=1 \
 SIMCTL_CHILD_FM1_DEMO_TUTORIAL="$ID" SIMCTL_CHILD_FM1_DEMO_NAME="$NAME" \
   xcrun simctl launch "$SIM" com.example.fm1swapper >/dev/null
 seen=0

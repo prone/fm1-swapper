@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Foundation
 import Network
+import Security
 import Observation
 import SwiftData
 import UIKit
@@ -94,6 +97,37 @@ final class CheckInService {
         return id
     }()
 
+    /// This install's private key: its first report registers it on the Mac (trust on first use), so no
+    /// other device on the network can overwrite this install's report.
+    private let installKey: String = {
+        let d = UserDefaults.standard
+        if let k = d.string(forKey: "checkin.installKey") { return k }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let k = bytes.map { String(format: "%02x", $0) }.joined()
+        d.set(k, forKey: "checkin.installKey")
+        return k
+    }()
+
+    /// Check-ins are opt-in: they share this install's library with the Mac on the local network.
+    /// On by default in Debug (developer) builds, off in Release builds.
+    var enabled: Bool {
+        get {
+            #if DEBUG
+            UserDefaults.standard.object(forKey: "checkin.enabled") as? Bool ?? true
+            #else
+            UserDefaults.standard.bool(forKey: "checkin.enabled")
+            #endif
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "checkin.enabled")
+            enabledChanged += 1
+            if newValue { start() } else { stop() }
+        }
+    }
+    /// Bumped when `enabled` changes, so views observing the service refresh.
+    private(set) var enabledChanged = 0
+
     /// Optional "host:port" typed in Settings, when Bonjour can't see the Mac.
     var manualServer: String {
         get { UserDefaults.standard.string(forKey: "checkin.server") ?? "" }
@@ -111,7 +145,15 @@ final class CheckInService {
         return "\(UIDevice.current.model) (\(machine))"
     }
 
+    func stop() {
+        browser?.cancel(); browser = nil
+        timer?.invalidate(); timer = nil
+        endpoint = nil; pending = nil; others = []
+        status = "Off"
+    }
+
     func start() {
+        guard enabled else { status = "Off"; return }
         let manual = manualServer.trimmingCharacters(in: .whitespaces)
         if !manual.isEmpty {
             let parts = manual.split(separator: ":")
@@ -149,10 +191,13 @@ final class CheckInService {
 
     /// Sends a report (kept until the Mac is found), then refreshes everyone's.
     func send(_ report: CheckInReport) async {
+        guard enabled else { return }
         guard let endpoint else { pending = report; start(); return }
         guard let body = try? JSONEncoder().encode(report) else { return }
         do {
-            let (code, _) = try await HTTPOverNW.request(endpoint, method: "PUT", path: "/checkins/\(installID)", body: body)
+            let (code, _) = try await HTTPOverNW.request(endpoint, method: "PUT", path: "/checkins/\(installID)", body: body,
+                                                         headers: ["X-Install-Key": installKey])
+            if code == 403 { status = "The Mac has this install's id registered to another key. Reset it in checkins/ on the Mac."; return }
             guard code == 200 else { status = "The Mac refused the check-in (HTTP \(code))."; return }
             lastCheckIn = Date()
             status = "Checked in to \(serverName ?? "the Mac")"
@@ -174,25 +219,30 @@ final class CheckInService {
     /// Checks in now and every 5 minutes while the app is open.
     func schedule(_ make: @escaping @MainActor () -> CheckInReport) {
         timer?.invalidate()
+        guard enabled else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.send(make()) } }
+            MainActor.assumeIsolated { _ = Task { await self?.send(make()) } }
         }
         Task { await send(make()) }
     }
 }
 
-/// Minimal HTTP/1.0 client on NWConnection (the server closes after each response).
+/// Minimal HTTP/1.0 client on NWConnection (the server closes after each response). Everything runs
+/// on one serial queue, so the continuation is resumed exactly once; responses are capped at 2 MB.
 enum HTTPOverNW {
-    static func request(_ endpoint: NWEndpoint, method: String, path: String, body: Data = Data()) async throws -> (Int, Data) {
-        let params = NWParameters.tcp
-        if let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options { ip.version = .any }
-        let conn = NWConnection(to: endpoint, using: params)
-        var req = "\(method) \(path) HTTP/1.0\r\nHost: fm1\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
-            .data(using: .utf8)!
-        req.append(body)
+    static let maxResponse = 2 << 20
+
+    static func request(_ endpoint: NWEndpoint, method: String, path: String, body: Data = Data(),
+                        headers: [String: String] = [:]) async throws -> (Int, Data) {
+        let queue = DispatchQueue(label: "fm1.checkin.http")
+        let conn = NWConnection(to: endpoint, using: .tcp)
+        var head = "\(method) \(path) HTTP/1.0\r\nHost: fm1\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n"
+        for (k, v) in headers { head += "\(k): \(v)\r\n" }
+        let request = Data((head + "\r\n").utf8) + body
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(Int, Data), Error>) in
             var done = false
             var buffer = Data()
+            // all of these run on `queue`
             func finish(_ r: Result<(Int, Data), Error>) {
                 guard !done else { return }
                 done = true
@@ -200,31 +250,31 @@ enum HTTPOverNW {
                 cont.resume(with: r)
             }
             func receive() {
-                conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { data, _, complete, error in
+                conn.receive(minimumIncompleteLength: 1, maximumLength: 64 << 10) { data, _, complete, error in
                     if let data { buffer.append(data) }
+                    if buffer.count > maxResponse { finish(.failure(URLError(.dataLengthExceedsMaximum))); return }
                     if let error { finish(.failure(error)); return }
                     if complete {
                         guard let split = buffer.range(of: Data("\r\n\r\n".utf8)),
-                              let head = String(data: buffer[..<split.lowerBound], encoding: .utf8),
-                              let code = Int(head.split(separator: " ").dropFirst().first ?? "") else {
+                              let status = String(data: buffer[..<split.lowerBound], encoding: .utf8),
+                              let code = Int(status.split(separator: " ").dropFirst().first ?? "") else {
                             finish(.failure(URLError(.badServerResponse))); return
                         }
-                        finish(.success((code, buffer[split.upperBound...])))
+                        finish(.success((code, Data(buffer[split.upperBound...]))))
                     } else { receive() }
                 }
             }
             conn.stateUpdateHandler = { st in
                 switch st {
                 case .ready:
-                    conn.send(content: req, completion: .contentProcessed { e in if let e { finish(.failure(e)) } })
+                    conn.send(content: request, completion: .contentProcessed { e in if let e { finish(.failure(e)) } })
                     receive()
-                case let .failed(e): finish(.failure(e))
-                case let .waiting(e): finish(.failure(e))
+                case let .failed(e), let .waiting(e): finish(.failure(e))
                 default: break
                 }
             }
-            conn.start(queue: .global())
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10) { finish(.failure(URLError(.timedOut))) }
+            conn.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + 10) { finish(.failure(URLError(.timedOut))) }
         }
     }
 }
@@ -258,7 +308,7 @@ extension CheckInReport {
         let library = firmwares.map { f in
             LibraryItem(name: f.name, product: f.product, version: f.version.isEmpty ? nil : f.version, sha256: f.sha256,
                         family: f.familyRaw, status: f.status.label, hasPackage: f.hasPackage,
-                        lastInstalled: f.lastInstalled.map(iso.string(from:)), installs: f.successfulInstalls.count,
+                        lastInstalled: f.lastInstalled.map(iso.string(from:)), installs: f.installCount,
                         source: f.repo.isEmpty ? (f.sourceURL.isEmpty ? nil : f.sourceURL) : f.repo)
         }
         let svc = CheckInService.shared

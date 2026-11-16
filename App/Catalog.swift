@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 FM-1 Swapper contributors
 import FM1Kit
 import Foundation
 import SwiftData
@@ -30,7 +32,8 @@ struct CatalogEntry: Decodable, Identifiable, Hashable {
     var packages: [Release] { (upstream_releases ?? []).filter { ($0.name ?? "").lowercased().hasSuffix(".fwsc") && $0.url != nil } }
     /// Packages that look like they are for the FM-1 (not the SMK-37 or Pocket amps).
     var fm1Packages: [Release] { packages.filter { !($0.name ?? "").lowercased().contains("smk") } }
-    var pushedDate: Date? { pushed.flatMap { ISO8601DateFormatter().date(from: $0) } }
+    var pushedDate: Date? { pushed.flatMap { Self.iso.date(from: $0) } }
+    private static let iso = ISO8601DateFormatter()
 }
 
 struct FeaturedFirmware: Identifiable {
@@ -65,11 +68,11 @@ enum Catalog {
 
     static func loadCommunity() async throws -> [CatalogEntry] {
         struct Root: Decodable { var firmwares: [CatalogEntry] }
-        let (data, resp) = try await URLSession.shared.data(from: communityURL)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        let data = try await download(communityURL, maxBytes: 8 << 20)
+        // ISO 8601 timestamps sort as text: no date parsing per comparison
         return try JSONDecoder().decode(Root.self, from: data).firmwares
             .filter { !$0.packages.isEmpty }
-            .sorted { ($0.pushedDate ?? .distantPast) > ($1.pushedDate ?? .distantPast) }
+            .sorted { ($0.pushed ?? "") > ($1.pushed ?? "") }
     }
 
     struct GitHubRelease: Decodable, Identifiable {
@@ -99,15 +102,24 @@ enum Catalog {
         let releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
         for r in releases where !r.prerelease {
             guard let a = r.assets.first(where: { $0.name.hasSuffix("Workbench.html") }), let u = URL(string: a.browser_download_url) else { continue }
-            let found = WorkbenchExtractor.packages(inHTML: try await download(u))
+            let found = WorkbenchExtractor.packages(inHTML: try await download(u, maxBytes: 32 << 20))
             if !found.isEmpty { return (r.tag_name, found) }
         }
         throw FM1Error.badPackage("No FM1 Open Workbench with firmware packages was found in M-VAVE's releases.")
     }
 
-    static func download(_ url: URL) async throws -> Data {
-        let (data, resp) = try await URLSession.shared.data(from: url)
+    /// Downloads over https only, refusing anything larger than `maxBytes` (firmware is ~0.5-1 MB).
+    static func download(_ url: URL, maxBytes: Int = 16 << 20) async throws -> Data {
+        guard url.scheme == "https" else { throw URLError(.unsupportedURL) }
+        let (bytes, resp) = try await URLSession.shared.bytes(from: url)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        if resp.expectedContentLength > Int64(maxBytes) { throw URLError(.dataLengthExceedsMaximum) }
+        var data = Data()
+        data.reserveCapacity(max(0, min(Int(resp.expectedContentLength), maxBytes)))
+        for try await chunk in bytes.chunked() {
+            data.append(contentsOf: chunk)
+            if data.count > maxBytes { throw URLError(.dataLengthExceedsMaximum) }
+        }
         return data
     }
 }
@@ -122,7 +134,7 @@ enum LibraryImport {
         let pkg = try FirmwarePackage(data: data)
         let sha = pkg.sha256
         if let existing = try context.fetch(FetchDescriptor<Firmware>(predicate: #Predicate { $0.sha256 == sha })).first {
-            if existing.packageData == nil { existing.packageData = data }
+            if !existing.hasPackage { existing.setPackage(data) }
             return Result(firmware: existing, isNew: false, warning: nil)
         }
         let product = pkg.product
@@ -140,7 +152,7 @@ enum LibraryImport {
             if !version.isEmpty { f.version = version }
         }
         f.sha256 = sha
-        f.packageData = data
+        f.setPackage(data)
         f.fileName = fileName
         if !sourceURL.isEmpty { f.sourceURL = sourceURL }
         if !repo.isEmpty { f.repo = repo }
@@ -164,7 +176,7 @@ enum DescriptionFiller {
 
     static func featured(for f: Firmware) -> FeaturedFirmware? {
         let repo = f.repo.lowercased(), src = f.sourceURL.lowercased()
-        if f.package?.stock != nil || f.family == .official { return Catalog.featured.first { $0.id == "official" } }
+        if f.isStock || f.family == .official { return Catalog.featured.first { $0.id == "official" } }
         if f.family == .fm1Open || repo == "m-vave/fm1_open" { return Catalog.featured.first { $0.id == "fm1open" } }
         return Catalog.featured.first { item in
             guard let r = item.repo?.lowercased() else { return false }
@@ -221,4 +233,45 @@ enum DescriptionFiller {
               !d.isEmpty else { return nil }
         return d
     }
+}
+
+extension URLSession.AsyncBytes {
+    /// The stream in 64 KB pieces (byte-by-byte appends are slow).
+    func chunked(size: Int = 64 << 10) -> AsyncThrowingStream<[UInt8], Error> {
+        AsyncThrowingStream { cont in
+            let task = Task {
+                var buf: [UInt8] = []
+                buf.reserveCapacity(size)
+                do {
+                    for try await b in self {
+                        buf.append(b)
+                        if buf.count == size { cont.yield(buf); buf.removeAll(keepingCapacity: true) }
+                    }
+                    if !buf.isEmpty { cont.yield(buf) }
+                    cont.finish()
+                } catch { cont.finish(throwing: error) }
+            }
+            cont.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+/// Opens only web links from catalog data (other schemes could launch other apps).
+func isWebLink(_ url: URL) -> Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") }
+
+enum ImportLimit {
+    static let firmware = 16 << 20
+    static let audio = 100 << 20
+    static let backup = 32 << 20
+    static let emulatorSave = 8 << 20
+}
+
+/// Reads an imported file, refusing it before loading when it is larger than `maxBytes`.
+func readImport(_ url: URL, maxBytes: Int) throws -> Data {
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    guard size <= maxBytes else {
+        throw NSError(domain: "Import", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            "\(url.lastPathComponent) is too large (\(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)))."])
+    }
+    return try Data(contentsOf: url)
 }
