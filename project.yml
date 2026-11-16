@@ -24,6 +24,8 @@ targets:
       - path: Tutorials
         type: folder
         buildPhase: resources
+      - path: web/public/emu-bridge.js
+        buildPhase: resources
     dependencies:
       - package: FM1Kit
     info:

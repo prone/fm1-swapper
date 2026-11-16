@@ -15,6 +15,7 @@
 		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
 		44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90470C94E4420DF4C64A1C8 /* Catalog.swift */; };
 		5DAE0B01A2CE8813F4BE56AD /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A5E1C71BA0DFE8A5B00E28 /* Sampler.swift */; };
+		5DE1664F8208568C4A4F9068 /* emu-bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = F1FE4813BCBEBF76CE951EF7 /* emu-bridge.js */; };
 		72D3482FDC7FBB7ED207FD28 /* FM1Kit in Frameworks */ = {isa = PBXBuildFile; productRef = 4395B0B9B517C853FC6D07D3 /* FM1Kit */; };
 		779AEE75851D8D0B9E979669 /* TutorialPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */; };
 		85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D29C0B53676467FFDF1FB65 /* CatalogView.swift */; };
@@ -56,6 +57,7 @@
 		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FM1Swapper-iCloud.entitlements"; sourceTree = "<group>"; };
 		E38EB5C3B93C59D4F160A57D /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		F1FE4813BCBEBF76CE951EF7 /* emu-bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "emu-bridge.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +87,14 @@
 				08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		2416DBAEC33C7A6F67D3B8B5 /* public */ = {
+			isa = PBXGroup;
+			children = (
+				F1FE4813BCBEBF76CE951EF7 /* emu-bridge.js */,
+			);
+			path = public;
 			sourceTree = "<group>";
 		};
 		46C474F30EA9BC7B7D5A9CA1 /* Config */ = {
@@ -130,6 +140,14 @@
 			path = Packages;
 			sourceTree = "<group>";
 		};
+		A41AB370FFE959468870D03C /* web */ = {
+			isa = PBXGroup;
+			children = (
+				2416DBAEC33C7A6F67D3B8B5 /* public */,
+			);
+			path = web;
+			sourceTree = "<group>";
+		};
 		FE37D0A28094983F4B60674B = {
 			isa = PBXGroup;
 			children = (
@@ -137,6 +155,7 @@
 				849766643E093C4F35DF83D8 /* App */,
 				46C474F30EA9BC7B7D5A9CA1 /* Config */,
 				980317A17A7E106CD02065B4 /* Packages */,
+				A41AB370FFE959468870D03C /* web */,
 				4A7B0C984E95C2A243489A9E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -208,6 +227,7 @@
 			files = (
 				3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */,
 				A040DF929CCC2615B9DE9078 /* Tutorials in Resources */,
+				5DE1664F8208568C4A4F9068 /* emu-bridge.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

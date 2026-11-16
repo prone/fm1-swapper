@@ -97,15 +97,17 @@ struct FirmwareDetailView: View {
                 if firmware.hasPackage {
                     HStack {
                         Button { showEmulator = true } label: {
-                            Label("Try it in the emulator", systemImage: "play.rectangle").frame(maxWidth: .infinity).padding(.vertical, 4)
+                            Label("Try it", systemImage: "play.rectangle").lineLimit(1).frame(maxWidth: .infinity)
                         }
                         if TutorialLibrary.tutorial(for: firmware) != nil {
                             Button { showTutorial = true } label: {
-                                Label("Tutorial", systemImage: "graduationcap").frame(maxWidth: .infinity).padding(.vertical, 4)
+                                Label("Tutorial", systemImage: "graduationcap").lineLimit(1).frame(maxWidth: .infinity)
                             }
                         }
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .accessibilityHint("Plays this firmware in the emulator")
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
                 }
                 if !firmware.hasPackage {
