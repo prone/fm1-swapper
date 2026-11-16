@@ -63,6 +63,34 @@ struct FM1SwapperApp: App {
     }
 }
 
+/// Keeps this install's check-in current: on launch, when the FM-1 or pads change, after an install.
+struct CheckInDriver: ViewModifier {
+    @Environment(DeviceController.self) private var device
+    @Environment(ControllerHub.self) private var pads
+    @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var phase
+
+    func body(content: Content) -> some View {
+        content
+            .task { CheckInService.shared.start(); schedule() }
+            .onChange(of: phase) { if phase == .active { schedule() } }
+            .onChange(of: device.identity?.text) { send() }
+            .onChange(of: device.busy) { if !device.busy { send() } }
+            .onChange(of: pads.connected) { send() }
+            .onChange(of: pads.padName) { send() }
+    }
+
+    func schedule() {
+        let ctx = context, dev = device, hub = pads
+        CheckInService.shared.schedule { CheckInReport.make(context: ctx, device: dev, pads: hub) }
+    }
+
+    func send() {
+        let r = CheckInReport.make(context: context, device: device, pads: pads)
+        Task { await CheckInService.shared.send(r) }
+    }
+}
+
 struct RootView: View {
     #if DEBUG
     /// Simulator testing: SIMCTL_CHILD_FM1_DEMO_EMULATOR=/path/to/x.fwsc opens the emulator on launch.
@@ -71,6 +99,7 @@ struct RootView: View {
 
     var body: some View {
         tabs
+            .modifier(CheckInDriver())
         #if DEBUG
             .fullScreenCover(isPresented: Binding(get: { demo != nil }, set: { if !$0 { demo = nil } })) {
                 if let d = demo {

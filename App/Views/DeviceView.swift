@@ -68,6 +68,8 @@ struct DeviceView: View {
                     } header: { Label("Update mode", systemImage: "exclamationmark.triangle") }
                 }
 
+                InstallsSection()
+
                 Section {
                     DisclosureGroup("Connection log", isExpanded: $showLog) {
                         if device.log.isEmpty { Text("Nothing yet").foregroundStyle(.secondary) }
@@ -210,5 +212,122 @@ struct FirmwareRow: View {
         if n > 0 { bits.append("\(n) backup\(n == 1 ? "" : "s")") }
         if !firmware.hasPackage { bits.append("no file") }
         return bits.joined(separator: " · ")
+    }
+}
+
+/// What the other installs of the app (iPad, iPhone) have, from their check-ins on the Mac.
+struct InstallsSection: View {
+    @State private var svc = CheckInService.shared
+    @State private var editing = false
+
+    var body: some View {
+        Section {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("This \(UIDevice.current.model): \(svc.deviceLabel)").font(.subheadline)
+                    Text(svc.lastCheckIn.map { "\(svc.status) · \($0.formatted(.relative(presentation: .named)))" } ?? svc.status)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { editing = true } label: { Image(systemName: "gearshape") }.buttonStyle(.borderless)
+            }
+            ForEach(svc.others) { r in
+                NavigationLink { InstallDetail(report: r) } label: { CheckInRow(report: r) }
+            }
+        } header: { Text("Installs") } footer: {
+            Text("Each install reports its FM-1 firmware and library to the check-in server on the Mac (tools/checkin_server.py), and shows the others here. Read-only: no install changes another.")
+        }
+        .sheet(isPresented: $editing) { CheckInSettings() }
+    }
+}
+
+struct CheckInRow: View {
+    let report: CheckInReport
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Image(systemName: report.install.deviceModel?.lowercased().contains("ipad") == true ? "ipad" : "iphone")
+                Text(report.install.deviceName).font(.subheadline.weight(.medium))
+                Spacer()
+                if let d = report.checkedIn { Text(d.formatted(.relative(presentation: .named))).font(.caption2).foregroundStyle(.secondary) }
+            }
+            if let f = report.fm1, let id = f.identity {
+                Text("FM-1: \(f.firmwareName ?? id) (\(id))\(f.connected == true ? " · connected" : "")").font(.caption)
+            } else {
+                Text("No FM-1 seen yet").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("\(report.library?.count ?? 0) firmwares · app \(report.install.appVersion ?? "?") (\(report.install.build ?? "?"))")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct InstallDetail: View {
+    let report: CheckInReport
+    @Query private var mine: [Firmware]
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Device", value: report.install.deviceModel ?? "?")
+                if let s = report.install.system { LabeledContent("System", value: s) }
+                LabeledContent("App", value: "\(report.install.appVersion ?? "?") (\(report.install.build ?? "?"))")
+                if let d = report.checkedIn { LabeledContent("Checked in", value: d.formatted(date: .abbreviated, time: .shortened)) }
+            }
+            if let f = report.fm1, let id = f.identity {
+                Section("FM-1") {
+                    LabeledContent("Firmware", value: f.firmwareName ?? id)
+                    LabeledContent("Identity", value: id)
+                    LabeledContent("State", value: f.connected == true ? "connected" : "last seen \(f.lastSeen.flatMap { ISO8601DateFormatter.full.date(from: $0) }?.formatted(.relative(presentation: .named)) ?? "?")")
+                }
+            }
+            if let l = report.lastInstall {
+                Section("Last install") {
+                    LabeledContent(l.firmware ?? "?", value: l.success == true ? "ok" : "failed")
+                    if let m = l.message { Text(m).font(.caption).foregroundStyle(.red) }
+                }
+            }
+            Section {
+                ForEach(report.library ?? []) { item in
+                    let have = mine.contains { !$0.sha256.isEmpty && $0.sha256 == item.sha256 }
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(item.name ?? "?").font(.subheadline)
+                            Spacer()
+                            Image(systemName: have ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(have ? .green : .secondary)
+                        }
+                        Text([item.version ?? item.product, item.status, item.lastInstalled.map { "installed " + $0.prefix(10) }]
+                            .compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: { Text("Library") } footer: { Text("✓ means this device has the same file (same SHA-256).") }
+        }
+        .navigationTitle(report.install.deviceName)
+    }
+}
+
+struct CheckInSettings: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = CheckInService.shared.deviceLabel
+    @State private var server = CheckInService.shared.manualServer
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { TextField("Name", text: $name) } header: { Text("This install's name") }
+                Section {
+                    TextField("Found automatically", text: $server).textInputAutocapitalization(.never).keyboardType(.URL)
+                } header: { Text("Mac address (host:port)") } footer: {
+                    Text("Leave empty to find the Mac over Bonjour. Start the server on the Mac with: python3 tools/checkin_server.py")
+                }
+            }
+            .navigationTitle("Check-ins")
+            .toolbar {
+                Button("Done") {
+                    CheckInService.shared.deviceLabel = name.isEmpty ? CheckInService.defaultLabel : name
+                    if server != CheckInService.shared.manualServer { CheckInService.shared.manualServer = server }
+                    dismiss()
+                }
+            }
+        }
     }
 }

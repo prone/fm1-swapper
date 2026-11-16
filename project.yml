@@ -38,6 +38,8 @@ targets:
         FM1CloudSync: $(FM1_CLOUD_SYNC)
         NSBluetoothAlwaysUsageDescription: Connects to Bluetooth MIDI controllers such as the M-VAVE SMC-PAD.
         NSMicrophoneUsageDescription: Records samples for the slice sampler.
+        NSLocalNetworkUsageDescription: Finds the check-in server on your Mac, so your installs can see which firmware each has.
+        NSBonjourServices: [_fm1checkin._tcp]
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: com.example.fm1swapper.fwsc
             UTTypeDescription: FM-1 firmware package

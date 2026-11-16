@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */; };
 		156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */; };
+		22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A8C4B5763FA56BB526B413 /* CheckIn.swift */; };
 		2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */; };
 		3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2653A28D6F9710CB02DA3504 /* Assets.xcassets */; };
 		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
@@ -50,6 +51,7 @@
 		A689C414052F8A2578ADFC59 /* SamplerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamplerView.swift; sourceTree = "<group>"; };
 		ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FM1SwapperApp.swift; sourceTree = "<group>"; };
+		C6A8C4B5763FA56BB526B413 /* CheckIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckIn.swift; sourceTree = "<group>"; };
 		D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorView.swift; sourceTree = "<group>"; };
 		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FM1Swapper-iCloud.entitlements"; sourceTree = "<group>"; };
@@ -97,6 +99,7 @@
 			children = (
 				2653A28D6F9710CB02DA3504 /* Assets.xcassets */,
 				D90470C94E4420DF4C64A1C8 /* Catalog.swift */,
+				C6A8C4B5763FA56BB526B413 /* CheckIn.swift */,
 				7EFDA4A70905BE3374712A8F /* ControllerHub.swift */,
 				34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */,
 				D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */,
@@ -207,6 +210,7 @@
 			files = (
 				44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */,
 				85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */,
+				22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */,
 				EE7B3A4729E03E606DAB7C5B /* ControllerHub.swift in Sources */,
 				97742A301100ACECDEFE3888 /* DeviceController.swift in Sources */,
 				2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */,

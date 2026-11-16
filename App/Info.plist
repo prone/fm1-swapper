@@ -55,6 +55,12 @@
 	<false/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Connects to Bluetooth MIDI controllers such as the M-VAVE SMC-PAD.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_fm1checkin._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Finds the check-in server on your Mac, so your installs can see which firmware each has.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Records samples for the slice sampler.</string>
 	<key>UIBackgroundModes</key>
