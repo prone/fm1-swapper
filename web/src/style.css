@@ -41,7 +41,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgba(242,163,58,.18); color: var(--orange); }
 .badge.green { background: rgba(48,209,88,.16); color: var(--green); }
 .stars button { background: none; border: 0; color: var(--orange); font-size: 20px; cursor: pointer; padding: 0 2px; }
-.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; } .bar > i { display: block; height: 100%; background: var(--orange); transition: width .2s; }
+.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; } .bar > i { display: block; height: 100%; background: var(--orange); }
 .banner { border-radius: var(--radius); padding: 12px 16px; margin: 12px 0; }
 .banner.err { background: rgba(255,69,58,.14); color: #ffb3ad; } .banner.warn { background: rgba(242,163,58,.14); color: #ffd59a; } .banner.ok { background: rgba(48,209,88,.12); color: #a6f0b8; }
 input[type=search], textarea, select { width: 100%; background: var(--card2); color: var(--text); border: 0; border-radius: 10px; padding: 9px 12px; font: inherit; }
