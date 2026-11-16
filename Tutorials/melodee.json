@@ -1,0 +1,503 @@
+{
+  "format": 1,
+  "id": "melodee",
+  "title": "Melodee: a guided tour",
+  "summary": "A tour of Melodee 1.6.1 on the FM-1: Stage, tracks and sounds, the engine pages, envelopes and LFOs, effects and punch FX, scales and chords, the arpeggiator, playing and recording, the sequencer, the mixer, saving and the menu.",
+  "firmwareVersion": "1.6.1",
+  "match": {
+    "repos": [
+      "keremimo/melodee"
+    ],
+    "names": [
+      "melodee"
+    ]
+  },
+  "sources": [
+    "https://github.com/keremimo/melodee",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/README.md",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/docs/RELEASE_1.6.1.md",
+    "https://github.com/keremimo/melodee/releases/tag/v1.6.1",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/web/manual/index.html",
+    "https://keremimo.github.io/melodee/webapp/manual/",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/docs/media/melodee-controls.svg",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/firmware/src/ui_layer.c",
+    "https://github.com/keremimo/melodee/blob/v1.6.1/firmware/src/ui_browser.c"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "steps": [
+    {
+      "title": "Welcome to Melodee",
+      "text": "Melodee is a multi-engine synth and sequencer firmware. This is Stage (HOME): a lane per track with its sound, its pattern and the pattern's steps as dots, and the notes you play in front of the live waveform. The header shows the tempo. HOME brings you back here from any page.",
+      "highlight": [
+        "SCREEN",
+        "HOME"
+      ]
+    },
+    {
+      "title": "Play the keys",
+      "text": "The keys F3 to G5 play the selected track. On Stage, OCT- and OCT+ shift the octave (press both to reset); the header shows a badge such as +1. MASTER sets the volume.",
+      "highlight": [
+        "KEYS",
+        "OCT-",
+        "OCT+",
+        "MASTER"
+      ],
+      "show": [
+        {
+          "note": "C4",
+          "ms": 300
+        },
+        {
+          "note": "E4",
+          "ms": 300
+        },
+        {
+          "note": "G4",
+          "ms": 300
+        },
+        {
+          "note": "C5",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "anyNote": true,
+        "hint": "Play a few notes"
+      }
+    },
+    {
+      "title": "Tracks",
+      "text": "A new song has four tracks, each with its own engine and sound; with no saved project they are It's a Prophet, FM6 SOLID BASS, CZ-1 SYNTH.LEAD 1 and the 808 kit. ALGORITHM selects the track on every page, and the screen takes its colour. Hold OCT+ on Stage for Add track (up to eight; 5-8 are MIDI tracks).",
+      "highlight": [
+        "ALGORITHM",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        },
+        {
+          "wait": 300
+        },
+        {
+          "turn": "ALGORITHM",
+          "clicks": -1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        }
+      ],
+      "await": {
+        "turn": "ALGORITHM",
+        "hint": "Turn ALGORITHM and play a key"
+      }
+    },
+    {
+      "title": "Stage's four knobs",
+      "text": "On Stage, KNOB1 to KNOB4 are the selected track's sound knobs, shown in the bottom strip. On a Prophet track they are CUTOFF, RES, filter envelope amount and amp release; on FM6, CZ-1, SID and Drum they are that engine's own four.",
+      "highlight": [
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "KNOB1",
+          "clicks": -4
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": 4
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "turn": "KNOB1",
+        "hint": "Turn a knob and play a key"
+      }
+    },
+    {
+      "title": "Browse sounds",
+      "text": "Turn PRESETS to open the sound browser. KNOB1 picks the list (ALL, FAV, RECENT or a category such as BASS or PAD), KNOB2 or PRESETS the sound, KNOB4 the engine. OCT+ keeps the sound, OCT- goes back to the one you had; both return to Stage. Loading a sound never touches your patterns.",
+      "highlight": [
+        "PRESETS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB4",
+        "OCT+",
+        "OCT-",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "wait": 600
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "wait": 400
+        },
+        {
+          "press": "OCT-"
+        }
+      ],
+      "await": {
+        "turn": "PRESETS",
+        "hint": "Turn PRESETS, play a key, then OCT+ to keep or OCT- to go back"
+      }
+    },
+    {
+      "title": "Getting around",
+      "text": "The page buttons open their pages; press again for the next. SELECT also turns the pages of the open section. Off Stage, OCT+ enters or confirms and OCT- goes back. Hold OCT+ for a page's sheet of actions. Tap HOME on Stage for the chord view (a wheel of fifths), and again to return.",
+      "highlight": [
+        "SELECT",
+        "OCT+",
+        "OCT-",
+        "HOME",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "HOME"
+        },
+        {
+          "note": "C4",
+          "ms": 300
+        },
+        {
+          "note": "E4",
+          "ms": 300
+        },
+        {
+          "note": "G4",
+          "ms": 600
+        },
+        {
+          "wait": 600
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "The engine's pages",
+      "text": "EDIT opens the selected track's engine pages: PROPHET, FM6, CZ-1, SID, DRUM or MIDI Track. SELECT moves through them, PRESETS jumps between sections (on FM6 and CZ-1 it picks the operator or line), and KNOB1 to KNOB4 set the four values shown. Hold EDIT to undo.",
+      "highlight": [
+        "EDIT",
+        "SELECT",
+        "PRESETS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "EDIT"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 1
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "HOME"
+        }
+      ],
+      "await": {
+        "press": [
+          "EDIT"
+        ],
+        "hint": "Press EDIT to open the engine's pages"
+      }
+    },
+    {
+      "title": "Envelope and LFO",
+      "text": "ENV opens the shared amp envelope (ATK, DEC, SUS, REL), then ENV DEST. LFO opens the LFO, LFO 2, LFO DEST and MOD, a four-route modulation matrix. Hold LFO while turning sound knobs for a temporary change that snaps back when you let go.",
+      "highlight": [
+        "ENV",
+        "LFO",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ENV"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "LFO"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "Effects",
+      "text": "FX opens the track's rack: three note-effect slots (NOTE TAIL, NOTE ECHO) and a Shared row that sends to the shared audio rack (reverb, chorus, drive and more). Hold FX and press a key for one of 27 punch effects on the whole mix; double-tap FX to lock that layer.",
+      "highlight": [
+        "FX",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "FX"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "HOME"
+        },
+        {
+          "hold": "FX"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "FX"
+        }
+      ]
+    },
+    {
+      "title": "Scales and chords",
+      "text": "SCL opens SCALES (70 scales), then the SCL settings, then CHORD. Set QNT to WHITE to play the scale on the white keys, C4 playing the ROOT. CHORD's AUTO and AUTO2 harmonise one finger. Hold SCL and press a key to set the ROOT; OCT- puts it back.",
+      "highlight": [
+        "SCL",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "HOME"
+        }
+      ],
+      "await": {
+        "press": [
+          "SCL"
+        ],
+        "hint": "Press SCL to open the scales"
+      }
+    },
+    {
+      "title": "Arpeggiator",
+      "text": "ARP opens the arpeggiator: MODE (Up, Down, Up then Down, Random, Order as played, Repeat), rate, octaves and gate. Press ARP again for ARP 2: swing, probability, HOLD and note order. The beat light follows the arp while it runs.",
+      "highlight": [
+        "ARP",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ARP"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "ARP"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "Play, tempo and recording",
+      "text": "PLAY starts and stops the tracks. On Stage, SELECT sets the tempo (by default). REC arms the selected track: stopped, your first note starts and records; REC + PLAY arms and starts together. Hold REC to capture what you just played. Hold EDIT to undo a take.",
+      "highlight": [
+        "PLAY",
+        "REC",
+        "SELECT",
+        "EDIT",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "SELECT",
+          "clicks": 2
+        },
+        {
+          "wait": 400
+        },
+        {
+          "turn": "SELECT",
+          "clicks": -2
+        }
+      ],
+      "await": {
+        "press": [
+          "PLAY"
+        ],
+        "hint": "Press PLAY to start, and again to stop"
+      }
+    },
+    {
+      "title": "The sequencer",
+      "text": "SEQ opens NOTES, a piano roll (a drum grid on Drum tracks). Press again for PATTERN, TEMPO, PATTERNS, SONG and MOTION. Hold SEQ for the PATTERNS grid: the white keys pick patterns 1-16 (an empty one arms REC) and the first black keys pick tracks.",
+      "highlight": [
+        "SEQ",
+        "SELECT",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "HOME"
+        }
+      ],
+      "await": {
+        "press": [
+          "SEQ"
+        ],
+        "hint": "Press SEQ to open the sequencer"
+      }
+    },
+    {
+      "title": "Mixer and the GLO layer",
+      "text": "GLO opens MIXER (level, pan, mute), then GLOBAL, SYSTEM and WEIGHTS. Hold GLO for its layer: F#3 G#3 A#3 C#4 mute tracks 1-4, F3 to B3 solo them while held, C4 unmutes all, F4 taps the tempo, KNOB1 to KNOB4 set levels. GLO + PLAY restarts from the top.",
+      "highlight": [
+        "GLO",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "PLAY",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "GLO"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "HOME"
+        },
+        {
+          "hold": "GLO"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "GLO"
+        }
+      ]
+    },
+    {
+      "title": "Saving",
+      "text": "Hold SAVE to save the project to its slot. Autosave also saves a project that has a slot after 5 s stopped and untouched. Tap SAVE for PRESETS, USER and PROJECT. To save a sound: stop, tap SAVE, choose USER and a slot, OCT+, Save here, OCT+, then name it with the keys.",
+      "highlight": [
+        "SAVE",
+        "OCT+",
+        "KNOB1",
+        "KNOB2",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SAVE"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "press": "OCT-"
+        }
+      ]
+    },
+    {
+      "title": "Menu and more",
+      "text": "Hold HOME for the settings menu: COLOR, HOME SELECT (what SELECT turns on Stage), AUTOSAVE, MIDI LEARN, Bluetooth and more. KNOB2 moves the row, KNOB1 changes it. The full manual: keremimo.github.io/melodee/webapp/manual.",
+      "highlight": [
+        "HOME",
+        "KNOB1",
+        "KNOB2",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "HOME",
+          "ms": 900
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "press": "OCT-"
+        }
+      ]
+    }
+  ]
+}

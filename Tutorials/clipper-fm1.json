@@ -1,0 +1,429 @@
+{
+  "format": 1,
+  "id": "clipper-fm1",
+  "title": "Clipper: a guided tour",
+  "summary": "A tour of Clipper 1.3.1 on the FM-1, a one-instrument synth firmware: the HOME screen, browsing the 407 sounds, the knobs and sound pages, effects, scales and chords, the arpeggiator, recording, the step sequencer, the GLO pages, user presets and the menu.",
+  "firmwareVersion": "1.3.1",
+  "match": {
+    "repos": [
+      "isod89/clipper-fm1"
+    ],
+    "names": [
+      "clipper"
+    ]
+  },
+  "sources": [
+    "https://github.com/isod89/clipper-fm1",
+    "https://github.com/isod89/clipper-fm1/blob/main/README.md",
+    "https://github.com/isod89/clipper-fm1/blob/main/QUICKSTART.md",
+    "https://github.com/isod89/clipper-fm1/blob/main/docs/release-1.3.1.md",
+    "https://github.com/isod89/clipper-fm1/releases/tag/v1.3.1",
+    "https://github.com/isod89/clipper-fm1/blob/main/docs/sloop/GUIDE.md",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/ui_input.c",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/ui_layers.c",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/ui.c",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/params.c",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/ui_studio.c",
+    "https://github.com/isod89/clipper-fm1/blob/main/firmware/src/ui_menu.c"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "steps": [
+    {
+      "title": "Welcome to Clipper",
+      "text": "Clipper is a synthesizer firmware: one instrument with 23 engines, not a groovebox. HOME shows the sound's name, its family, its number in the list, the engine and a live scope. Tap HOME from any page to come back; tapped on HOME it opens the visualiser, and HOME again closes it.",
+      "highlight": [
+        "SCREEN",
+        "HOME"
+      ]
+    },
+    {
+      "title": "Play the keys",
+      "text": "The keys F3 to G5 play the sound. OCT- and OCT+ shift the octave; press both together to reset it. MASTER sets the volume. Pitch bend, mod wheel, aftertouch and sustain from a MIDI keyboard work on every engine.",
+      "highlight": [
+        "KEYS",
+        "OCT-",
+        "OCT+",
+        "MASTER"
+      ],
+      "show": [
+        {
+          "note": "C4",
+          "ms": 300
+        },
+        {
+          "note": "E4",
+          "ms": 300
+        },
+        {
+          "note": "G4",
+          "ms": 300
+        },
+        {
+          "note": "C5",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "anyNote": true,
+        "hint": "Play a few notes"
+      }
+    },
+    {
+      "title": "Browse the sounds",
+      "text": "On HOME, PRESETS steps through every sound one by one: 407 factory sounds, then your user presets. It only browses on HOME and the PRESETS page, so a stray turn elsewhere never throws away the sound you are editing.",
+      "highlight": [
+        "PRESETS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "turn": "PRESETS",
+        "hint": "Turn PRESETS and play a key"
+      }
+    },
+    {
+      "title": "Jump by family",
+      "text": "ALGORITHM jumps to the next family of sounds: PAD, BASS, LEAD, PLCK, KEYS, STAB, FX and the rest. Use it to get near what you want, then PRESETS to pick the sound.",
+      "highlight": [
+        "ALGORITHM",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "wait": 300
+        },
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "turn": "ALGORITHM",
+        "hint": "Turn ALGORITHM to jump to another family"
+      }
+    },
+    {
+      "title": "The four knobs",
+      "text": "On HOME, KNOB1 to KNOB4 play the sound's main controls, shown on the screen. On a HYBRID sound (Clipper's own engine) they are CUT, RES, M1 and M2. On every other page the knobs set the four columns shown.",
+      "highlight": [
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "KNOB1",
+          "clicks": 3
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": -3
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "turn": "KNOB1",
+        "hint": "Turn a knob and play a key"
+      }
+    },
+    {
+      "title": "EDIT and SELECT",
+      "text": "Tap EDIT for the engine's pages (EDIT 1, EDIT 2), then VOICE 1-3, MACROS, LAYER, MORPH, RANDOM and UNDO (the sound's history and COMPARE). Tap the button again for the next page, or turn SELECT to walk the pages of the family both ways.",
+      "highlight": [
+        "EDIT",
+        "SELECT",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "EDIT"
+        },
+        {
+          "wait": 800
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 1
+        },
+        {
+          "wait": 800
+        },
+        {
+          "turn": "SELECT",
+          "clicks": -1
+        },
+        {
+          "wait": 500
+        }
+      ],
+      "await": {
+        "turn": "SELECT",
+        "hint": "Turn SELECT to see another EDIT page"
+      }
+    },
+    {
+      "title": "Envelopes and modulation",
+      "text": "ENV opens ENV (the amp ADSR), ENV DEST, ENV 2 and ENV 2 LOOP. LFO opens LFO, LFO DEST, MOD (velocity, mod wheel, aftertouch), LFO 2, LFO 3, the 12-slot MATRIX and the four-lane MOD SEQ. ENV and LFO only open pages: they have no held layer.",
+      "highlight": [
+        "ENV",
+        "LFO",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ENV"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "LFO"
+        },
+        {
+          "wait": 1000
+        }
+      ]
+    },
+    {
+      "title": "Effects",
+      "text": "Tap FX for the sends (FX), then FILTER (with MODL, the filter model), INSERT, INSERT 2, DLY, DLY 2 (MONO, PING, TAPE), REVERB (ROOM, PLATE, HALL, SHIMMER), CHORUS and EQ+COMP. While FX is held the keys still play.",
+      "highlight": [
+        "FX",
+        "SELECT",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "FX"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "FX"
+        },
+        {
+          "wait": 1000
+        }
+      ],
+      "await": {
+        "press": [
+          "FX"
+        ],
+        "hint": "Tap FX to see the next effects page"
+      }
+    },
+    {
+      "title": "Key, scale and chords",
+      "text": "The SCL button is SEL on Clipper's screen. Tap it for SEL (ROOT, SCL, QNT keys, CHORD) and SEL 2 (TRN, STRUM, VLEAD). Hold it and press a key to set the key; held, KNOB1 to KNOB4 set CHORD, SCALE, KEYS and TRANSPOSE.",
+      "highlight": [
+        "SCL",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "title": "Arpeggiator",
+      "text": "Tap ARP for the arpeggiator: KNOB1 sets MODE (OFF, UP, DN, UPDN, RND, ORD, CHORD, TURNG, a Turing machine, and more), then RATE, OCT and GATE. Tap again for ARP 2 and SPICE. Hold ARP for note repeat on the keys.",
+      "highlight": [
+        "ARP",
+        "KNOB1",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ARP"
+        },
+        {
+          "wait": 600
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 1500
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": -1
+        }
+      ],
+      "await": {
+        "press": [
+          "ARP"
+        ],
+        "hint": "Tap ARP to open the arpeggiator"
+      }
+    },
+    {
+      "title": "Play and tempo",
+      "text": "PLAY starts and stops the pattern. On HOME, SELECT sets the tempo (on a page it walks the pages instead). The tempo, swing and metronome are also on GLO's GLOBAL page.",
+      "highlight": [
+        "PLAY",
+        "SELECT",
+        "GLO",
+        "SCREEN"
+      ],
+      "await": {
+        "press": [
+          "PLAY"
+        ],
+        "hint": "Press PLAY to start, and again to stop"
+      }
+    },
+    {
+      "title": "Record a pattern",
+      "text": "REC records what you play into the pattern. While playing it records at once; while stopped it arms, and your first note starts the take. Tap REC again for REC OFF. Hold REC to clear the pattern.",
+      "highlight": [
+        "REC",
+        "PLAY",
+        "KEYS"
+      ]
+    },
+    {
+      "title": "The step sequencer",
+      "text": "Hold SEQ: the 16 white keys are the 16 steps. Hold a step and turn KNOB1 (note), KNOB2 (velocity), KNOB3 (ratchet) or KNOB4 (nudge). Tap SEQ for NOTES, a piano roll, then PATTERN (LEN, DIV, SWING, GATE). Hold EDIT to erase; OCT-/OCT+ undo and redo.",
+      "highlight": [
+        "SEQ",
+        "EDIT",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4"
+      ],
+      "show": [
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "await": {
+        "press": [
+          "SEQ"
+        ],
+        "hint": "Tap SEQ to see the next page"
+      }
+    },
+    {
+      "title": "The GLO pages",
+      "text": "Tap GLO for GLOBAL (tempo, swing, metronome, fine tune), MASTER, TUNING (scales and A4 from 400 to 480 Hz), SYSTEM, MIDI and MIDI 2. Hold GLO for a fill (key 9), a fill bar (key 10), tap tempo (key 16) and the level on KNOB1.",
+      "highlight": [
+        "GLO",
+        "KEYS",
+        "KNOB1",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "GLO"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "GLO"
+        },
+        {
+          "wait": 1000
+        }
+      ]
+    },
+    {
+      "title": "Save your sound",
+      "text": "What you play is kept by the autosave. To keep a sound, tap SAVE for PRESETS, then again for USER: KNOB1 picks a slot, and KNOB4 (SAVE) turned right twice within about 1.5 s stores it. KNOB2 LOADs, KNOB3 ERASEs.",
+      "highlight": [
+        "SAVE",
+        "KNOB1",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SAVE"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "SAVE"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "Menu and more",
+      "text": "Hold HOME for the menu (SCREEN, LIGHTS, AUDIO, SEQ, MIDI, SYS); SYS > ABOUT shows the version. The web editor reaches every parameter. More: github.com/isod89/clipper-fm1 (README and QUICKSTART).",
+      "highlight": [
+        "HOME",
+        "SCREEN"
+      ]
+    }
+  ]
+}

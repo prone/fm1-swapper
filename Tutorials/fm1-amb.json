@@ -1,0 +1,368 @@
+{
+  "format": 1,
+  "id": "fm1-amb",
+  "title": "AMB-1: a guided tour",
+  "summary": "A tour of AMB-1 1.3.2, the generative ambient firmware: the pieces and modes, the keys as the scale, next chord, freeze and rest, the seven pages and their knobs, the bells' octave, saving and where to read more.",
+  "firmwareVersion": "1.3.2",
+  "match": {
+    "repos": [
+      "charlesvestal/fm1-amb"
+    ],
+    "names": [
+      "fm1-amb"
+    ]
+  },
+  "sources": [
+    "https://github.com/charlesvestal/fm1-amb",
+    "https://github.com/charlesvestal/fm1-amb/blob/v1.3.2/docs/MANUAL.md",
+    "https://charlesvestal.github.io/fm1-amb/manual/",
+    "https://github.com/charlesvestal/fm1-amb/releases/tag/v1.3.2",
+    "https://github.com/charlesvestal/fm1-amb/blob/v1.3.2/app/ui.c",
+    "https://github.com/charlesvestal/fm1-amb/blob/v1.3.2/tests/scenarios/first.amb"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "steps": [
+    {
+      "title": "Welcome to AMB-1",
+      "text": "AMB-1 is a generative ambient machine inspired by Brian Eno's Music for Airports. It plays itself from power-on: breathing pad voices, bells on tape loops of unequal length, a gliding bass and a soft pulse, through echo and reverb. You tend it rather than play it. MASTER sets the volume.",
+      "highlight": [
+        "SCREEN",
+        "MASTER"
+      ]
+    },
+    {
+      "title": "Reading the screen",
+      "text": "The top line shows the piece, its root and mode, and the tempo. The ring shows the twelve notes (C at the top): the scale in green, the chord deeper, its name in the middle. Around it run the four bell loops. Along the bottom: the page name, seven page dots and the four knob values.",
+      "highlight": [
+        "SCREEN"
+      ]
+    },
+    {
+      "title": "Ask any button",
+      "text": "Not sure what a button does? Hold it for about a second (any button but PLAY) and a card explains it. Letting go after the card does nothing else, and a key, a knob or another button puts the card away.",
+      "highlight": [
+        "ENV",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "hold": "ENV"
+        },
+        {
+          "wait": 2000
+        },
+        {
+          "release": "ENV"
+        }
+      ]
+    },
+    {
+      "title": "Eight pieces",
+      "text": "PRESETS picks the piece: Garden, Departures, Voices, Afternoon, Night Bus, Shoreline, Glass and Tides. Each is a recipe for the whole garden, with its own key, tempo, sounds and amount of movement, and each remembers how you left it.",
+      "highlight": [
+        "PRESETS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "wait": 3000
+        },
+        {
+          "turn": "PRESETS",
+          "clicks": -1
+        }
+      ],
+      "await": {
+        "turn": "PRESETS",
+        "hint": "Turn PRESETS to hear another piece"
+      }
+    },
+    {
+      "title": "Pick a mode",
+      "text": "ALGORITHM picks the mode: Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian, or pentatonic major or minor. It loads that mode's scale on the current root. Once you change the scale with the keys, the mode reads Custom.",
+      "highlight": [
+        "ALGORITHM",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "wait": 2500
+        },
+        {
+          "turn": "ALGORITHM",
+          "clicks": -1
+        }
+      ]
+    },
+    {
+      "title": "The keys are the scale",
+      "text": "The keys light up for the notes in the scale. Press a lit key to take its note out, so nothing plays it; press it again to bring it back. Press an unlit key to add its note. Every octave of a note is the same key. The root always stays, and the scale keeps at least three notes.",
+      "highlight": [
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "note": "C5",
+          "ms": 200
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "note": "C5",
+          "ms": 200
+        }
+      ],
+      "await": {
+        "anyNote": true,
+        "hint": "Press a key to take a note out, then again to put it back"
+      }
+    },
+    {
+      "title": "Move to the next chord",
+      "text": "Every so often the pad moves to another chord in the scale by itself. Press EDIT to move on now: the pad changes chord at the start of the next bar (right away while resting). The thin bar at the top right of the garden fills on the way to the next chord.",
+      "highlight": [
+        "EDIT",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "EDIT"
+        },
+        {
+          "wait": 2500
+        }
+      ],
+      "await": {
+        "press": [
+          "EDIT"
+        ],
+        "hint": "Press EDIT for the next chord"
+      }
+    },
+    {
+      "title": "Freeze",
+      "text": "Press REC to freeze: the chord holds and the reverb rings on forever, while the bells and pulse go on dry above it. REC is lit while frozen. Press REC again to thaw.",
+      "highlight": [
+        "REC",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "REC"
+        },
+        {
+          "wait": 3000
+        },
+        {
+          "press": "REC"
+        }
+      ]
+    },
+    {
+      "title": "Rest and grow",
+      "text": "PLAY rests the garden: it stops growing and its sounds slowly fade as the reverb rings away. Press PLAY again and it grows back. PLAY is lit green while it grows.",
+      "highlight": [
+        "PLAY"
+      ],
+      "show": [
+        {
+          "press": "PLAY"
+        },
+        {
+          "wait": 2500
+        },
+        {
+          "press": "PLAY"
+        }
+      ]
+    },
+    {
+      "title": "The seven pages",
+      "text": "Each page has its own button: HOME the Garden, ENV the Pad, ARP the Bells, LFO the Bass, SEQ the Pulse, FX the Space and GLO the Setup. The lit button shows where you are. SELECT steps to the previous or next page in that order.",
+      "highlight": [
+        "HOME",
+        "ENV",
+        "ARP",
+        "LFO",
+        "SEQ",
+        "FX",
+        "GLO",
+        "SELECT"
+      ],
+      "show": [
+        {
+          "press": "ENV"
+        },
+        {
+          "wait": 900
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 1
+        },
+        {
+          "wait": 900
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 1
+        },
+        {
+          "wait": 900
+        },
+        {
+          "press": "HOME"
+        }
+      ],
+      "await": {
+        "turn": "SELECT",
+        "hint": "Turn SELECT to step through the pages"
+      }
+    },
+    {
+      "title": "The Garden page and tempo",
+      "text": "On HOME, KNOB1 to KNOB4 set Tempo, Evolve (how restless the loops are), Motion (how far the slow tide swings) and Drift (how long a chord lasts, 20 s to 5 min). From any page, hold HOME and turn SELECT to change the tempo.",
+      "highlight": [
+        "HOME",
+        "SELECT",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "hold": "HOME"
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 3
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "turn": "SELECT",
+          "clicks": -3
+        },
+        {
+          "release": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "Shape a layer",
+      "text": "On each layer's page KNOB1 is the level. Pad: Swell, Bright, Colour (Rhodes or Voices). Bells: Density, Tone, Octave. Bass: Octave, Glide, Fifth. Pulse: Hits, Swing, Hats. A few clicks move one step; a quick turn sweeps faster.",
+      "highlight": [
+        "ENV",
+        "ARP",
+        "LFO",
+        "SEQ",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ENV"
+        },
+        {
+          "wait": 500
+        },
+        {
+          "turn": "KNOB3",
+          "clicks": 4
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "turn": "KNOB3",
+          "clicks": -4
+        }
+      ],
+      "await": {
+        "turn": "KNOB1",
+        "hint": "Turn KNOB1 to set this layer's level"
+      }
+    },
+    {
+      "title": "The bells' octave",
+      "text": "OCT- and OCT+ move the bells down or up an octave, up to two either way, from any page. It is the same value as Octave on the Bells page (ARP).",
+      "highlight": [
+        "OCT-",
+        "OCT+",
+        "ARP"
+      ],
+      "show": [
+        {
+          "press": "OCT+"
+        },
+        {
+          "wait": 2500
+        },
+        {
+          "press": "OCT-"
+        }
+      ]
+    },
+    {
+      "title": "Space and Setup",
+      "text": "FX opens the Space: Echo, Echo time (a dotted quarter up to 4 bars), Reverb and Size. GLO opens the Setup: Root (the key, and the scale moves with it), Tune, MIDI out and Lights.",
+      "highlight": [
+        "FX",
+        "GLO",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "FX"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "press": "GLO"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "press": "HOME"
+        }
+      ],
+      "await": {
+        "press": [
+          "FX"
+        ],
+        "hint": "Press FX to open the Space page"
+      }
+    },
+    {
+      "title": "Saving and more",
+      "text": "AMB-1 saves all eight pieces by itself while resting; a dot at the top means unsaved changes. Press SAVE to save now. Hold SAVE for 1.5 s to put the piece back to its recipe. The full manual: charlesvestal.github.io/fm1-amb/manual.",
+      "highlight": [
+        "SAVE",
+        "SCREEN"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,388 @@
+{
+  "format": 1,
+  "id": "sloop-fm1",
+  "title": "SLOOP: a guided tour",
+  "summary": "A tour of SLOOP 2.8.5, the live groovebox firmware: the four tracks, sounds and drum kits, ghost and hard hits, looping by playing, note repeat, the step sequencer and DRUMS screen, your own samples in USR1-USR4, key and chords, punch-in effects, sections and saving.",
+  "firmwareVersion": "2.8.5",
+  "match": {
+    "repos": [
+      "isod89/sloop-fm1"
+    ],
+    "names": [
+      "sloop"
+    ]
+  },
+  "sources": [
+    "https://github.com/isod89/sloop-fm1",
+    "https://github.com/isod89/sloop-fm1/blob/main/README.md",
+    "https://github.com/isod89/sloop-fm1/blob/main/GUIDE.md",
+    "https://github.com/isod89/sloop-fm1/blob/main/SLOOP.md",
+    "https://github.com/isod89/sloop-fm1/blob/main/web/EDITOR_PROTOCOL.md",
+    "https://github.com/isod89/sloop-fm1/blob/main/tools/fm1_sample_upload.py",
+    "https://github.com/isod89/sloop-fm1/blob/main/firmware/src/panel.c",
+    "https://github.com/isod89/sloop-fm1/releases/tag/v2.8.5"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "steps": [
+    {
+      "title": "Welcome to SLOOP",
+      "text": "SLOOP turns the FM-1 into a four-track groovebox you play live: three synths and a drum machine. This is the TRACKS screen: tempo, transport and each track's sound and steps. Tap HOME to come back here (on TRACKS, HOME opens the visualiser; HOME again closes it). Hold HOME for the menu.",
+      "highlight": [
+        "SCREEN",
+        "HOME"
+      ]
+    },
+    {
+      "title": "Four tracks",
+      "text": "ALGORITHM picks the track you play, record and edit, on every screen: 1 blue, 2 green, 3 yellow (synths, sharing 8 voices) and 4 orange, the drum machine. The screen takes the selected track's colour. KNOB1 to KNOB4 set what the four dials at the bottom of the screen show.",
+      "highlight": [
+        "ALGORITHM",
+        "SCREEN",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        },
+        {
+          "wait": 300
+        },
+        {
+          "turn": "ALGORITHM",
+          "clicks": -1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        }
+      ],
+      "await": {
+        "turn": "ALGORITHM",
+        "hint": "Turn ALGORITHM to pick another track"
+      }
+    },
+    {
+      "title": "Play and pick a sound",
+      "text": "The keys play the selected track. OCT- and OCT+ shift the octave; both together reset it. PRESETS picks the track's sound from 153 factory sounds, browsed by kind (bass, keys, pads, leads...), then your 32 user presets. MASTER is the volume.",
+      "highlight": [
+        "KEYS",
+        "PRESETS",
+        "OCT-",
+        "OCT+",
+        "MASTER"
+      ],
+      "show": [
+        {
+          "note": "C4",
+          "ms": 400
+        },
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        },
+        {
+          "turn": "PRESETS",
+          "clicks": -1
+        }
+      ],
+      "await": {
+        "turn": "PRESETS",
+        "hint": "Turn PRESETS and play a key"
+      }
+    },
+    {
+      "title": "The drum track and its KIT",
+      "text": "On track 4 the 16 white keys are 16 drum sounds: F3 kick, G3 kick 2, A3 snare, B3 clap, C4 hat, D4 open hat... to G5 cowbell. A black key plays the white key on its left. PRESETS picks the kit: 37 kits (808, 909, BOOMBAP...), then USR1-USR4, USR3+4 and SYN1-SYN4.",
+      "highlight": [
+        "ALGORITHM",
+        "PRESETS",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 3
+        },
+        {
+          "wait": 300
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "note": "D4",
+          "ms": 300
+        },
+        {
+          "note": "G4",
+          "ms": 300
+        }
+      ],
+      "await": {
+        "anyNote": true,
+        "hint": "Play a few drum keys"
+      }
+    },
+    {
+      "title": "Ghost and hard hits",
+      "text": "The keys have no velocity, so on the drum track every hit gets a level: hold OCT- while you hit for GHOST notes, OCT+ for HARD ones; plain hits are NORM. Softer hits sound darker as well as quieter, and the level is recorded with the hit.",
+      "highlight": [
+        "OCT-",
+        "OCT+",
+        "KEYS"
+      ],
+      "show": [
+        {
+          "hold": "OCT-"
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "release": "OCT-"
+        },
+        {
+          "hold": "OCT+"
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "note": "C4",
+          "ms": 200
+        },
+        {
+          "release": "OCT+"
+        }
+      ]
+    },
+    {
+      "title": "Record a loop by playing",
+      "text": "On an empty project press REC, then play a beat freely: no click, no tempo. Press REC on the \"1\" after your last bar: the loop closes, its length sets the tempo, and it plays. Press REC again while it plays to record on top (overdub). PLAY starts and stops all four tracks.",
+      "highlight": [
+        "REC",
+        "PLAY",
+        "KEYS"
+      ],
+      "await": {
+        "press": [
+          "REC"
+        ],
+        "hint": "Press REC, play a beat, then REC again on the 1"
+      }
+    },
+    {
+      "title": "The REC screen, clear and undo",
+      "text": "While REC is armed, the knobs set MODE (KNOB1: free or tempo), LENGTH (KNOB2: 1, 2 or 4 bars), START (KNOB3: first note or a count-in) and QUANT (KNOB4). Hold REC about 2 s to clear the selected track. EDIT + OCT- is undo, EDIT + OCT+ redo.",
+      "highlight": [
+        "REC",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "EDIT",
+        "OCT-",
+        "OCT+"
+      ]
+    },
+    {
+      "title": "Note repeat",
+      "text": "Hold ARP and hold a key: it repeats on the grid, locked to the tempo, until you let go (a hat roll on C4). ARP + KNOB1 sets the RATE, 1/8 to 1/64. While recording, rolls are written as ratchets. Tap ARP for the arpeggiator's pages instead.",
+      "highlight": [
+        "ARP",
+        "KNOB1",
+        "KEYS"
+      ],
+      "await": {
+        "press": [
+          "ARP",
+          "C4"
+        ],
+        "hint": "Hold ARP and hold C4"
+      }
+    },
+    {
+      "title": "The step sequencer",
+      "text": "Hold SEQ: the 16 white keys become steps 1-16 (lit ones play). Press an empty step to set it, a set one to clear it. SEQ + KNOB1 picks the sound or note, KNOB2 the DIV, KNOB3 the swing, KNOB4 the length (up to 64 steps). SEQ + OCT- / OCT+ change the page of 16.",
+      "highlight": [
+        "SEQ",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "OCT-",
+        "OCT+"
+      ],
+      "show": [
+        {
+          "hold": "SEQ"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "SEQ"
+        }
+      ],
+      "await": {
+        "press": [
+          "SEQ",
+          "C4"
+        ],
+        "hint": "Hold SEQ and press C4 to set step 5"
+      }
+    },
+    {
+      "title": "Shape a step",
+      "text": "Hold SEQ and hold a step: KNOB2 sets its level (drums) or velocity (synths), KNOB3 a ratchet x1-x4, KNOB4 a nudge off the grid. PRESETS adds a parameter lock and ALGORITHM picks its parameter. OCT+ cycles the fill condition; OCT- clears nudge, locks and condition.",
+      "highlight": [
+        "SEQ",
+        "KEYS",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "PRESETS",
+        "ALGORITHM",
+        "OCT+",
+        "OCT-"
+      ]
+    },
+    {
+      "title": "The DRUMS screen",
+      "text": "With the drum track on TRACKS, tap SEQ (or EDIT) for the DRUMS grid: KNOB1 the sound, KNOB2 the step, KNOB3 a hit, KNOB4 its level; the white keys are that sound's steps. Tap again for the kit page and the sound page (tune and decay per sound). HOME goes back.",
+      "highlight": [
+        "SEQ",
+        "EDIT",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "HOME",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    },
+    {
+      "title": "Your own samples: USR1-USR4",
+      "text": "Four user slots, USR1-USR4, hold about 7.4 s each (22 kHz mono). You fill them from SLOOP's web editor over USB: its Samples page (up to 16 WAVs, or CHOP) or Drum kit page. Play a slot as a kit (PRESETS on track 4: USR1-USR4, or USR3+4, about 15 s) or with a synth's SAMPLE engine.",
+      "highlight": [
+        "PRESETS",
+        "ALGORITHM",
+        "SCREEN"
+      ]
+    },
+    {
+      "title": "Key and chords",
+      "text": "Hold SCL (SLOOP calls it SEL) and press a key to set the key of the song for all three synths. On a synth track, SCL + KNOB1 sets CHORD (TRIAD, 7TH, 9TH...): every white key then plays a chord of the key, one finger each. KNOB2 is the scale, KNOB3 KEYS, KNOB4 transpose.",
+      "highlight": [
+        "SCL",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4"
+      ],
+      "await": {
+        "press": [
+          "SCL",
+          "D4"
+        ],
+        "hint": "Hold SCL and press D4 to set the key to D"
+      }
+    },
+    {
+      "title": "Punch-in effects",
+      "text": "Hold FX and hold a key, white or black, for one of 27 punch-in effects on the whole mix: loops, stutter, reverse, tape stop, filter sweeps and more. Still holding FX, KNOB1 is the master filter, KNOB2 DUST, KNOB3 DUCK, KNOB4 the track's filter. Best while it plays.",
+      "highlight": [
+        "FX",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4"
+      ],
+      "show": [
+        {
+          "hold": "FX"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "FX"
+        }
+      ]
+    },
+    {
+      "title": "Sections and the song",
+      "text": "Hold SAVE: white keys 5-8 (C4-F4) save the loop into sections A-D, keys 1-4 (F3-B3) play them from the next bar; tap several while held for a chain. Key 13 (D5) switches loop / song, key 14 (E5) records the song as you play. Stopped for 2.5 s, SLOOP autosaves.",
+      "highlight": [
+        "SAVE",
+        "KEYS"
+      ],
+      "show": [
+        {
+          "hold": "SAVE"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "SAVE"
+        }
+      ]
+    },
+    {
+      "title": "Save a sound and learn more",
+      "text": "Tap SAVE on a page other than TRACKS for the SAVE pages: on USER, KNOB1 picks a slot (1-32) and KNOB4 saves, turned twice (GO). TOOLS has NEW. Keep several songs as web editor backups. More: the guide at github.com/isod89/sloop-fm1 (GUIDE.md).",
+      "highlight": [
+        "SAVE",
+        "KNOB1",
+        "KNOB4",
+        "SCREEN"
+      ]
+    }
+  ]
+}
