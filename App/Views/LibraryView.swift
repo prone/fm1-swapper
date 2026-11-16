@@ -76,6 +76,7 @@ struct LibraryView: View {
     @State private var urlText = ""
     @State private var message: String?
     @State private var working = false
+    @State private var path: [Firmware] = []
 
     var filtered: [Firmware] {
         firmwares.filter { f in
@@ -87,7 +88,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if firmwares.isEmpty {
                     ContentUnavailableView {
@@ -124,6 +125,25 @@ struct LibraryView: View {
             .navigationTitle("Library")
             .task(id: firmwares.count) { await DescriptionFiller.fill(firmwares, context: context) }
             .navigationDestination(for: Firmware.self) { FirmwareDetailView(firmware: $0) }
+            #if DEBUG
+            // simulator testing: SIMCTL_CHILD_FM1_DEMO_OPEN=<name> opens that firmware's page
+            .task(id: firmwares.count) {
+                // SIMCTL_CHILD_FM1_DEMO_IMPORT=/a.fwsc|owner/repo|Name:/b.fwsc seeds an empty library
+                if firmwares.isEmpty, let list = ProcessInfo.processInfo.environment["FM1_DEMO_IMPORT"] {
+                    for item in list.split(separator: ":") {
+                        let parts = item.split(separator: "|").map(String.init)
+                        let u = URL(fileURLWithPath: parts[0])
+                        if let d = try? Data(contentsOf: u) {
+                            _ = try? LibraryImport.add(d, fileName: u.lastPathComponent, name: parts.count > 2 ? parts[2] : nil,
+                                                      repo: parts.count > 1 ? parts[1] : "", context: context)
+                        }
+                    }
+                    return
+                }
+                if path.isEmpty, let n = ProcessInfo.processInfo.environment["FM1_DEMO_OPEN"],
+                   let f = firmwares.first(where: { $0.name.localizedCaseInsensitiveContains(n) }) { path = [f] }
+            }
+            #endif
             .searchable(text: $search, prompt: "Name, description, author")
             .toolbar {
                 if working { ProgressView() }
