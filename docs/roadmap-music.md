@@ -147,6 +147,39 @@ Built from features we have plus 1 and 3.
   VST3/AU/CLAP) would be compiled for iOS and wrapped as an AUv3. fm1-emu has an open AUv3 request, so this should be
   done with its author, not as a private fork.
 
+### 9. FM-1 Rack: several emulated FM-1s alongside the real one (L) · iOS ✓ / Web ✓ (desktop best)
+The idea (2026-11-16): find a pattern or song on the hardware, send it to the iPad, and run it in an emulated
+FM-1, then do that several times. Five emulators with different firmware and patterns play together, the hardware
+FM-1 stays live, and app **macros** change the emulators in time. Like owning several FM-1s.
+
+- **Capture from hardware → emulator.** "Send to Rack" takes a backup of what the FM-1 is running (the archive
+  protocols we already have: Felucca family, FM1 Open; not stock) and loads it into a new rack slot running the same
+  firmware package. The reverse, "send this slot to the FM-1", is a restore.
+  - Finding (fm1-emu, checked 2026-11-16): the emulator takes MIDI in, including SysEx and clock (`fm1_midi` per
+    byte), but has **no MIDI out** from the emulated firmware. The restore protocol needs the firmware's replies,
+    so the clean route is an upstream change: expose the firmware's USB MIDI out from the worklet. That matches an
+    open fm1-emu request ("Expose emulated firmware MIDI OUT to DAW hosts") and is also needed by feature 7. Propose
+    it to fm1-emu's author with a patch.
+  - Fallbacks: a timed "blind" restore without acknowledgements (fragile, test only), or writing the archive into
+    the emulator's flash snapshot (it already saves/loads whole flash images), which needs each firmware's flash
+    layout (per family).
+- **The rack.** N slots, each with firmware, state, MIDI channel and its own route from F1 (SMC-PAD to slot 2, a
+  keyboard to slot 4). A mixer per slot (level, pan, mute, solo) and a master to the device output. Each slot's
+  flash is saved per rack (a rack is a "set"), and a rack can be saved and loaded.
+- **One clock for everything.** The app clock (feature 1) drives every slot and the hardware FM-1, so patterns stay
+  locked. The hardware plays through its own output, so record with latency compensation (feature 2).
+- **Macros and scenes.** Buttons, or SMC-PAD pads, that run a list of actions on chosen slots, quantised to the next
+  beat, bar or 4 bars: send notes/CC/program changes, press panel controls (the tutorial engine's `__fm1do` already
+  drives buttons, knobs and keys), mute/unmute slots, change tempo. **Scenes** store mute/level states and switch
+  together. Setlists (6) can recall a rack.
+- **Performance limits.** Each emulator is a full CPU emulation. On iPad one instance showed about 18% load at
+  100 MHz; all emulators in one page share one audio thread, so 3 to 5 slots is the likely limit on iPad and fewer
+  on iPhone (to be measured in the spike). Desktop Chrome handles more. The native engine from 8b (fm1-emu's Rust
+  core) would run slots far more cheaply, so the rack should be built so that engine can replace the web view later.
+- **Spike first (S):** (1) run 2–5 emulators in one web view on iPad and iPhone and measure load and glitches;
+  (2) confirm emulated Felucca/SLOOP follow MIDI clock; (3) prototype the MIDI-out hook in fm1-emu locally and a
+  hardware → emulator restore of one Felucca project.
+
 ## Order
 
 | Step | What | Why then |
@@ -162,6 +195,7 @@ Built from features we have plus 1 and 3.
 | 8 | 7 MIDI capture | Small once 1 and 4 exist |
 | 9 | 8a Screen mirroring (with firmware authors) | Depends on upstream work |
 | 10 | 8b AUv3 emulator (with fm1-emu's author) | Largest; separate track |
+| 11 | 9 FM-1 Rack: spike, then rack + clock, capture (after the fm1-emu MIDI-out change), macros and scenes | Builds on 1, 2, 4, 6; the spike can run any time |
 
 Profiles keep growing in the background (a few firmwares per session with `/draft-profile`).
 
