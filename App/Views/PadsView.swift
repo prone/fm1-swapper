@@ -37,6 +37,7 @@ struct PadsView: View {
                     ForEach(hub.connected) { c in
                         LabeledContent { Text(c.model.displayName) } label: { Label(c.name, systemImage: "dot.radiowaves.left.and.right") }
                     }
+                    if let n = hub.padName { LabeledContent("Pad firmware", value: n) }
                     Button { pairing = true } label: { Label("Pair over Bluetooth…", systemImage: "antenna.radiowaves.left.and.right") }
                 } header: { Text("Controllers") } footer: {
                     Text("Turn the pad on and pair it here (Bluetooth leaves the USB port for the FM-1). It reconnects by itself after that. A USB hub works too.")
@@ -50,7 +51,14 @@ struct PadsView: View {
                         }
                     }
                     Toggle("The emulator (when open)", isOn: $hub.sendToEmulator)
-                    Toggle("Pad lights (experimental)", isOn: $hub.lights)
+                }
+
+                Section {
+                    Toggle("Light the pads in the layout's colours", isOn: $hub.lights)
+                    if hub.lights && !hub.lightStatus.isEmpty { Text(hub.lightStatus).font(.caption).foregroundStyle(.secondary) }
+                    if hub.lights { Toggle("Flash white while a pad is held", isOn: $hub.flashOnPress) }
+                } header: { Text("Pad lights") } footer: {
+                    Text("The SMC-PAD's lights don't follow MIDI: the app opens the pad's own light session (as M-VAVE's MIDI Suite does), over USB if the pad is plugged in, otherwise Bluetooth. Colours are saved into the pad's preset 1. Flashing on press rewrites a colour on every hit, so it is off by default. Verified on the full-size pad by others; the Pocket is untested.")
                 }
 
                 Section {
@@ -62,12 +70,13 @@ struct PadsView: View {
                     let m = hub.mapping(model)
                     Stepper("Output channel \(m.channel + 1)", value: Binding(get: { Int(m.channel) }, set: { v in hub.update(model, context: context) { $0.channel = UInt8(v) } }), in: 0...15)
                     Toggle("Pass other messages through", isOn: Binding(get: { m.passThroughUnmapped }, set: { v in hub.update(model, context: context) { $0.passThroughUnmapped = v } }))
+                    Toggle("PAD BANK B plays the same pads", isOn: Binding(get: { m.bankBMirrorsA }, set: { v in hub.update(model, context: context) { $0.bankBMirrorsA = v } }))
                     if let fw = currentFirmware, hub.active[model]?.firmware?.persistentModelID != fw.persistentModelID {
                         Button("Make a layout just for \(fw.name)") { hub.makeProfile(for: fw, model: model, context: context) }
                     }
                 } header: { Text("Layout") } footer: {
                     Text(model == .smcPadPocket
-                         ? "The Pocket has no knobs: hold the Shift pad (pad 16 by default) and the other pads step CCs down (1–8) and up (9–15). Each pad's shift action is editable."
+                         ? "The Pocket has no knobs, and its SHIFT button sends nothing to apps, so pad 16 is a held Shift pad: hold it and pads 1–8 step CC 30–37 down, 9–15 step them up. Each pad's shift action is editable."
                          : "Layouts are kept per model. A layout made for a firmware is picked automatically whenever that firmware is on the FM-1.")
                 }
 
@@ -89,6 +98,11 @@ struct PadsView: View {
                 hub.contextForLearn = context
                 if let m = hub.connected.first?.model, m != .generic { model = m }
                 hub.selectProfiles(context: context, firmware: currentFirmware)
+                #if DEBUG
+                if let id = ProcessInfo.processInfo.environment["FM1_DEMO_EDIT"], editing == nil {
+                    editing = hub.mapping(model).controls.first { $0.id == id }
+                }
+                #endif
             }
             .onChange(of: device.identity?.text) { hub.selectProfiles(context: context, firmware: currentFirmware) }
             .onChange(of: hub.connected) { if let m = hub.connected.first?.model, m != .generic { model = m } }
@@ -113,13 +127,30 @@ struct PadGrid: View {
     var body: some View {
         let m = hub.mapping(model)
         let pads = m.controls.filter(\.isPad)
-        let knobs = m.controls.filter { !$0.isPad }
+        let knobs = m.controls.filter(\.isKnob)
+        let buttons = m.controls.filter(\.isButton)
         VStack(spacing: 14) {
             if !knobs.isEmpty {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
                     ForEach(knobs) { k in
                         Button { onTap(k) } label: { KnobCell(control: k, value: hub.value(model, k.id), learning: isLearning(k)) }
                             .buttonStyle(.plain)
+                    }
+                }
+            }
+            if !buttons.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(buttons) { b in
+                        Button { onTap(b) } label: {
+                            VStack(spacing: 1) {
+                                Text(b.label).font(.caption2.weight(.semibold))
+                                Text("CC \(b.number)").font(.system(size: 9)).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(hub.value(model, b.id) > 0 ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.15)))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isLearning(b) ? Color.accentColor : .clear, lineWidth: 3))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -143,8 +174,9 @@ struct PadGrid: View {
 
 /// The colour a pad shows on screen, from the light colour index.
 func padColor(_ i: UInt8) -> Color {
-    let palette: [Color] = [.gray, .red, .orange, .yellow, .green, .teal, .blue, .purple, .pink]
-    return palette[Int(i) % palette.count]
+    if i == 0 { return .gray }
+    let (r, g, b) = PadPalette.color(i)
+    return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
 }
 
 struct PadCell: View {
@@ -254,9 +286,17 @@ struct ControlEditor: View {
                             Text("Set one pad to “Shift” to use these. Handy on the Pocket, which has no knobs.")
                         }
                         Section("Light") {
-                            Stepper(value: Binding(get: { Int(c.color) }, set: { v in set { $0.color = UInt8(v) }; hub.router.light(c, model: model, color: UInt8(v)) }), in: 0...127) {
-                                HStack { Circle().fill(padColor(c.color)).frame(width: 16); Text("Colour \(c.color)") }
-                            }
+                            Picker(selection: Binding(get: { Int(c.color) % PadPalette.names.count }, set: { v in
+                                set { $0.color = UInt8(v) }
+                                if hub.lightsReady, let n = c.input?.number {
+                                    let (r, g, b) = PadPalette.color(UInt8(v))
+                                    hub.testPaint(note: Int(n), r: r, g: g, b: b)
+                                }
+                            })) {
+                                ForEach(PadPalette.names.indices, id: \.self) { i in
+                                    Label { Text(PadPalette.names[i]) } icon: { Image(systemName: "circle.fill").foregroundStyle(padColor(UInt8(i))) }.tag(i)
+                                }
+                            } label: { HStack { Circle().fill(padColor(c.color)).frame(width: 16); Text("Colour") } }
                         }
                     }
                 }
@@ -265,7 +305,7 @@ struct ControlEditor: View {
                 .toolbar { Button("Done") { hub.learning = nil; dismiss() } }
             }
         }
-        .presentationDetents([.medium, .large])
+        .modifier(EditorSheetSize())
     }
 
     func outputPicker(_ value: ControlMap.Output, allowShift: Bool = true, _ set: @escaping (ControlMap.Output) -> Void) -> some View {
@@ -290,38 +330,53 @@ struct ControlEditor: View {
     }
 }
 
+/// iPhone: a half-height sheet that drags to full. iPad: a large page sheet, so the whole form shows.
+struct EditorSheetSize: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var size
+    func body(content: Content) -> some View {
+        if size == .regular {
+            content.presentationDetents([.large]).presentationSizing(.page)
+        } else {
+            content.presentationDetents([.medium, .large])
+        }
+    }
+}
+
 /// Protocol discovery: identity request, a log of everything the pads send (SysEx included),
 /// and a light test, to work out each model's real layout and M-VAVE's configuration messages.
 struct PadLabView: View {
     @Environment(ControllerHub.self) private var hub
     let model: ControllerModel
     @State private var testNote = 36
-    @State private var testVelocity = 1
-    @State private var testChannel = 9
+    @State private var rgb: (Double, Double, Double) = (240, 0, 140)
     @State private var raw = ""
 
     var body: some View {
         List {
             Section {
-                Button { hub.probe() } label: { Label("Ask the pads to identify themselves", systemImage: "questionmark.circle") }
-            } footer: { Text("Sends the standard MIDI identity request. Replies (manufacturer, model, firmware version) appear in the log as SysEx.") }
+                Button { hub.probe() } label: { Label("Ask the pad for its name and firmware", systemImage: "questionmark.circle") }
+                if let n = hub.padName { LabeledContent("Reports", value: n) }
+            } footer: { Text("Uses M-VAVE's service protocol (the same one the FM-1 uses). Over USB it goes to the pad's Private port; over Bluetooth the name arrives when the light session opens.") }
 
             Section {
-                Stepper("Note \(ControllerHub.noteName(testNote))", value: $testNote, in: 0...127)
-                Stepper("Velocity (colour) \(testVelocity)", value: $testVelocity, in: 0...127)
-                Stepper("Channel \(testChannel + 1)", value: $testChannel, in: 0...15)
+                Text(hub.lights ? (hub.lightStatus.isEmpty ? "Starting…" : hub.lightStatus) : "Turn on pad lights on the Pads screen first.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Stepper("Pad note \(ControllerHub.noteName(testNote))", value: $testNote, in: 36...67)
+                ColorRow(label: "Red", value: $rgb.0)
+                ColorRow(label: "Green", value: $rgb.1)
+                ColorRow(label: "Blue", value: $rgb.2)
                 HStack {
-                    Button("Light it") { hub.sendRaw([0x90 | UInt8(testChannel), UInt8(testNote), UInt8(testVelocity)], model: model) }
+                    RoundedRectangle(cornerRadius: 6).fill(Color(red: rgb.0 / 255, green: rgb.1 / 255, blue: rgb.2 / 255)).frame(width: 40, height: 24)
                     Spacer()
-                    Button("Off") { hub.sendRaw([0x80 | UInt8(testChannel), UInt8(testNote), 0], model: model) }
-                }.buttonStyle(.borderless)
-            } header: { Text("Light test (\(model.displayName))") } footer: {
-                Text("Many pad controllers light a pad when sent its own note; velocity picks the colour. Find a channel and velocities that work, and the layout's pad lights will use them.")
-            }
+                    Button("Paint") { hub.testPaint(note: testNote, r: UInt8(rgb.0), g: UInt8(rgb.1), b: UInt8(rgb.2)) }
+                    Button("Off") { hub.testPaint(note: testNote, r: 0, g: 0, b: 0) }
+                    Button("Repaint layout") { hub.lightAll() }
+                }.buttonStyle(.borderless).disabled(!hub.lightsReady)
+            } header: { Text("Light test") } footer: { Text("Notes 36–51 are bank A, 52–67 bank B.") }
 
-            Section("Send raw bytes") {
-                TextField("e.g. F0 7E 7F 06 01 F7", text: $raw).font(.body.monospaced()).textInputAutocapitalization(.characters)
-                Button("Send to \(model.displayName)") {
+            Section("Send raw MIDI bytes to the \(model.displayName)") {
+                TextField("e.g. B0 1E 40", text: $raw).font(.body.monospaced()).textInputAutocapitalization(.characters)
+                Button("Send") {
                     let bytes = raw.split(whereSeparator: { $0 == " " || $0 == "," }).compactMap { UInt8($0, radix: 16) }
                     if !bytes.isEmpty { hub.sendRaw(bytes, model: model) }
                 }
@@ -345,5 +400,17 @@ struct PadLabView: View {
             }
         }
         .navigationTitle("Pad lab")
+    }
+}
+
+struct ColorRow: View {
+    let label: String
+    @Binding var value: Double
+    var body: some View {
+        HStack {
+            Text(label).frame(width: 50, alignment: .leading).font(.caption)
+            Slider(value: $value, in: 0...255, step: 1)
+            Text("\(Int(value))").font(.caption.monospacedDigit()).frame(width: 32)
+        }
     }
 }

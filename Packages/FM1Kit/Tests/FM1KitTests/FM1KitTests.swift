@@ -261,17 +261,22 @@ final class MappingTests: XCTestCase {
     func testPadsAndKnobs() {
         var m = ControllerMapping.smcPadDefault()
         m.channel = 1
+        XCTAssertEqual(m.controls.count, 16 + 8 + 5)
         var e = MappingEngine(mapping: m)
-        // pad 1 (note 36 ch10) -> note 48 ch2
+        // pad 1 (note 36 ch10) -> note 36 ch2
         var r = e.transform([0x99, 36, 100])
-        XCTAssertEqual(r.messages, [[0x91, 48, 100]]); XCTAssertEqual(r.control, "pad-0")
+        XCTAssertEqual(r.messages, [[0x91, 36, 100]]); XCTAssertEqual(r.control, "pad-0")
         r = e.transform([0x99, 36, 0])
-        XCTAssertEqual(r.messages, [[0x81, 48, 0]])
+        XCTAssertEqual(r.messages, [[0x81, 36, 0]])
         r = e.transform([0x89, 37, 0])
-        XCTAssertEqual(r.messages, [[0x81, 49, 0]])
-        // knob 1 (CC70 ch1) -> CC70 ch2
-        r = e.transform([0xB0, 70, 33])
-        XCTAssertEqual(r.messages, [[0xB1, 70, 33]]); XCTAssertEqual(r.value, 33)
+        XCTAssertEqual(r.messages, [[0x81, 37, 0]])
+        // bank B pad 1 (note 52) is the same pad
+        r = e.transform([0x99, 52, 90])
+        XCTAssertEqual(r.messages, [[0x91, 36, 90]]); XCTAssertEqual(r.control, "pad-0")
+        // knob 1 (CC30 ch1) -> CC30 ch2; ">" is CC26
+        r = e.transform([0xB0, 30, 33])
+        XCTAssertEqual(r.messages, [[0xB1, 30, 33]]); XCTAssertEqual(r.value, 33)
+        XCTAssertEqual(e.transform([0xB0, 26, 127]).control, "btn-1")
         // unmapped passes through; system realtime does not
         XCTAssertEqual(e.transform([0xE0, 0, 64]).messages, [[0xE0, 0, 64]])
         XCTAssertEqual(e.transform([0xF8]).messages, [])
@@ -285,8 +290,8 @@ final class MappingTests: XCTestCase {
         m.controls[0].output = .program
         m.controls[0].number = 5
         var e = MappingEngine(mapping: m)
-        XCTAssertEqual(e.transform([0xB0, 70, 3]).messages, [[0xB0, 21, 67]])
-        XCTAssertEqual(e.transform([0xB0, 70, 127]).messages, [[0xB0, 21, 66]])
+        XCTAssertEqual(e.transform([0xB0, 30, 3]).messages, [[0xB0, 21, 67]])
+        XCTAssertEqual(e.transform([0xB0, 30, 127]).messages, [[0xB0, 21, 66]])
         XCTAssertEqual(e.transform([0x99, 36, 90]).messages, [[0xC0, 5]])
         XCTAssertEqual(e.transform([0x89, 36, 0]).messages, [])
         let back = ControllerMapping.decode(m.encoded())
@@ -297,18 +302,21 @@ final class MappingTests: XCTestCase {
         let m = ControllerMapping.defaultLayout(for: .smcPadPocket)
         XCTAssertEqual(m.controls.count, 16)
         var e = MappingEngine(mapping: m)
-        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0x90, 48, 100]])   // pad 1 plays
+        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0x90, 36, 100]])   // pad 1 plays
         XCTAssertEqual(e.transform([0x99, 51, 100]).messages, [])                  // hold shift (pad 16)
-        XCTAssertEqual(e.transform([0x99, 44, 100]).messages, [[0xB0, 70, 72]])    // pad 9: CC70 up
+        XCTAssertEqual(e.transform([0x99, 44, 100]).messages, [[0xB0, 30, 72]])    // pad 9: CC30 up
         XCTAssertEqual(e.transform([0x89, 44, 0]).messages, [])
-        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0xB0, 70, 64]])    // pad 1: CC70 down
+        XCTAssertEqual(e.transform([0x99, 36, 100]).messages, [[0xB0, 30, 64]])    // pad 1: CC30 down
         XCTAssertEqual(e.transform([0x89, 51, 0]).messages, [])                    // release shift
-        XCTAssertEqual(e.transform([0x99, 37, 90]).messages, [[0x90, 49, 90]])
+        XCTAssertEqual(e.transform([0x99, 37, 90]).messages, [[0x90, 37, 90]])
     }
 
     func testModelDetection() {
         XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD Pocket"), .smcPadPocket)
         XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD Bluetooth"), .smcPad)
+        XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD-Master"), .smcPad)
+        XCTAssertFalse(ControllerModel.isPlayPort("SMC-PAD-Private"))
+        XCTAssertEqual(ControllerModel.detect(portName: "SMC-PAD Bluetooth", deviceName: "SMC-PAD_004"), .smcPad)
         XCTAssertEqual(ControllerModel.detect(portName: "M-VAVE PAD"), .smcPad)
         XCTAssertEqual(ControllerModel.detect(portName: "Arturia KeyStep"), .generic)
     }

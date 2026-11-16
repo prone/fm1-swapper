@@ -29,7 +29,14 @@ final class ControllerHub {
 
     var sendToFM1: Bool { didSet { UserDefaults.standard.set(sendToFM1, forKey: "pad.toFM1"); updateOutputs() } }
     var sendToEmulator: Bool { didSet { UserDefaults.standard.set(sendToEmulator, forKey: "pad.toEmu") } }
-    var lights: Bool { didSet { UserDefaults.standard.set(lights, forKey: "pad.lights"); if lights { lightAll() } } }
+    /// Paint the pads with each layout's colours (needs the pad's light session: Bluetooth or USB).
+    var lights: Bool { didSet { UserDefaults.standard.set(lights, forKey: "pad.lights"); lights ? startLights() : stopLights() } }
+    /// Flash a pad white while it is held (writes the pad's settings on every press: experimental).
+    var flashOnPress: Bool { didSet { UserDefaults.standard.set(flashOnPress, forKey: "pad.flash") } }
+    private(set) var lightStatus = ""
+    /// The pad's own name and firmware ("SMC-PAD_004"), from the service protocol.
+    private(set) var padName: String?
+    private var lightSession: SMCPadLightSession?
     private(set) var fm1Port: String?
     private var deviceBusy = false
 
@@ -43,6 +50,7 @@ final class ControllerHub {
         sendToFM1 = d.object(forKey: "pad.toFM1") as? Bool ?? true
         sendToEmulator = d.object(forKey: "pad.toEmu") as? Bool ?? true
         lights = d.object(forKey: "pad.lights") as? Bool ?? false
+        flashOnPress = d.object(forKey: "pad.flash") as? Bool ?? false
         router = ControllerRouter(mappings: ControllerModel.allCases.map { ControllerMapping.defaultLayout(for: $0) })
         let sink = emulatorSink
         router.onOutput = { [weak self] m in
@@ -53,16 +61,27 @@ final class ControllerHub {
             Task { @MainActor in self?.received(source: source, raw: raw, result: result) }
         }
         router.onSysEx = { [weak self] source, m in
-            Task { @MainActor in self?.addLog(source, m.map { String(format: "%02X", $0) }.joined(separator: " "), sysex: true) }
+            Task { @MainActor in
+                guard let self else { return }
+                var text = m.map { String(format: "%02X", $0) }.joined(separator: " ")
+                if var u = Sinco.fromSysex(m) {
+                    for f in Sinco.frames(&u) {
+                        if let n = SMCPadProtocol.name(fromReply: f) { self.padName = n; text = "Pad reports \(n)" }
+                    }
+                }
+                self.addLog(source, text, sysex: true)
+            }
         }
         router.onSetupChanged = { [weak self] in Task { @MainActor in self?.refresh() } }
         refresh()
+        if lights { startLights() }
     }
 
     // MARK: devices
 
     func refresh() {
-        connected = router.controllers().map { Connected(name: $0.name, model: ControllerModel.detect(portName: $0.name)) }
+        connected = router.controllers().filter { ControllerModel.isPlayPort($0.name) }
+            .map { Connected(name: $0.name, model: ControllerModel.detect(portName: $0.name, deviceName: padName)) }
         updateOutputs()
     }
 
@@ -103,7 +122,7 @@ final class ControllerHub {
     func use(_ profile: ControllerProfile?, model: ControllerModel) {
         active[model] = profile
         router.setMapping(profile?.mapping ?? .defaultLayout(for: model))
-        if lights { lightAll(model: model) }
+        if lights { lightAll() }
     }
 
     /// The profile being edited for a model, created on first edit.
@@ -152,6 +171,12 @@ final class ControllerHub {
         }
         if let c = result.control {
             activity["\(model.rawValue)/\(c)"] = result.value ?? 0
+            if flashOnPress, let s = lightSession, s.isReady, raw[0] & 0xF0 == 0x80 || raw[0] & 0xF0 == 0x90, raw.count > 2,
+               let ctl = mapping(model).controls.first(where: { $0.id == c }) {
+                let on = raw[0] & 0xF0 == 0x90 && raw[2] > 0
+                let (r, g, b) = on ? (UInt8(240), UInt8(240), UInt8(240)) : PadPalette.color(ctl.color)
+                s.paint(note: Int(raw[1]), r: r, g: g, b: b)
+            }
         }
         addLog(source, describe(raw) + (result.messages.isEmpty ? "" : "  →  " + result.messages.map(describe).joined(separator: ", ")), sysex: false)
     }
@@ -198,19 +223,58 @@ final class ControllerHub {
 
     // MARK: lights and probes
 
-    func lightAll(model: ControllerModel? = nil) {
-        for m in model.map { [$0] } ?? models {
-            for c in mapping(m).controls where c.isPad { router.light(c, model: m) }
+    private func startLights() {
+        stopLights()
+        // USB when the pad's configuration port is there (no pairing needed), else Bluetooth.
+        let usb = SMCPadUSBChannel.privatePort(in: CoreMIDIProvider.shared) != nil
+        let channel: SincoChannel = usb ? SMCPadUSBChannel() : SMCPadBLEChannel()
+        let session = SMCPadLightSession(channel: channel)
+        session.onState = { [weak self] st in
+            guard let self else { return }
+            switch st {
+            case .idle: self.lightStatus = ""
+            case let .connecting(m): self.lightStatus = m
+            case let .unlocking(n, t): self.lightStatus = "Opening the light session (\(n)/\(t))…"
+            case .ready: self.lightStatus = "Lights on (\(usb ? "USB" : "Bluetooth"))"; self.lightAll()
+            case let .failed(m): self.lightStatus = m
+            }
+        }
+        session.onName = { [weak self] n in self?.padName = n; self?.addLog("pad", "Pad reports \(n)", sysex: true); self?.refresh() }
+        lightSession = session
+        session.start()
+    }
+
+    private func stopLights() {
+        lightSession?.stop()
+        lightSession = nil
+        lightStatus = ""
+    }
+
+    var lightsReady: Bool { lightSession?.isReady ?? false }
+
+    /// Paints every pad with its layout colour (bank B too when it mirrors bank A).
+    func lightAll() {
+        guard let s = lightSession, s.isReady else { return }
+        let model = connected.first?.model ?? .smcPad
+        let m = mapping(model)
+        for c in m.controls where c.isPad {
+            guard let input = c.input, input.kind == .note else { continue }
+            let (r, g, b) = PadPalette.color(c.color)
+            s.paint(note: Int(input.number), r: r, g: g, b: b)
+            if m.bankBMirrorsA, input.number < 112 { s.paint(note: Int(input.number) + 16, r: r, g: g, b: b) }
         }
     }
 
-    func lightsOff() {
-        for m in models { for c in mapping(m).controls where c.isPad { router.light(c, model: m, color: 0) } }
+    func testPaint(note: Int, r: UInt8, g: UInt8, b: UInt8) {
+        guard let s = lightSession, s.isReady else { addLog("app", "Turn on pad lights first", sysex: false); return }
+        s.paint(note: note, r: r, g: g, b: b)
+        addLog("app", "Paint note \(note) → \(r),\(g),\(b)", sysex: false)
     }
 
     func probe() {
-        addLog("app", "Sent identity request F0 7E 7F 06 01 F7", sysex: true)
+        addLog("app", "Asked the pad for its name and version", sysex: true)
         router.probeIdentity()
+        if lightSession == nil { addLog("app", "Over Bluetooth the name arrives when the light session opens", sysex: false) }
     }
 
     func sendRaw(_ bytes: [UInt8], model: ControllerModel) {

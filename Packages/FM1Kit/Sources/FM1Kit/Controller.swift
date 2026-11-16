@@ -37,8 +37,12 @@ public enum ControllerModel: String, Codable, Sendable, CaseIterable, Identifiab
     }
     public var padCount: Int { 16 }
     public var knobCount: Int { self == .smcPadPocket ? 0 : 8 }
+    /// The full-size pad's edge buttons that send MIDI: < > (CC 25/26) and three more (CC 27-29).
+    public var buttonCount: Int { self == .smcPad ? 5 : 0 }
 
-    /// Best guess from the CoreMIDI port name (USB product name or Bluetooth name).
+    /// Best guess from the CoreMIDI port name. Over USB the pad is "SMC-PAD-Master" (notes, CCs),
+    /// "SMC-PAD-Private" (configuration) and a third port for its MIDI OUT jack; over Bluetooth it is
+    /// "SMC-PAD Bluetooth". The Pocket's names are unconfirmed: anything with "pocket" is taken as one.
     public static func detect(portName: String) -> ControllerModel {
         let n = portName.lowercased()
         guard n.contains("smc") || (n.contains("vave") && n.contains("pad")) else { return .generic }
@@ -47,9 +51,14 @@ public enum ControllerModel: String, Codable, Sendable, CaseIterable, Identifiab
 
     /// Refines the guess with a MIDI identity reply (F0 7E id 06 02 manufacturer family model version F7).
     /// The product codes are filled in once both pads have answered; until then the name decides.
-    public static func detect(portName: String, identity: [UInt8]?) -> ControllerModel {
-        detect(portName: portName)
+    /// From the pad's own name ("SMC-PAD_004" from the service protocol's name query) when known.
+    public static func detect(portName: String, deviceName: String?) -> ControllerModel {
+        if let n = deviceName?.lowercased(), n.contains("smc") { return n.contains("pocket") ? .smcPadPocket : .smcPad }
+        return detect(portName: portName)
     }
+
+    /// Ports that carry the pad's playing messages (not its configuration port).
+    public static func isPlayPort(_ name: String) -> Bool { !name.lowercased().contains("private") }
 }
 
 /// One pad or knob: what it sends and what the app turns it into.
@@ -87,6 +96,18 @@ public struct ControlMap: Codable, Hashable, Sendable, Identifiable {
     }
 
     public var isPad: Bool { id.hasPrefix("pad") }
+    public var isKnob: Bool { id.hasPrefix("knob") }
+    public var isButton: Bool { id.hasPrefix("btn") }
+}
+
+/// Pad light colours (the index stored in ControlMap.color), as RGB for the pad's LEDs.
+public enum PadPalette {
+    public static let names = ["Off", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink", "White"]
+    public static let rgb: [(UInt8, UInt8, UInt8)] = [
+        (0, 0, 0), (240, 0, 0), (240, 100, 0), (240, 240, 0), (0, 220, 0),
+        (0, 200, 160), (0, 60, 240), (150, 0, 240), (240, 0, 140), (240, 240, 240),
+    ]
+    public static func color(_ i: UInt8) -> (UInt8, UInt8, UInt8) { rgb[Int(i) % rgb.count] }
 }
 
 /// A layout for one controller model and where its messages go.
@@ -98,46 +119,76 @@ public struct ControllerMapping: Codable, Hashable, Sendable {
     public var controls: [ControlMap]
     /// Send messages from controls that have no mapping unchanged (keyboards, wheels...).
     public var passThroughUnmapped: Bool
-    /// Pad lights: channel the pad listens on for LED notes.
-    public var lightChannel: UInt8
+    /// PAD BANK moves the pads up 16 notes (52-67) and the pad remembers it. When true, bank B
+    /// notes act as the same pads; when false they pass through untouched.
+    public var bankBMirrorsA: Bool
 
     public init(name: String, model: ControllerModel, channel: UInt8, controls: [ControlMap],
-                passThroughUnmapped: Bool = true, lightChannel: UInt8 = 9) {
+                passThroughUnmapped: Bool = true, bankBMirrorsA: Bool = true) {
         self.name = name; self.model = model; self.channel = channel; self.controls = controls
-        self.passThroughUnmapped = passThroughUnmapped; self.lightChannel = lightChannel
+        self.passThroughUnmapped = passThroughUnmapped; self.bankBMirrorsA = bankBMirrorsA
     }
 
+    enum CodingKeys: String, CodingKey { case name, model, channel, controls, passThroughUnmapped, bankBMirrorsA }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        model = try c.decode(ControllerModel.self, forKey: .model)
+        channel = try c.decode(UInt8.self, forKey: .channel)
+        controls = try c.decode([ControlMap].self, forKey: .controls)
+        passThroughUnmapped = try c.decodeIfPresent(Bool.self, forKey: .passThroughUnmapped) ?? true
+        bankBMirrorsA = try c.decodeIfPresent(Bool.self, forKey: .bankBMirrorsA) ?? true
+    }
+
+    // The stock layout, measured on a full-size SMC-PAD (github.com/spectalive/smc-pad): pads are notes
+    // 36-51 on channel 10 (pad 1 bottom left), encoders CC 30-37 absolute on channel 1, < > CC 25/26,
+    // the other three edge buttons CC 27-29. Defaults send the same numbers on, so nothing changes
+    // until a control is edited. The Pocket is assumed to match until it has been captured.
     static func pad(_ i: Int) -> ControlMap {
         let input = MIDIInputKey(kind: .note, channel: 9, number: UInt8(36 + i))
         return ControlMap(id: "pad-\(i)", label: "Pad \(i + 1)", input: input, output: .note,
-                          number: UInt8(48 + i), color: UInt8(1 + i % 7))
+                          number: UInt8(36 + i), color: UInt8(1 + i % 8))
     }
 
     static func knob(_ i: Int) -> ControlMap {
-        let input = MIDIInputKey(kind: .cc, channel: 0, number: UInt8(70 + i))
-        return ControlMap(id: "knob-\(i)", label: "Knob \(i + 1)", input: input, output: .cc, number: UInt8(70 + i))
+        let input = MIDIInputKey(kind: .cc, channel: 0, number: UInt8(30 + i))
+        return ControlMap(id: "knob-\(i)", label: "Knob \(i + 1)", input: input, output: .cc, number: UInt8(30 + i))
     }
 
-    /// Starting layout for a model: pads play a chromatic run from note 48 (C2), knobs send CC 70-77, channel 1.
-    /// Inputs are guesses until learned. On the Pocket, pad 16 is shift: held, pads 1-8 step CC 70-77
-    /// down and pads 9-15 step CC 70-76 up, standing in for the knobs it lacks.
+    static func button(_ i: Int) -> ControlMap {
+        let input = MIDIInputKey(kind: .cc, channel: 0, number: UInt8(25 + i))
+        let label = ["<", ">", "Button 3", "Button 4", "Button 5"][i]
+        return ControlMap(id: "btn-\(i)", label: label, input: input, output: .cc, number: UInt8(25 + i))
+    }
+
+    /// Starting layout for a model (the stock layout above). The Pocket has no knobs, and its own
+    /// SHIFT button sends nothing, so pad 16 is a held Shift pad: held, pads 1-8 step CC 30-37 down
+    /// and pads 9-15 step CC 30-36 up, standing in for the encoders.
     public static func defaultLayout(for model: ControllerModel, name: String = "Default") -> ControllerMapping {
         var pads: [ControlMap] = (0..<model.padCount).map { pad($0) }
         let knobs: [ControlMap] = (0..<model.knobCount).map { knob($0) }
+        let buttons: [ControlMap] = (0..<model.buttonCount).map { button($0) }
         if model == .smcPadPocket {
             pads[15].output = .shift
             pads[15].label = "Shift"
+            pads[15].color = 9
             for i in 0..<15 {
                 pads[i].shiftOutput = i < 8 ? .ccDown : .ccUp
-                pads[i].shiftNumber = UInt8(70 + i % 8)
+                pads[i].shiftNumber = UInt8(30 + i % 8)
             }
         }
-        return ControllerMapping(name: name, model: model, channel: 0, controls: pads + knobs)
+        return ControllerMapping(name: name, model: model, channel: 0, controls: pads + knobs + buttons)
     }
 
     public static func smcPadDefault(name: String = "Default") -> ControllerMapping { defaultLayout(for: .smcPad, name: name) }
 
-    public func control(for key: MIDIInputKey) -> ControlMap? { controls.first { $0.input == key } }
+    public func control(for key: MIDIInputKey) -> ControlMap? {
+        if let c = controls.first(where: { $0.input == key }) { return c }
+        // bank B: the same pad 16 notes up
+        guard bankBMirrorsA, key.kind == .note, key.number >= 16 else { return nil }
+        let a = MIDIInputKey(kind: .note, channel: key.channel, number: key.number - 16)
+        return controls.first { $0.isPad && $0.input == a }
+    }
 
     public func encoded() -> Data { (try? JSONEncoder().encode(self)) ?? Data() }
     public static func decode(_ d: Data) -> ControllerMapping? { try? JSONDecoder().decode(ControllerMapping.self, from: d) }
@@ -320,12 +371,14 @@ public final class ControllerRouter: @unchecked Sendable {
         return byName.map { Endpoint(name: $0.key, sourceUID: $0.value.0, destinationUID: $0.value.1) }.sorted { $0.name < $1.name }
     }
 
+    /// Listens to the configuration port too, for SysEx replies (identity) only.
     public func reconnect() {
         lock.lock(); defer { lock.unlock() }
         var want: Set<MIDIEndpointRef> = []
         for i in 0..<MIDIGetNumberOfSources() {
             let s = MIDIGetSource(i)
-            if matches(CoreMIDIProvider.name(of: s)) { want.insert(s) }
+            let n = CoreMIDIProvider.name(of: s)
+            if matches(n), ControllerModel.isPlayPort(n) { want.insert(s) }
         }
         for s in want.subtracting(connectedSources) {
             MIDIPortConnectSource(inPort, s, UnsafeMutableRawPointer(bitPattern: Int(s)))
@@ -383,15 +436,11 @@ public final class ControllerRouter: @unchecked Sendable {
         }
     }
 
-    /// Lights a pad the way many pad controllers do: a note-on to the pad's own note, velocity = colour.
-    /// Unconfirmed for the SMC-PADs: the Lab screen tests it.
-    public func light(_ control: ControlMap, model: ControllerModel, color: UInt8? = nil) {
-        guard let input = control.input, input.kind == .note else { return }
-        let ch = mapping(for: model).lightChannel
-        let v = color ?? control.color
-        sendToController(v == 0 ? [0x80 | ch, input.number, 0] : [0x90 | ch, input.number, v & 0x7F], model: model)
+    /// Asks over USB for the pad's name and version ("SMC-PAD_004"); the reply arrives via onSysEx
+    /// from the Private port. Over Bluetooth the light session asks instead.
+    public func probeIdentity() {
+        for e in endpoints() where matches(e.name) && !ControllerModel.isPlayPort(e.name) {
+            if let d = e.destinationUID { send(Sinco.sysex(Sinco.queryName), toUID: d) }
+        }
     }
-
-    /// MIDI universal identity request (answers with manufacturer, family and firmware version).
-    public func probeIdentity(model: ControllerModel? = nil) { sendToController([0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7], model: model) }
 }
