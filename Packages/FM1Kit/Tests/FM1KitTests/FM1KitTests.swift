@@ -158,6 +158,30 @@ final class UpdaterTests: XCTestCase {
         XCTAssertEqual(dev.installed, pkg.logicalImage)
     }
 
+    func testFirmwareThatRefusesExplainsTheChip() async throws {
+        let pkg = try FirmwarePackage(data: makePackage(product: "FM-1_918"))
+        let dev = VirtualFM1(identity: "FM-1_915")
+        dev.refuse = "app"
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        do { _ = try await up.install(pkg); XCTFail("should refuse") } catch let e as FM1Error {
+            XCTAssertEqual(e, .refused(inLoader: false))
+            XCTAssertTrue(e.localizedDescription.contains("0xB36014"))
+        }
+        XCTAssertNil(dev.installed)
+        XCTAssertFalse(dev.loader)
+    }
+
+    func testLoaderThatRefusesExplainsTheChip() async throws {
+        let pkg = try FirmwarePackage(data: makePackage(product: "FM-1_918"))
+        let dev = VirtualFM1(identity: "FM-1_015")
+        dev.refuse = "loader"
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        do { _ = try await up.install(pkg); XCTFail("should refuse") } catch let e as FM1Error {
+            XCTAssertEqual(e, .refused(inLoader: true))
+        }
+        XCTAssertTrue(dev.loader)
+    }
+
     func testNotFoundWithoutDevice() async {
         let dev = VirtualFM1(identity: "FM-1_015")
         dev.attached = false

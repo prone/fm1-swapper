@@ -213,6 +213,7 @@ public final class OTAUpdater: @unchecked Sendable {
         await sleep(timing.afterUpgrade)
         let s1 = try await serve(dev.link, image: image, finish: OTAProtocol.finishCheck, idle: timing.idleCheck) { onStep(.verify($0)) }
         dev.link.close()
+        if !s1.finished, !s1.lost, s1.served == 0 { throw FM1Error.refused(inLoader: false) }
         guard s1.finished else {
             let why = s1.lost ? "was disconnected" : "stopped"
             throw s1.lost ? FM1Error.lost("The FM-1 \(why) after \(s1.served) requests. Nothing was written.")
@@ -237,6 +238,7 @@ public final class OTAUpdater: @unchecked Sendable {
         await sleep(timing.afterUpgrade)
         let s2 = try await serve(ota.link, image: image, finish: OTAProtocol.finishWrite, idle: timing.idleWrite) { onStep(.write($0)) }
         ota.link.close()
+        if !s2.finished, !s2.lost, s2.served == 0 { throw FM1Error.refused(inLoader: true) }
         guard s2.finished else {
             let msg = "The update loader \(s2.lost ? "was disconnected" : "stopped") after \(s2.served) requests. Replug the FM-1 and choose Resume to finish."
             throw s2.lost ? FM1Error.lost(msg) : FM1Error.stopped(msg)

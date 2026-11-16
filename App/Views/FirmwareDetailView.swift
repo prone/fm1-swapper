@@ -196,8 +196,31 @@ struct FirmwareDetailView: View {
                     LabeledContent("SHA-256") { Text(firmware.sha256.prefix(16) + "…").font(.caption.monospaced()).textSelection(.enabled) }
                 }
                 if firmware.isStock { Label("Unmodified official M-VAVE file", systemImage: "checkmark.seal").foregroundStyle(.green) }
+                if firmware.hasPackage {
+                    let chip = FirmwareHub.shared.chip(sha256: firmware.sha256)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("Flash chip")
+                            Spacer()
+                            if let chip { Text(chip.badge).font(.caption.weight(.semibold)).foregroundStyle(chip.color) }
+                        }
+                        Text(chip?.explanation ?? FlashChipSupport.unknownExplanation).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !firmware.isStock {
+                        LabeledContent("Checksum", value: FirmwareHub.shared.bySha[firmware.sha256] != nil ? "Matches The Firmware Hub" : "Not in The Firmware Hub's list")
+                    }
+                }
                 LabeledContent("Added", value: firmware.addedAt.formatted(date: .abbreviated, time: .omitted))
                 if let u = URL(string: firmware.sourceURL), isWebLink(u) { Button("Source") { openURL(u) } }
+                if let (e, exact) = FirmwareHub.shared.entry(for: firmware) {
+                    if let u = e.editor { Button("Editor") { openURL(u) } }
+                    if let u = e.manual { Button("Manual") { openURL(u) } }
+                    if let u = e.play { Button("Play in browser") { openURL(u) } }
+                    if let u = e.talk { Button("Discussions") { openURL(u) } }
+                    if !exact, e.editor ?? e.manual ?? e.play ?? e.talk != nil {
+                        Text("Links for \(e.name) \(e.version), from The Firmware Hub").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
                 if firmware.hasPackage {
                     ShareFilesButton(files: {
                         firmware.packageData.map { [(firmware.fileName.isEmpty ? "\(firmware.product).fwsc" : firmware.fileName, $0)] } ?? []
@@ -208,6 +231,7 @@ struct FirmwareDetailView: View {
         .navigationTitle(firmware.name)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { try? context.save() }
+        .task { await FirmwareHub.shared.load() }
         .sheet(isPresented: $showSwap) { SwapSheet(target: firmware) }
         .fullScreenCover(isPresented: $showEmulator) {
             if let p = firmware.packageData { EmulatorScreen(title: firmware.name, package: p, fileName: firmware.emulatorFileName, firmware: firmware) }

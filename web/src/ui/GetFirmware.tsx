@@ -111,7 +111,7 @@ export function GetFirmware({ lib, opened }: { lib: Library; opened: (id: string
               </div>
               {f.what && <div class="small dim">{f.what}</div>}
               <div class="small faint">
-                {f.stars ? `★ ${f.stars} · ` : ""}{f.lic ? `${f.lic} · ` : ""}{f.date ? `updated ${ago(Date.parse(f.date))}` : ""}
+                {f.stars ? `★ ${f.stars} · ` : ""}{f.lic ? `${f.lic} · ` : ""}{f.date ? `updated ${new Date(f.date + "T12:00:00").toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
                 {f.play && <> · <a href={f.play} target="_blank" rel="noopener noreferrer">Play in browser ↗</a></>}
                 {f.editor && <> · <a href={f.editor} target="_blank" rel="noopener noreferrer">Editor ↗</a></>}
                 {f.repo && <> · <a href={`https://github.com/${f.repo}`} target="_blank" rel="noopener noreferrer">GitHub ↗</a></>}

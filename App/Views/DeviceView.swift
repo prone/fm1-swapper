@@ -11,6 +11,11 @@ struct DeviceView: View {
     @AppStorage("includeSamples") private var includeSamples = true
     @State private var showLog = false
     @State private var resumeTarget: Firmware?
+    @State private var official: Firmware?
+    @State private var gettingOfficial = false
+    @State private var officialError: String?
+    @AppStorage("myFlashChip") private var myChip: MyFlashChip = .unknown
+    @Environment(\.openURL) private var openURL
 
     private var currentFirmware: Firmware? {
         guard let id = device.identity, !id.isLoader else { return nil }
@@ -70,6 +75,30 @@ struct DeviceView: View {
                     } header: { Label("Update mode", systemImage: "exclamationmark.triangle") }
                 }
 
+                if case let .connected(id, _) = device.connection, id.family != .official {
+                    Section {
+                        Button {
+                            Task {
+                                gettingOfficial = true
+                                defer { gettingOfficial = false }
+                                do { official = try await FirmwareHub.shared.officialFirmware(in: firmwares, context: context); officialError = nil }
+                                catch { officialError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+                            }
+                        } label: {
+                            HStack { Label("Back to official firmware…", systemImage: "arrow.uturn.backward.circle"); if gettingOfficial { Spacer(); ProgressView() } }
+                        }
+                        .disabled(device.busy || gettingOfficial)
+                        if let officialError { Text(officialError).font(.footnote).foregroundStyle(.red) }
+                    } footer: { Text("Puts M-VAVE's own firmware back (V15 unless your library has V16), checked against its known checksum. It works on every FM-1.") }
+                }
+
+                Section {
+                    Picker("This FM-1's flash chip", selection: $myChip) { ForEach(MyFlashChip.allCases) { Text($0.label).tag($0) } }
+                    Button("About the two chips, and the rescue guide") { openURL(FirmwareHub.rescueURL) }
+                } header: { Text("Flash chip") } footer: {
+                    Text("FM-1s sold since autumn 2026 have a different flash chip. Some firmware only knows the older one: on a newer FM-1 it loses saves at power-off and can't update itself. The chip can't be read over USB, so tell the app which you have (M-Flasher shows it in download mode); installs of firmware that don't support it will warn you.")
+                }
+
                 InstallsSection()
 
                 Section {
@@ -84,6 +113,7 @@ struct DeviceView: View {
                 }
             }
             .navigationTitle("FM-1")
+            .sheet(item: $official) { SwapSheet(target: $0) }
             .refreshable { await device.refresh() }
             .toolbar {
                 Button { Task { await device.refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(device.busy)

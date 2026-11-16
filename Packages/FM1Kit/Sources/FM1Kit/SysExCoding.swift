@@ -139,9 +139,16 @@ public enum FM1Error: LocalizedError, Equatable {
     case protocolError(String)
     case unsupported(String)
     case device(String)
+    /// The firmware or its update loader answered nothing: most often a firmware that doesn't know the newer
+    /// FM-1 flash chip (0xB36014). `inLoader`: the FM-1 is in update mode. See docs/flash-chips.md.
+    case refused(inLoader: Bool)
+
+    public static let rescueURL = "https://thefirmwarehub.com/tools/rescue/#chip"
 
     public var errorDescription: String? {
         switch self {
+        case .refused(false): "The FM-1's current firmware didn't start the update. Nothing was written. On a newer FM-1 (flash chip 0xB36014), a firmware that only knows the older chip can't update itself, and trying again won't help: the way out is download mode and M-Flasher (\(FM1Error.rescueURL)). Otherwise, check that this firmware supports updates over USB."
+        case .refused(true): "The update loader didn't start writing. The FM-1 is in update mode and nothing new was written. On a newer FM-1 (flash chip 0xB36014), this package's loader may not support the chip; installing it again won't help. Power-cycle the FM-1, then follow the rescue guide (download mode and M-Flasher): \(FM1Error.rescueURL)"
         case .notFound: "FM-1 not found. Check the USB cable, and close any other app using the FM-1."
         case let .wrongModel(d, p): "The device is \(d), but the package is for \(p)."
         case let .stopped(m), let .lost(m), let .badRequest(m), let .badPackage(m), let .timeout(m),

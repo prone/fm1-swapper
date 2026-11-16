@@ -13,13 +13,25 @@ struct CatalogView: View {
     @State private var error: String?
     @State private var search = ""
     @AppStorage("catalogSort") private var sort: CatalogSort = .updated
+    @State private var kind: String?
+    @State private var newChipOnly = UserDefaults.standard.string(forKey: "myFlashChip") == MyFlashChip.newer.rawValue
+    private var hub: FirmwareHub { .shared }
 
+    /// Community firmware that isn't in The Firmware Hub's list (unchecked, no chip information).
     var results: [CatalogEntry] {
-        let sorted = sort.apply(community)
+        let sorted = sort.apply(community.filter { e in e.repo.map { hub.byRepo[$0.lowercased()] == nil } ?? true })
         guard !search.isEmpty else { return sorted }
         return sorted.filter { e in
             [e.repo, e.description].compactMap { $0 }.contains { $0.localizedCaseInsensitiveContains(search) }
         }
+    }
+
+    var hubResults: [HubFirmware] {
+        let l = hub.list.filter { f in
+            !f.linkOnly && (kind.map { f.kind.contains($0) } ?? true) && (!newChipOnly || f.chip != .olderOnly)
+                && (search.isEmpty || [f.name, f.author, f.what].contains { $0.localizedCaseInsensitiveContains(search) })
+        }
+        return sort.apply(l)
     }
 
     var body: some View {
@@ -49,27 +61,55 @@ struct CatalogView: View {
                     } header: { Text("Featured").padding(.leading, 4) }
                 }
                 Section {
-                    if loading { HStack { ProgressView(); Text("Loading the community catalog…").foregroundStyle(.secondary) } }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            kindChip(nil, "All")
+                            ForEach(FirmwareHub.kinds, id: \.0) { kindChip($0.0, $0.1) }
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                    Toggle("Only firmware that works on newer FM-1s", isOn: $newChipOnly)
+                    if !hub.loaded { HStack { ProgressView(); Text("Loading The Firmware Hub's list…").foregroundStyle(.secondary) } }
+                    ForEach(hubResults) { f in
+                        NavigationLink { HubDetail(entry: f) } label: { HubRow(entry: f, have: firmwares.contains { $0.sha256 == f.sha256 }) }
+                    }
+                } header: {
+                    Text("All firmware (\(hubResults.count)) · \(sort.label.lowercased())")
+                } footer: {
+                    Text("\(FirmwareHub.attribution) Downloads are checked against the SHA-256 the hub publishes. Community firmware is unofficial: you install it at your own risk.")
+                }
+                Section {
+                    if loading { HStack { ProgressView(); Text("Loading the GitHub list…").foregroundStyle(.secondary) } }
                     if let error { Text(error).foregroundStyle(.red).font(.footnote) }
                     ForEach(results) { e in
                         NavigationLink { CommunityDetail(entry: e) } label: { CommunityRow(entry: e) }
                     }
                 } header: {
-                    Text("Community (\(results.count)) · \(sort.label.lowercased())")
+                    Text("More on GitHub (\(results.count))")
                 } footer: {
-                    Text("From github.com/2bbb/fm1-firmware-collection. Community firmware is unofficial: you install it at your own risk. Packages for other devices (SMK-37, Pocket amps) are refused at install time.")
+                    Text("Not in The Firmware Hub's list, so not checked and with no flash chip information. From github.com/2bbb/fm1-firmware-collection. Packages for other devices (SMK-37, Pocket amps) are refused at install time.")
                 }
             }
             .navigationTitle("Get firmware")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $search, prompt: "Search \(community.count) firmwares")
+            .searchable(text: $search, prompt: "Search \(hub.list.count + results.count) firmwares")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+            .task { await hub.load() }
             .task { await load() }
             .refreshable { await load() }
         }
         .presentationSizing(.page)
+    }
+
+    func kindChip(_ k: String?, _ label: String) -> some View {
+        Button(label) { kind = (kind == k ? nil : k) }
+            .font(.subheadline)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(kind == k ? Color.accentColor : Color(.tertiarySystemFill), in: Capsule())
+            .foregroundStyle(kind == k ? .white : .primary)
+            .buttonStyle(.plain)
     }
 
     func load() async {
@@ -125,6 +165,11 @@ struct PackageDownloadRow: View {
     let author: String
     let version: String
     let repo: String
+    /// Refuse the download unless it has this SHA-256 (The Firmware Hub's published digest).
+    var expectedSHA: String? = nil
+    /// Refuse the download unless it is one of M-VAVE's official releases.
+    var requireStock = false
+    var summary: String = ""
     @State private var state: String?
     @State private var busy = false
     @State private var trying: Data?
@@ -152,6 +197,15 @@ struct PackageDownloadRow: View {
         }
     }
 
+    private func check(_ p: FirmwarePackage) throws {
+        if let e = expectedSHA, p.sha256 != e {
+            throw FM1Error.badPackage("The download doesn't match the checksum The Firmware Hub publishes, so it wasn't used.")
+        }
+        if requireStock, p.stock == nil {
+            throw FM1Error.badPackage("The downloaded file isn't an official M-VAVE release (its checksum doesn't match), so it wasn't used.")
+        }
+    }
+
     /// Plays the package in the emulator without adding it to the library.
     func tryIt() async {
         if let f = firmwares.first(where: { $0.sourceURL == url.absoluteString }), let d = f.packageData { trying = d; return }
@@ -159,7 +213,7 @@ struct PackageDownloadRow: View {
         defer { busy = false }
         do {
             let data = try await Catalog.download(url)
-            _ = try FirmwarePackage(data: data)
+            try check(FirmwarePackage(data: data))
             trying = data
         } catch {
             state = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -171,9 +225,11 @@ struct PackageDownloadRow: View {
         defer { busy = false }
         do {
             let data = try await Catalog.download(url)
+            try check(FirmwarePackage(data: data))
             let r = try LibraryImport.add(data, fileName: url.lastPathComponent, name: name, author: author, version: version,
                                           sourceURL: url.absoluteString, repo: repo, context: context)
-            state = r.warning ?? (r.isNew ? "Added to your library" : "Already in your library")
+            if r.isNew, r.firmware.summary.isEmpty, !summary.isEmpty { r.firmware.summary = summary }
+            state = r.warning ?? (r.isNew ? (expectedSHA != nil ? "Added (checksum matches The Firmware Hub)" : "Added to your library") : "Already in your library")
         } catch {
             state = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -228,8 +284,10 @@ struct FeaturedDetail: View {
             if item.id == "official", let u = URL(string: Catalog.officialFWSC) {
                 Section {
                     PackageDownloadRow(title: "FM-1.fwsc", subtitle: "Latest official firmware from M-VAVE's server", url: u,
-                                       name: "M-VAVE official", author: "M-VAVE", version: "", repo: "")
-                } footer: { Text("Recognised by its SHA-256 as V15 or V16 once downloaded.") }
+                                       name: "M-VAVE official", author: "M-VAVE", version: "", repo: "", requireStock: true)
+                    PackageDownloadRow(title: "FM-1_015.fwsc (V15)", subtitle: "Official V15, from The Firmware Hub", url: FirmwareHub.shared.stockURL,
+                                       name: "M-VAVE official", author: "M-VAVE", version: "V15", repo: "", requireStock: true)
+                } footer: { Text("Only accepted if its SHA-256 matches a known official release (V15 or V16). Official firmware works on every FM-1.") }
             }
             if item.id == "fm1open" {
                 Section {
@@ -288,6 +346,66 @@ struct FeaturedDetail: View {
     }
 }
 
+struct HubRow: View {
+    let entry: HubFirmware
+    let have: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(entry.name).font(.body.weight(.medium))
+                Text(entry.version).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if have { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
+                if entry.stars > 0 { Label("\(entry.stars)", systemImage: "star").font(.caption).foregroundStyle(.secondary) }
+            }
+            if !entry.what.isEmpty { Text(entry.what).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+            HStack(spacing: 6) {
+                Text(entry.chip.badge).font(.caption2.weight(.semibold)).foregroundStyle(entry.chip.color)
+                if entry.beta { Text("beta").font(.caption2.weight(.semibold)).foregroundStyle(.orange) }
+                Text([entry.author, entry.lic, entry.dateValue.map { "updated \($0.formatted(date: .abbreviated, time: .omitted))" }]
+                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+    }
+}
+
+struct HubDetail: View {
+    @Environment(\.openURL) private var openURL
+    let entry: HubFirmware
+
+    var body: some View {
+        List {
+            Section {
+                if !entry.what.isEmpty { Text(entry.what) }
+                LabeledContent("By", value: entry.author)
+                if !entry.version.isEmpty { LabeledContent("Version", value: entry.version) }
+                if !entry.lic.isEmpty { LabeledContent("Licence", value: entry.lic) }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack { Text("Flash chip"); Spacer(); Text(entry.chip.badge).font(.caption.weight(.semibold)).foregroundStyle(entry.chip.color) }
+                    Text(entry.chip.explanation).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                PackageDownloadRow(title: entry.pkg.split(separator: "/").last.map(String.init) ?? "package",
+                                   subtitle: [entry.version, entry.beta ? "beta" : nil, entry.size > 0 ? ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file) : nil]
+                                       .compactMap { $0 }.joined(separator: " · "),
+                                   url: entry.packageURL, name: "\(entry.name) \(entry.version)".trimmingCharacters(in: .whitespaces),
+                                   author: entry.author, version: entry.version, repo: entry.repo, expectedSHA: entry.sha256, summary: entry.what)
+            } header: { Text("Package") } footer: { Text("Checked against the SHA-256 The Firmware Hub publishes before it's used.") }
+            Section("Links") {
+                if let u = entry.editor { Button("Editor") { openURL(u) } }
+                if let u = entry.manual { Button("Manual") { openURL(u) } }
+                if let u = entry.play { Button("Play in browser") { openURL(u) } }
+                if let u = entry.talk { Button("Discussions") { openURL(u) } }
+                if !entry.repo.isEmpty, let u = URL(string: "https://github.com/\(entry.repo)") { Button("Source on GitHub") { openURL(u) } }
+                Button("The Firmware Hub") { openURL(FirmwareHub.base) }
+            }
+        }
+        .navigationTitle(entry.name)
+    }
+}
+
 enum CatalogSort: String, CaseIterable, Identifiable {
     case updated, stars, name
     var id: String { rawValue }
@@ -303,6 +421,13 @@ enum CatalogSort: String, CaseIterable, Identifiable {
         case .updated: "clock"
         case .stars: "star"
         case .name: "textformat"
+        }
+    }
+    func apply(_ list: [HubFirmware]) -> [HubFirmware] {
+        switch self {
+        case .updated: list.sorted { $0.date > $1.date }      // yyyy-MM-dd sorts as text
+        case .stars: list.sorted { $0.stars == $1.stars ? $0.date > $1.date : $0.stars > $1.stars }
+        case .name: list.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
     }
     func apply(_ list: [CatalogEntry]) -> [CatalogEntry] {

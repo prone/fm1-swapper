@@ -16,6 +16,8 @@ final class VirtualFM1: @unchecked Sendable {
     weak var link: SimLink?
     /// Fail (go silent) after this many write requests in step 2, to test resume.
     var dropAfter: Int?
+    /// A firmware ("app") or update loader ("loader") that doesn't know the flash chip: it answers nothing.
+    var refuse: String?
 
     // Felucca storage
     var feluccaObjects: [UInt8: [UInt8]] = [:]
@@ -58,6 +60,8 @@ final class VirtualFM1: @unchecked Sendable {
     }
 
     func runUpdate() async {
+        if refuse == "app" && !loader { return }
+        if refuse == "loader" && loader { return }
         if !loader {
             // Step 1: read the header and a few blocks, then stage the loader.
             for a in stride(from: 0, to: 4096, by: 512) { guard await fetch(UInt32(a), 512) != nil else { return } }

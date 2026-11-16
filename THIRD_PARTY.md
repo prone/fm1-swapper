@@ -107,3 +107,9 @@ listing the documentation it was drawn from in `sources`. Each firmware remains 
 ## Trademarks
 Not affiliated with or endorsed by M-VAVE. M-VAVE, FM-1 and SMC-PAD are trademarks of their owners;
 other product and firmware names belong to their authors.
+
+## The Firmware Hub firmware list — CC BY 4.0
+https://thefirmwarehub.com/catalog.json — both apps read it (at most once a day) for each firmware's package
+checksum, flash chip support, kind and links. Firmware list: The Firmware Hub – https://thefirmwarehub.com,
+licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Card texts and pictures belong to each
+firmware's maker, who is named and linked in the apps.
