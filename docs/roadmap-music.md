@@ -156,7 +156,7 @@ FM-1, then do that several times. Five emulators with different firmware and pat
 FM-1 stays live, and app **macros** change the emulators in time. Like owning several FM-1s.
 
 - **Capture from hardware → emulator.** "Send to FM1 Live" takes a backup of what the FM-1 is running (the archive
-  protocols we already have: Felucca family, FM1 Open; not stock) and loads it into a new rack slot running the same
+  protocols we already have: Felucca family, FM1 Open; not stock) and loads it into a new FM1 Live slot running the same
   firmware package. The reverse, "send this slot to the FM-1", is a restore.
   - Finding (fm1-emu, checked 2026-11-16): the emulator takes MIDI in, including SysEx and clock (`fm1_midi` per
     byte), but has **no MIDI out** from the emulated firmware. The restore protocol needs the firmware's replies,
