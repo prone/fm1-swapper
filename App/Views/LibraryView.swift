@@ -65,7 +65,7 @@ struct LibraryView: View {
     @AppStorage("librarySortReversed") private var reversed = false
     @State private var search = ""
     @State private var importing = false
-    @State private var showCatalog = false
+    @State private var showCatalog = ProcessInfo.processInfo.environment["FM1_DEMO_CATALOG"] != nil // debug: open on launch
     @State private var showURL = false
     @State private var urlText = ""
     @State private var message: String?

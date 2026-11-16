@@ -23,22 +23,28 @@ struct CatalogView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(CatalogSort.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
+                }
                 if search.isEmpty {
-                    Section("Featured") {
-                        ForEach(Catalog.featured) { f in
-                            NavigationLink { FeaturedDetail(item: f) } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack {
-                                        Text(f.name).font(.headline)
-                                        if firmwares.contains(where: { $0.name.localizedCaseInsensitiveContains(f.name) }) {
-                                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                                        }
-                                    }
-                                    Text(f.blurb).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Section {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(Catalog.featured) { f in
+                                    NavigationLink { FeaturedDetail(item: f) } label: { FeaturedCard(item: f, have: firmwares.contains { $0.name.localizedCaseInsensitiveContains(f.name) }) }
+                                        .buttonStyle(.plain)
                                 }
                             }
+                            .padding(.horizontal, 12)
                         }
-                    }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                        .listRowBackground(Color.clear)
+                    } header: { Text("Featured").padding(.leading, 4) }
                 }
                 Section {
                     if loading { HStack { ProgressView(); Text("Loading the community catalog…").foregroundStyle(.secondary) } }
@@ -47,7 +53,7 @@ struct CatalogView: View {
                         NavigationLink { CommunityDetail(entry: e) } label: { CommunityRow(entry: e) }
                     }
                 } header: {
-                    Text("Community (\(community.count)) · \(sort.label.lowercased())")
+                    Text("Community (\(results.count)) · \(sort.label.lowercased())")
                 } footer: {
                     Text("From github.com/2bbb/fm1-firmware-collection. Community firmware is unofficial: you install it at your own risk. Packages for other devices (SMK-37, Pocket amps) are refused at install time.")
                 }
@@ -56,24 +62,36 @@ struct CatalogView: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Search \(community.count) firmwares")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Picker("Sort by", selection: $sort) {
-                            ForEach(CatalogSort.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
-                        }
-                    } label: { Label("Sort", systemImage: "arrow.up.arrow.down") }
-                }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .task { await load() }
             .refreshable { await load() }
         }
+        .presentationSizing(.page)
     }
 
     func load() async {
         loading = true
         defer { loading = false }
         do { community = try await Catalog.loadCommunity(); error = nil } catch { self.error = "Could not load the catalog: \(error.localizedDescription)" }
+    }
+}
+
+struct FeaturedCard: View {
+    let item: FeaturedFirmware
+    let have: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                if have { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
+            }
+            Text(item.blurb).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(width: 180, height: 92, alignment: .topLeading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
