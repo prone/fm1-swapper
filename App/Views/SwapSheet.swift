@@ -45,7 +45,7 @@ struct SwapSheet: View {
                     if let id = current {
                         Section {
                             if canBackUp {
-                                Label("\(currentName)'s work is backed up to iCloud first.", systemImage: "externaldrive.badge.checkmark")
+                                Label("\(currentName)'s work is backed up first (\(CloudSync.whereKept)).", systemImage: "externaldrive.badge.checkmark")
                                 Toggle("Include sample banks", isOn: $includeSamples)
                             }
                             if needsAck {

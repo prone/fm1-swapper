@@ -22,6 +22,7 @@ struct FM1SwapperApp: App {
         let cloud = ModelConfiguration("FM1Swapper", schema: schema, cloudKitDatabase: .private(cloudID))
         if syncOn, !cloudID.isEmpty, let c = try? ModelContainer(for: schema, configurations: cloud) {
             container = c
+            CloudSync.isOn = true
         } else {
             let local = ModelConfiguration("FM1Swapper", schema: schema, cloudKitDatabase: .none)
             container = try! ModelContainer(for: schema, configurations: local)
@@ -176,4 +177,11 @@ struct RootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
     }
+}
+
+/// Whether the library is syncing through iCloud in this run (off in unsigned/sideloaded builds), for wording in the UI.
+enum CloudSync {
+    nonisolated(unsafe) static var isOn = false
+    /// "in iCloud" or "on this device", for sentences about where backups are kept.
+    static var whereKept: String { isOn ? "in iCloud" : "on this device" }
 }

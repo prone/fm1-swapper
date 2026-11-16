@@ -50,7 +50,7 @@ struct DeviceView: View {
                         Toggle("Include sample banks", isOn: $includeSamples)
                     } header: { Text("Saved work") } footer: {
                         Text(id.family.supportsArchive
-                             ? "Reads everything \(id.family.displayName) can export (projects, voices, settings\(includeSamples ? ", samples" : "")) and saves it to iCloud."
+                             ? "Reads everything \(id.family.displayName) can export (projects, voices, settings\(includeSamples ? ", samples" : "")) and saves it \(CloudSync.whereKept)."
                              : id.family == .official
                              ? "M-VAVE's official firmware has no backup protocol, so its patterns can't be read out. Note anything you want to keep in the firmware's notes."
                              : "This firmware may not have a backup protocol. Back up now will try Felucca's.")

@@ -161,7 +161,7 @@ struct FirmwareDetailView: View {
                 Button { importingBackup = true } label: { Label("Attach a file (backup JSON, .syx, photo…)", systemImage: "paperclip") }
             } header: { Text("Saved settings & backups") } footer: {
                 Text(firmware.family.supportsArchive
-                     ? "Backups sync through iCloud. After installing this firmware, the newest backup is restored automatically (you can turn that off)."
+                     ? "Backups are kept \(CloudSync.isOn ? "in iCloud, on all your devices" : "on this device"). After installing this firmware, the newest backup is restored automatically (you can turn that off)."
                      : "This firmware has no backup protocol the app knows, so attach files or write notes to keep its settings.")
             }
 
