@@ -68,8 +68,10 @@ SOFTWARE.
 
 ## fm1-emu — MIT
 https://github.com/joakimeriksson/fm1-emu — the "Try it" emulator. The app loads its hosted page at run time
-(it is not bundled); `App/Views/EmulatorView.swift` contains the FM-1 panel geometry from its
-`crates/fm1-live/src/panel.rs`.
+(it is not bundled); `web/public/emu-bridge.js` (shared by the iOS and web apps) contains the FM-1 panel geometry
+from its `crates/fm1-live/src/panel.rs`. The web app serves a copy of fm1-emu's published build from its own
+origin: `web/tools/fetch-emu.mjs` downloads it at build time into `web/public/emu/` (not committed), together
+with its LICENSE.
 
 ```
 MIT License

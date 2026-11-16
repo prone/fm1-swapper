@@ -21,6 +21,18 @@ SideStore do that for you). iOS 18 or later. Or build it yourself with Xcode (be
 
 To connect: a USB-C cable to the FM-1 (or a Lightning-to-USB camera adapter); the SMC-PAD pairs over Bluetooth.
 
+### Web version (Mac, Windows, Linux, ChromeOS, Android) — in development
+
+`web/` is the same app for **Chrome or Edge** (Web MIDI with SysEx; Safari and Firefox can't talk to the FM-1).
+It has Device (connect, back up, restore, finish an interrupted install), Library (install/swap, notes, ratings,
+backups, history), Get firmware (one-click downloads from The Firmware Hub; GitHub-release-only firmware opens as a
+normal download to drop in), and the emulator with the same tutorials. The library lives in the browser
+(IndexedDB) and can be exported to one file. The SMC-PAD and the sampler come later.
+
+```sh
+cd web && npm ci && npm run emu && npm run dev     # npm test, npm run build (static files in web/dist)
+```
+
 ## Layout
 
 - `Packages/FM1Kit` — a reusable Swift package (iOS and macOS) for talking to the FM-1 and SMC-PAD:
@@ -32,6 +44,7 @@ To connect: a USB-C cable to the FM-1 (or a Lightning-to-USB camera adapter); th
   - `SliceDetector`: transient and equal slicing, waveform peaks. `SysExCoding`, `MIDITransport`: codecs and the CoreMIDI transport.
 - `App/` — the SwiftUI app: Device, Library, Pads, Sampler and History tabs; SwiftData models.
 - `Tutorials/` — tutorial data (JSON), format in `Tutorials/README.md`.
+- `web/` — the web app (Vite, TypeScript, Preact): `src/fm1kit/` is the TypeScript port of FM1Kit's protocol code with tests against a simulated FM-1; `public/emu-bridge.js` is the emulator bridge shared with the iOS app.
 - `tools/` — `checkin_server.py` (+ `install-checkin-agent.sh`), `validate_tutorials.py`, `tutorial-check.sh`.
 - `.claude/commands/draft-tutorial.md` — how tutorials are drafted with Claude Code from a firmware's docs (they are then checked in the emulator and reviewed).
 

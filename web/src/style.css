@@ -1,0 +1,73 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* The iOS app's dark scheme: black ground, grey cards, blue actions, orange highlights (as on sakedo.co/fm1). */
+:root {
+  --bg: #000; --card: #1c1c1e; --card2: #2c2c2e; --line: #38383a; --text: #f2f2f7; --dim: #98989f; --faint: #636366;
+  --blue: #0a84ff; --orange: #f2a33a; --green: #30d158; --red: #ff453a; --radius: 14px;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+a { color: var(--blue); }
+button { font: inherit; }
+.shell { max-width: 980px; margin: 0 auto; padding: 0 16px 48px; }
+header.top { position: sticky; top: 0; z-index: 5; background: rgba(0,0,0,.85); backdrop-filter: blur(12px); display: flex; align-items: center; gap: 12px; padding: 10px 16px; justify-content: center; flex-wrap: wrap; }
+.brand { font-weight: 700; margin-right: auto; display: flex; gap: 8px; align-items: center; }
+.brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--orange); display: inline-block; }
+nav.tabs { display: flex; gap: 2px; background: var(--card); border-radius: 999px; padding: 3px; }
+nav.tabs button { background: none; border: 0; color: var(--text); padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+nav.tabs button[aria-current="page"] { background: var(--card2); color: var(--blue); font-weight: 600; }
+h1 { font-size: 30px; margin: 18px 0 12px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); font-weight: 600; margin: 22px 4px 8px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 14px 16px; }
+.card + .card { margin-top: 10px; }
+.rows > * { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--line); }
+.rows > *:first-child { border-top: 0; }
+.rows { background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.row-main { flex: 1; min-width: 0; }
+.dim { color: var(--dim); } .faint { color: var(--faint); } .small { font-size: 13px; } .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn { border: 0; border-radius: 999px; padding: 9px 18px; background: var(--card2); color: var(--blue); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; justify-content: center; text-decoration: none; }
+.btn.primary { background: var(--blue); color: #fff; font-weight: 600; }
+.btn.danger { color: var(--red); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.wide { width: 100%; }
+.btnrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; } .btnrow > .btn { flex: 1; }
+.rowbtn { background: none; border: 0; color: inherit; width: 100%; text-align: left; cursor: pointer; font: inherit; }
+.rowbtn:hover { background: var(--card2); }
+.linkbtn { background: none; border: 0; color: var(--blue); cursor: pointer; padding: 0; text-align: left; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; }
+.chip { border: 0; border-radius: 999px; padding: 5px 12px; background: var(--card); color: var(--text); cursor: pointer; white-space: nowrap; }
+.chip.on { background: var(--blue); color: #fff; }
+.badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgba(242,163,58,.18); color: var(--orange); }
+.badge.green { background: rgba(48,209,88,.16); color: var(--green); }
+.stars button { background: none; border: 0; color: var(--orange); font-size: 20px; cursor: pointer; padding: 0 2px; }
+.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; } .bar > i { display: block; height: 100%; background: var(--orange); transition: width .2s; }
+.banner { border-radius: var(--radius); padding: 12px 16px; margin: 12px 0; }
+.banner.err { background: rgba(255,69,58,.14); color: #ffb3ad; } .banner.warn { background: rgba(242,163,58,.14); color: #ffd59a; } .banner.ok { background: rgba(48,209,88,.12); color: #a6f0b8; }
+input[type=search], textarea, select { width: 100%; background: var(--card2); color: var(--text); border: 0; border-radius: 10px; padding: 9px 12px; font: inherit; }
+textarea { min-height: 80px; resize: vertical; } select { width: auto; }
+.drop { border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px; text-align: center; color: var(--dim); }
+.drop.over { border-color: var(--blue); color: var(--text); }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.log { max-height: 160px; overflow: auto; white-space: pre-wrap; }
+dialog { background: var(--card); color: var(--text); border: 0; border-radius: 18px; padding: 20px; max-width: min(520px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+label.check { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+/* emulator + tutorial */
+.emu { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; }
+.emu-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.emu-body { flex: 1; display: flex; min-height: 0; }
+.emu-body.top { flex-direction: column-reverse; } .emu-body.bottom { flex-direction: column; } .emu-body.left { flex-direction: row-reverse; }
+.emu iframe { flex: 1; border: 0; min-width: 0; min-height: 0; width: 100%; background: #111; }
+.tut { background: var(--card); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.emu-body.left .tut, .emu-body.right .tut { width: 320px; max-width: 45vw; overflow: auto; }
+.emu-body.top .tut, .emu-body.bottom .tut { max-height: 40vh; overflow: auto; }
+.tut h3 { margin: 0; font-size: 18px; } .tut .await { color: var(--orange); font-weight: 600; }
+.dockpick button { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px; padding: 2px 7px; cursor: pointer; font-size: 12px; }
+.dockpick button.on { color: var(--blue); border-color: var(--blue); }
+@media (max-width: 640px) {
+  .brand span { display: none; }
+  nav.tabs button { padding: 6px 10px; font-size: 14px; }
+  .emu-body.left, .emu-body.right { flex-direction: column; } .emu-body.left .tut, .emu-body.right .tut { width: auto; max-width: none; max-height: 40vh; }
+}
+.rows .drop { flex: 1; }
