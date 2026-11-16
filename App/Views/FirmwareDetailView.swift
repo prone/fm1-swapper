@@ -1,0 +1,251 @@
+import FM1Kit
+import SwiftData
+import SwiftUI
+
+enum ExportFiles {
+    /// Writes files to a temporary folder for the share sheet.
+    static func urls(_ files: [(name: String, data: Data)]) -> [URL] {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return files.compactMap { f in
+            let u = dir.appendingPathComponent(f.name.replacingOccurrences(of: "/", with: "-"))
+            return (try? f.data.write(to: u)) != nil ? u : nil
+        }
+    }
+
+    static func files(for b: Backup) -> [(name: String, data: Data)] {
+        guard let payload = b.payload else { return [] }
+        if b.kindRaw == "file" { return [(b.fileName.isEmpty ? "backup.bin" : b.fileName, payload)] }
+        let day = b.date.formatted(.iso8601.year().month().day())
+        var out: [(String, Data)] = [("FM1-backup-\(b.identity)-\(day).fm1backup.json", payload)]
+        if let a = b.archive, let extra = try? a.exportFiles() { out += extra }
+        return out
+    }
+}
+
+struct FirmwareDetailView: View {
+    @Environment(DeviceController.self) private var device
+    @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
+    @Bindable var firmware: Firmware
+    @State private var showSwap = false
+    @State private var showEmulator = false
+    @State private var importingBackup = false
+    @State private var importingPackage = false
+    @State private var message: String?
+    @AppStorage("includeSamples") private var includeSamples = true
+
+    var onDevice: Bool { device.identity?.text == firmware.product }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Name", text: $firmware.name).font(.title2.weight(.semibold))
+                        Text([firmware.author, firmware.family.displayName].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if onDevice { Text("ON DEVICE").font(.caption.weight(.bold)).foregroundStyle(.green) }
+                }
+                Button {
+                    showSwap = true
+                } label: {
+                    Label(onDevice ? "Reinstall on FM-1" : "Install on FM-1", systemImage: "arrow.down.to.line.circle.fill")
+                        .frame(maxWidth: .infinity).padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!firmware.hasPackage || device.busy)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                if firmware.hasPackage {
+                    Button { showEmulator = true } label: {
+                        Label("Try it in the emulator", systemImage: "play.rectangle").frame(maxWidth: .infinity).padding(.vertical, 4)
+                    }
+                    .buttonStyle(.bordered)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
+                }
+                if !firmware.hasPackage {
+                    Button("Add the .fwsc file for this firmware") { importingPackage = true }
+                    if let u = URL(string: firmware.sourceURL), !firmware.sourceURL.isEmpty { Button("Open download page") { openURL(u) } }
+                }
+            }
+
+            Section("My take") {
+                Picker("Status", selection: Binding(get: { firmware.status }, set: { firmware.status = $0 })) {
+                    ForEach(TryStatus.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                }
+                HStack {
+                    Text("Rating")
+                    Spacer()
+                    ForEach(1...5, id: \.self) { i in
+                        Image(systemName: i <= firmware.rating ? "star.fill" : "star")
+                            .foregroundStyle(.orange)
+                            .onTapGesture { firmware.rating = firmware.rating == i ? 0 : i }
+                    }
+                }
+                TextField("Notes: favorite engines, knob settings, what to try next…", text: $firmware.notes, axis: .vertical)
+                    .lineLimit(3...12)
+            }
+
+            Section("Installs") {
+                if let first = firmware.firstInstalled {
+                    LabeledContent("First installed", value: first.formatted(date: .abbreviated, time: .shortened))
+                    if let last = firmware.lastInstalled, last != first {
+                        LabeledContent("Last installed", value: last.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    LabeledContent("Times installed", value: "\(firmware.successfulInstalls.count)")
+                } else {
+                    Text("Not installed with this app yet.").foregroundStyle(.secondary)
+                }
+                ForEach((firmware.installs ?? []).sorted { $0.date > $1.date }) { e in InstallRow(event: e, showFirmware: false) }
+            }
+
+            Section {
+                ForEach(firmware.sortedBackups) { b in BackupRow(backup: b, onDevice: onDevice) }
+                    .onDelete { idx in
+                        let list = firmware.sortedBackups
+                        for i in idx { context.delete(list[i]) }
+                        try? context.save()
+                    }
+                if onDevice, firmware.family.supportsArchive || firmware.family == .unknown {
+                    Button {
+                        Task { await device.backup(context: context, includeSamples: includeSamples) }
+                    } label: { Label("Back up from FM-1 now", systemImage: "externaldrive.badge.plus") }.disabled(device.busy)
+                }
+                Button { importingBackup = true } label: { Label("Attach a file (backup JSON, .syx, photo…)", systemImage: "paperclip") }
+            } header: { Text("Saved settings & backups") } footer: {
+                Text(firmware.family.supportsArchive
+                     ? "Backups sync through iCloud. After installing this firmware, the newest backup is restored automatically (you can turn that off)."
+                     : "This firmware has no backup protocol the app knows, so attach files or write notes to keep its settings.")
+            }
+
+            if !(firmware.emulatorSaves ?? []).isEmpty {
+                Section {
+                    ForEach((firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }) { s in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.isAuto ? "Last session" : s.label).font(.subheadline)
+                                Text(s.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if let d = s.payload {
+                                ShareLink(items: ExportFiles.urls([(s.fileName, d)])) { Image(systemName: "square.and.arrow.up") }
+                                    .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+                    .onDelete { idx in
+                        let list = (firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }
+                        for i in idx { context.delete(list[i]) }
+                        try? context.save()
+                    }
+                } header: { Text("Emulator saves") } footer: {
+                    Text("Settings and patches from the emulator, synced with your library. Restore them from the emulator's save menu.")
+                }
+            }
+
+            Section("Package") {
+                LabeledContent("Identity", value: firmware.product)
+                if !firmware.version.isEmpty { LabeledContent("Version", value: firmware.version) }
+                if let p = firmware.packageData { LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(p.count), countStyle: .file)) }
+                if !firmware.sha256.isEmpty {
+                    LabeledContent("SHA-256") { Text(firmware.sha256.prefix(16) + "…").font(.caption.monospaced()).textSelection(.enabled) }
+                }
+                if firmware.package?.stock != nil { Label("Unmodified official M-VAVE file", systemImage: "checkmark.seal").foregroundStyle(.green) }
+                LabeledContent("Added", value: firmware.addedAt.formatted(date: .abbreviated, time: .omitted))
+                if let u = URL(string: firmware.sourceURL), !firmware.sourceURL.isEmpty { Button("Source") { openURL(u) } }
+                if let p = firmware.packageData {
+                    ShareLink(items: ExportFiles.urls([(firmware.fileName.isEmpty ? "\(firmware.product).fwsc" : firmware.fileName, p)])) {
+                        Label("Share .fwsc", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+        .navigationTitle(firmware.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { try? context.save() }
+        .sheet(isPresented: $showSwap) { SwapSheet(target: firmware) }
+        .fullScreenCover(isPresented: $showEmulator) {
+            if let p = firmware.packageData { EmulatorScreen(title: firmware.name, package: p, fileName: firmware.emulatorFileName, firmware: firmware) }
+        }
+        .fileImporter(isPresented: $importingBackup, allowedContentTypes: [.data, .json, .image], allowsMultipleSelection: true) { r in
+            if case let .success(urls) = r { attach(urls) }
+        }
+        .fileImporter(isPresented: $importingPackage, allowedContentTypes: [.fwsc, .data]) { r in
+            guard case let .success(url) = r else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let data = try Data(contentsOf: url)
+                let pkg = try FirmwarePackage(data: data)
+                guard pkg.product == firmware.product else {
+                    message = "That file is \(pkg.product), but this firmware reports \(firmware.product). Import it from the Library instead."
+                    return
+                }
+                firmware.packageData = data
+                firmware.sha256 = pkg.sha256
+                firmware.fileName = url.lastPathComponent
+                try context.save()
+            } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+        }
+        .alert("Firmware", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+            Button("OK") { message = nil }
+        } message: { Text(message ?? "") }
+    }
+
+    func attach(_ urls: [URL]) {
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let b: Backup
+            if let a = try? FeluccaArchive.fromNativeJSON(data), let made = try? Backup.from(a, label: url.deletingPathExtension().lastPathComponent, kind: "import") {
+                b = made // Felucca's own backup file: restorable
+            } else if let a = try? DeviceArchive.decode(data), let made = try? Backup.from(a, label: url.deletingPathExtension().lastPathComponent, kind: "import") {
+                b = made // exported from this app
+            } else {
+                b = Backup(label: url.deletingPathExtension().lastPathComponent, identity: firmware.product, family: firmware.family, kind: "file")
+                b.payload = data
+                b.fileName = url.lastPathComponent
+                b.sizeBytes = data.count
+                b.partsSummary = url.pathExtension.uppercased() + " file"
+            }
+            b.firmware = firmware
+            context.insert(b)
+        }
+        try? context.save()
+    }
+}
+
+struct BackupRow: View {
+    @Environment(DeviceController.self) private var device
+    @Environment(\.modelContext) private var context
+    @Bindable var backup: Backup
+    let onDevice: Bool
+    @State private var confirmRestore = false
+    @AppStorage("includeSamples") private var includeSamples = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: backup.kindRaw == "file" ? "doc" : backup.kindRaw == "auto" ? "clock.badge.checkmark" : "externaldrive")
+                    .foregroundStyle(.secondary)
+                TextField("Label", text: $backup.label).font(.subheadline.weight(.medium))
+            }
+            Text("\(backup.date.formatted(date: .abbreviated, time: .shortened)) · \(ByteCountFormatter.string(fromByteCount: Int64(backup.sizeBytes), countStyle: .file)) · \(backup.identity)")
+                .font(.caption).foregroundStyle(.secondary)
+            if !backup.partsSummary.isEmpty { Text(backup.partsSummary).font(.caption2).foregroundStyle(.tertiary).lineLimit(2) }
+            HStack(spacing: 16) {
+                if backup.archive != nil, onDevice {
+                    Button("Restore to FM-1") { confirmRestore = true }.disabled(device.busy)
+                }
+                ShareLink(items: ExportFiles.urls(ExportFiles.files(for: backup))) { Label("Export", systemImage: "square.and.arrow.up") }
+            }
+            .font(.caption).buttonStyle(.borderless)
+        }
+        .confirmationDialog("Restore this backup?", isPresented: $confirmRestore, titleVisibility: .visible) {
+            Button("Restore", role: .destructive) { Task { await device.restore(backup, context: context, includeSamples: includeSamples) } }
+        } message: { Text("This replaces the music and settings now on the FM-1 with the ones from \(backup.date.formatted(date: .abbreviated, time: .shortened)).") }
+    }
+}

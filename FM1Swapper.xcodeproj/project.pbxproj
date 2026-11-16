@@ -1,0 +1,404 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */; };
+		156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */; };
+		2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */; };
+		3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2653A28D6F9710CB02DA3504 /* Assets.xcassets */; };
+		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
+		44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90470C94E4420DF4C64A1C8 /* Catalog.swift */; };
+		72D3482FDC7FBB7ED207FD28 /* FM1Kit in Frameworks */ = {isa = PBXBuildFile; productRef = 4395B0B9B517C853FC6D07D3 /* FM1Kit */; };
+		85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D29C0B53676467FFDF1FB65 /* CatalogView.swift */; };
+		8DDDE094A05F790E1A81E301 /* EmulatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */; };
+		97742A301100ACECDEFE3888 /* DeviceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */; };
+		AAC6325968A95D84A2D5F3A2 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */; };
+		D1FA7194AFCE043F0EA3D26D /* FirmwareDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */; };
+		DCDBE05F482E16E80BEC84E0 /* SwapSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2078894A38E17E956727E27A /* SwapSheet.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2078894A38E17E956727E27A /* SwapSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwapSheet.swift; sourceTree = "<group>"; };
+		2653A28D6F9710CB02DA3504 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
+		3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceView.swift; sourceTree = "<group>"; };
+		52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		5974C1423816D3BF46EF38B4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareDetailView.swift; sourceTree = "<group>"; };
+		7D29C0B53676467FFDF1FB65 /* CatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogView.swift; sourceTree = "<group>"; };
+		8DF00D4FA675DD34411607CD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		9326F7AAB5F6C95F198EAC8A /* FM1Kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FM1Kit; path = Packages/FM1Kit; sourceTree = SOURCE_ROOT; };
+		A2FD03ECEFFEE51BCF7FF612 /* FM1Swapper.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FM1Swapper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FM1SwapperApp.swift; sourceTree = "<group>"; };
+		D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorView.swift; sourceTree = "<group>"; };
+		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
+		D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FM1Swapper-iCloud.entitlements"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EAB080B862BE25EDB8725F83 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				72D3482FDC7FBB7ED207FD28 /* FM1Kit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1094DE5081FEF79BA7C47AD7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				7D29C0B53676467FFDF1FB65 /* CatalogView.swift */,
+				3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */,
+				D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */,
+				7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */,
+				52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */,
+				ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */,
+				2078894A38E17E956727E27A /* SwapSheet.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4A7B0C984E95C2A243489A9E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A2FD03ECEFFEE51BCF7FF612 /* FM1Swapper.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		849766643E093C4F35DF83D8 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				2653A28D6F9710CB02DA3504 /* Assets.xcassets */,
+				D90470C94E4420DF4C64A1C8 /* Catalog.swift */,
+				34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */,
+				D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */,
+				AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */,
+				5974C1423816D3BF46EF38B4 /* Info.plist */,
+				8DF00D4FA675DD34411607CD /* Models.swift */,
+				1094DE5081FEF79BA7C47AD7 /* Views */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		980317A17A7E106CD02065B4 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				9326F7AAB5F6C95F198EAC8A /* FM1Kit */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		FE37D0A28094983F4B60674B = {
+			isa = PBXGroup;
+			children = (
+				849766643E093C4F35DF83D8 /* App */,
+				980317A17A7E106CD02065B4 /* Packages */,
+				4A7B0C984E95C2A243489A9E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8B2D7D6873426052A8C2201E /* FM1Swapper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9009FFE8F0EB592E3A73269B /* Build configuration list for PBXNativeTarget "FM1Swapper" */;
+			buildPhases = (
+				D3140BE557586425A5F8BB7E /* Sources */,
+				CE402F523FA6FED23E1D9E1C /* Resources */,
+				EAB080B862BE25EDB8725F83 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FM1Swapper;
+			packageProductDependencies = (
+				4395B0B9B517C853FC6D07D3 /* FM1Kit */,
+			);
+			productName = FM1Swapper;
+			productReference = A2FD03ECEFFEE51BCF7FF612 /* FM1Swapper.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C15B85B990A72B676881FA6A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					8B2D7D6873426052A8C2201E = {
+						DevelopmentTeam = YOURTEAMID;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 0EE94F64FC15C8E26F44AA53 /* Build configuration list for PBXProject "FM1Swapper" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = FE37D0A28094983F4B60674B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A0ADCBDAA90FF00CBC511A45 /* XCLocalSwiftPackageReference "Packages/FM1Kit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4A7B0C984E95C2A243489A9E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8B2D7D6873426052A8C2201E /* FM1Swapper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CE402F523FA6FED23E1D9E1C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D3140BE557586425A5F8BB7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */,
+				85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */,
+				97742A301100ACECDEFE3888 /* DeviceController.swift in Sources */,
+				2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */,
+				8DDDE094A05F790E1A81E301 /* EmulatorView.swift in Sources */,
+				156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */,
+				D1FA7194AFCE043F0EA3D26D /* FirmwareDetailView.swift in Sources */,
+				AAC6325968A95D84A2D5F3A2 /* HistoryView.swift in Sources */,
+				03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */,
+				3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */,
+				DCDBE05F482E16E80BEC84E0 /* SwapSheet.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		52394C63CE578C0EA5FE2D8F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+		75A6E4E0B503709DBC4717E0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				FM1_CLOUD_SYNC = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.fm1swapper;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9A98E188DDBA4C35A733CD96 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YOURTEAMID;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		F0BB4E15C17370DCA1E7F9B2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				FM1_CLOUD_SYNC = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.fm1swapper;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0EE94F64FC15C8E26F44AA53 /* Build configuration list for PBXProject "FM1Swapper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52394C63CE578C0EA5FE2D8F /* Debug */,
+				9A98E188DDBA4C35A733CD96 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9009FFE8F0EB592E3A73269B /* Build configuration list for PBXNativeTarget "FM1Swapper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F0BB4E15C17370DCA1E7F9B2 /* Debug */,
+				75A6E4E0B503709DBC4717E0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A0ADCBDAA90FF00CBC511A45 /* XCLocalSwiftPackageReference "Packages/FM1Kit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FM1Kit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4395B0B9B517C853FC6D07D3 /* FM1Kit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FM1Kit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = C15B85B990A72B676881FA6A /* Project object */;
+}
