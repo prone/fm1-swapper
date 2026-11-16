@@ -90,6 +90,14 @@ struct EmulatorScreen: View {
     @State private var closing = false
     @State private var player: TutorialPlayer?
     @State private var sharing: ShareItems?
+    @AppStorage("tutorialDock") private var dock: TutorialDock = .bottom
+
+    @ViewBuilder private var tutorialCard: some View {
+        if let player {
+            TutorialCard(player: player, dock: $dock) { Task { await closeTutorial() } }
+                .transition(.opacity)
+        }
+    }
     @State private var startedTutorial = false
 
     private var availableTutorial: Tutorial? { tutorial ?? firmware.flatMap(TutorialLibrary.tutorial(for:)) }
@@ -106,7 +114,6 @@ struct EmulatorScreen: View {
     var body: some View {
         NavigationStack {
             EmulatorWebView(controller: emu, package: package, fileName: fileName, pads: pads)
-                .ignoresSafeArea(edges: .bottom)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -124,9 +131,11 @@ struct EmulatorScreen: View {
                     }
                 }
                 .shareSheet($sharing)
-                .overlay(alignment: .bottom) {
-                    if let player { TutorialCard(player: player) { Task { await closeTutorial() } } }
-                }
+                // the card docks in its own strip; the emulator page shrinks to fit beside it
+                .safeAreaInset(edge: .top, spacing: 0) { if dock == .top { tutorialCard } }
+                .safeAreaInset(edge: .bottom, spacing: 0) { if dock == .bottom { tutorialCard } }
+                .safeAreaInset(edge: .leading, spacing: 0) { if dock == .left { tutorialCard } }
+                .safeAreaInset(edge: .trailing, spacing: 0) { if dock == .right { tutorialCard } }
                 .onChange(of: emu.ready) {
                     if emu.ready, tutorial != nil, !startedTutorial, let t = tutorial { startedTutorial = true; Task { await toggleTutorial(t) } }
                 }

@@ -104,8 +104,26 @@ final class TutorialPlayer {
     }
 }
 
+/// Where the tutorial card sits. It takes its own strip of the screen (the emulator shrinks to fit
+/// beside it), so it never covers the synth's keys.
+enum TutorialDock: String, CaseIterable, Identifiable {
+    case bottom, top, left, right
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+    var symbol: String {
+        switch self {
+        case .bottom: "rectangle.bottomhalf.inset.filled"
+        case .top: "rectangle.tophalf.inset.filled"
+        case .left: "rectangle.lefthalf.inset.filled"
+        case .right: "rectangle.righthalf.inset.filled"
+        }
+    }
+    var isSide: Bool { self == .left || self == .right }
+}
+
 struct TutorialCard: View {
     @Bindable var player: TutorialPlayer
+    @Binding var dock: TutorialDock
     let onClose: () -> Void
     @State private var showSources = false
     @State private var collapsed = false
@@ -116,6 +134,12 @@ struct TutorialCard: View {
                 Text(player.step.title).font(.headline)
                 Spacer()
                 Text("\(player.index + 1) / \(player.tutorial.steps.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Menu {
+                    Picker("Position", selection: $dock.animation()) {
+                        ForEach(TutorialDock.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                    }
+                } label: { Image(systemName: dock.symbol).foregroundStyle(.secondary) }
+                    .accessibilityLabel("Move the tutorial")
                 Button { withAnimation { collapsed.toggle() } } label: { Image(systemName: collapsed ? "chevron.up.circle.fill" : "chevron.down.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.plain).accessibilityLabel(collapsed ? "Expand" : "Collapse")
                 Button { onClose() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
@@ -123,18 +147,22 @@ struct TutorialCard: View {
             }
             ProgressView(value: player.progress).tint(.orange)
             if !collapsed { details }
+            if dock.isSide { Spacer(minLength: 0) }
         }
         .padding(14)
+        .frame(width: dock.isSide ? 300 : nil)
+        .frame(maxHeight: dock.isSide ? .infinity : nil, alignment: .top)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
+        .padding(dock.isSide ? 6 : 0)
+        .padding(.horizontal, dock.isSide ? 0 : 10)
+        .padding(.vertical, dock.isSide ? 0 : 6)
     }
 
     @ViewBuilder private var details: some View {
             ScrollView {
                 Text(player.step.text).font(.callout).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
             }
-            .frame(maxHeight: 130)
+            .frame(maxHeight: dock.isSide ? 400 : 130)
             if let a = player.awaitText {
                 Label(a, systemImage: player.awaitDone ? "checkmark.circle.fill" : "hand.point.up.left")
                     .font(.subheadline.weight(.semibold))
@@ -142,12 +170,12 @@ struct TutorialCard: View {
             }
             if let p = player.problem { Text(p).font(.caption).foregroundStyle(.red) }
             HStack {
-                Button { Task { await player.back() } } label: { Label("Back", systemImage: "chevron.left") }
+                Button { Task { await player.back() } } label: { Label("Back", systemImage: "chevron.left").labelStyle(BackLabelStyle(iconOnly: dock.isSide)) }
                     .disabled(player.isFirst)
                 Spacer()
                 if player.step.show?.isEmpty == false {
                     Button { Task { await player.showMe() } } label: {
-                        if player.busy { ProgressView() } else { Label("Show me", systemImage: "play.circle") }
+                        if player.busy { ProgressView() } else { Label("Show me", systemImage: "play.circle").lineLimit(1).fixedSize() }
                     }
                     .buttonStyle(.bordered).disabled(player.busy)
                 }
@@ -175,5 +203,13 @@ struct TutorialCard: View {
                     if let u = URL(string: s) { Link(s, destination: u).font(.caption2).lineLimit(1) }
                 }
             }
+    }
+}
+
+/// "Back" shrinks to its chevron in a side-docked card, where the row is narrow.
+struct BackLabelStyle: LabelStyle {
+    let iconOnly: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        if iconOnly { configuration.icon } else { HStack(spacing: 4) { configuration.icon; configuration.title } }
     }
 }
