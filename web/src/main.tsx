@@ -6,18 +6,21 @@ import { useEffect, useState } from "preact/hooks";
 import "./style.css";
 import { Firmware } from "./store";
 import { Tutorial, tutorialFor } from "./tutorial";
-import { useLibrary } from "./ui/common";
+import { useDevice, useLibrary } from "./ui/common";
 import { DeviceView } from "./ui/DeviceView";
 import { LibraryView } from "./ui/LibraryView";
 import { GetFirmware } from "./ui/GetFirmware";
 import { HistoryView } from "./ui/HistoryView";
 import { Emulator } from "./ui/Emulator";
+import { startPWA, usePWA } from "./pwa";
 
 const TABS = ["Device", "Library", "Get firmware", "History"] as const;
 type Tab = (typeof TABS)[number];
 
 function App() {
   const lib = useLibrary();
+  const pwa = usePWA();
+  const dev = useDevice();
   const [tab, setTab] = useState<Tab>("Library");
   const [openId, setOpenId] = useState<string | null>(null);
   const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial } | null>(null);
@@ -28,11 +31,18 @@ function App() {
     <>
       <header class="top">
         <div class="brand"><i aria-hidden="true" /><span>FM-1 Swapper</span></div>
+        {pwa.canInstall && <button class="btn small" onClick={pwa.install} title="Adds FM-1 Swapper to your apps; it then works offline">Install app</button>}
         <nav class="tabs">
           {TABS.map((t) => <button key={t} aria-current={t === tab ? "page" : undefined} onClick={() => { setTab(t); if (t === "Library") setOpenId(null); }}>{t}</button>)}
         </nav>
       </header>
       <main class="shell">
+        {pwa.updateReady && (
+          <div class="banner ok" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ flex: 1 }}>A new version of FM-1 Swapper is ready.</span>
+            <button class="btn" disabled={!!dev.busy || !!emu} title={dev.busy ? "Wait for the FM-1 to finish" : ""} onClick={pwa.update}>Reload</button>
+          </div>
+        )}
         {tab === "Device" && <DeviceView lib={lib} open={open} />}
         {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={setOpenId} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
         {tab === "Get firmware" && <GetFirmware lib={lib} opened={open} />}
@@ -48,4 +58,5 @@ function App() {
   );
 }
 
+startPWA();
 render(<App />, document.getElementById("app")!);

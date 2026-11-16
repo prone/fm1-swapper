@@ -1,0 +1,18 @@
+FM-1 Swapper (web version) — run it from your own computer
+
+The easiest way is not this zip: open the web app's page in Chrome or Edge and click "Install app".
+This zip is for running your own copy, offline or on your own server.
+
+Browsers only run this app from a web address, not by double-clicking index.html. Serve this folder
+locally with any one of these, then open the address in Chrome or Edge:
+
+  Python 3:   python3 -m http.server 8000          then open http://localhost:8000
+  Node.js:    npx serve -l 8000                    then open http://localhost:8000
+  PHP:        php -S localhost:8000                then open http://localhost:8000
+
+Run the command inside this folder. "localhost" counts as a secure address, so MIDI works. You can then
+click "Install app" in the page header to get an app icon. The library is kept in that browser.
+
+Needs Chrome or Edge (Mac, Windows, Linux, ChromeOS). Safari and Firefox can't talk to MIDI devices.
+Source and licence (GPL-3.0): https://github.com/prone/fm1-swapper
+The emulator in emu/ is fm1-emu by Joakim Eriksson (MIT, see emu/LICENSE).

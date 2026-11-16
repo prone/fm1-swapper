@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Tag a version (git tag v1.2.3 && git push --tags) to build an unsigned .ipa and attach it to a release.
+# Tag a version (git tag v1.2.3 && git push --tags) to build an unsigned .ipa and the web app zip and attach them to a release.
 name: Release
 on:
   push:
@@ -35,3 +35,21 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "build/FM1Swapper-$V.ipa" --title "FM-1 Swapper $V" \
             --notes-file .github/RELEASE_NOTES.md --prerelease --verify-tag || \
           gh release upload "$GITHUB_REF_NAME" "build/FM1Swapper-$V.ipa" --clobber
+  web:
+    needs: ipa          # the ipa job creates the release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build the web app
+        working-directory: web
+        run: npm ci && npm test && npm run emu && npm run build
+      - name: Zip and attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          cp web/START-HERE.txt LICENSE web/dist/
+          (cd web/dist && zip -qr "../../FM1Swapper-web-$V.zip" .)
+          gh release upload "$GITHUB_REF_NAME" "FM1Swapper-web-$V.zip" --clobber
