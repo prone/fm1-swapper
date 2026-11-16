@@ -10,10 +10,12 @@ struct CatalogView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var search = ""
+    @AppStorage("catalogSort") private var sort: CatalogSort = .updated
 
     var results: [CatalogEntry] {
-        guard !search.isEmpty else { return community }
-        return community.filter { e in
+        let sorted = sort.apply(community)
+        guard !search.isEmpty else { return sorted }
+        return sorted.filter { e in
             [e.repo, e.description].compactMap { $0 }.contains { $0.localizedCaseInsensitiveContains(search) }
         }
     }
@@ -45,7 +47,7 @@ struct CatalogView: View {
                         NavigationLink { CommunityDetail(entry: e) } label: { CommunityRow(entry: e) }
                     }
                 } header: {
-                    Text("Community (\(community.count))")
+                    Text("Community (\(community.count)) · \(sort.label.lowercased())")
                 } footer: {
                     Text("From github.com/2bbb/fm1-firmware-collection. Community firmware is unofficial: you install it at your own risk. Packages for other devices (SMK-37, Pocket amps) are refused at install time.")
                 }
@@ -53,7 +55,16 @@ struct CatalogView: View {
             .navigationTitle("Get firmware")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Search \(community.count) firmwares")
-            .toolbar { Button("Done") { dismiss() } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Picker("Sort by", selection: $sort) {
+                            ForEach(CatalogSort.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                        }
+                    } label: { Label("Sort", systemImage: "arrow.up.arrow.down") }
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
             .task { await load() }
             .refreshable { await load() }
         }
@@ -253,6 +264,32 @@ struct FeaturedDetail: View {
             message = lines.joined(separator: "\n")
         } catch {
             message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+}
+
+enum CatalogSort: String, CaseIterable, Identifiable {
+    case updated, stars, name
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .updated: "Recently updated"
+        case .stars: "Most stars"
+        case .name: "Name"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .updated: "clock"
+        case .stars: "star"
+        case .name: "textformat"
+        }
+    }
+    func apply(_ list: [CatalogEntry]) -> [CatalogEntry] {
+        switch self {
+        case .updated: list.sorted { ($0.pushedDate ?? .distantPast) > ($1.pushedDate ?? .distantPast) }
+        case .stars: list.sorted { ($0.stars ?? 0) == ($1.stars ?? 0) ? ($0.pushedDate ?? .distantPast) > ($1.pushedDate ?? .distantPast) : ($0.stars ?? 0) > ($1.stars ?? 0) }
+        case .name: list.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         }
     }
 }
