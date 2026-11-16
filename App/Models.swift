@@ -170,6 +170,8 @@ final class ControllerProfile {
     var updatedAt: Date = Date()
     var mappingData: Data?
     var firmware: Firmware?
+    /// The slice-sampler kit the pads play with this layout.
+    var kit: SampleKit?
 
     init(name: String, mapping: ControllerMapping, firmware: Firmware?) {
         self.name = name

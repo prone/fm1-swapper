@@ -1,6 +1,7 @@
 import FM1Kit
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct FM1SwapperApp: App {
@@ -10,7 +11,7 @@ struct FM1SwapperApp: App {
     @State private var importMessage: String?
 
     init() {
-        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self, ControllerProfile.self])
+        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self, ControllerProfile.self, SampleKit.self])
         // iCloud (CloudKit private database) keeps the iPhone and iPad in sync. If iCloud is
         // unavailable (signed out, simulator without an account), fall back to a local store.
         // Unsigned builds have no iCloud entitlement (CloudKit would trap): build them with FM1_CLOUD_SYNC=NO.
@@ -46,6 +47,13 @@ struct FM1SwapperApp: App {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
             let data = try Data(contentsOf: url)
+            if let t = UTType(filenameExtension: url.pathExtension), t.conforms(to: .audio) {
+                let kit = SampleKit(name: url.deletingPathExtension().lastPathComponent, fileName: url.lastPathComponent, audio: data)
+                container.mainContext.insert(kit)
+                try container.mainContext.save()
+                importMessage = "Added “\(kit.name)” to the Sampler."
+                return
+            }
             let r = try LibraryImport.add(data, fileName: url.lastPathComponent, context: container.mainContext)
             importMessage = (r.isNew ? "Added \(r.firmware.name) to your library." : "\(r.firmware.name) is already in your library.")
                 + (r.warning.map { "\n\n" + $0 } ?? "")
@@ -82,6 +90,7 @@ struct RootView: View {
             Tab("Device", systemImage: "pianokeys", value: 0) { DeviceView() }
             Tab("Library", systemImage: "square.stack.3d.up", value: 1) { LibraryView() }
             Tab("Pads", systemImage: "square.grid.4x3.fill", value: 2) { PadsView() }
+            Tab("Sampler", systemImage: "waveform", value: 4) { SamplerView() }
             Tab("History", systemImage: "clock.arrow.circlepath", value: 3) { HistoryView() }
         }
         .tabViewStyle(.sidebarAdaptable)

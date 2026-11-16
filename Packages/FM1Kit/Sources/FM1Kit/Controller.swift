@@ -122,14 +122,18 @@ public struct ControllerMapping: Codable, Hashable, Sendable {
     /// PAD BANK moves the pads up 16 notes (52-67) and the pad remembers it. When true, bank B
     /// notes act as the same pads; when false they pass through untouched.
     public var bankBMirrorsA: Bool
+    /// Where the pads go: the FM-1 / emulator (as mapped), the in-app slice sampler, or both.
+    public var padTarget: PadTarget
+
+    public enum PadTarget: String, Codable, Sendable, CaseIterable { case instrument, sampler, both }
 
     public init(name: String, model: ControllerModel, channel: UInt8, controls: [ControlMap],
-                passThroughUnmapped: Bool = true, bankBMirrorsA: Bool = true) {
+                passThroughUnmapped: Bool = true, bankBMirrorsA: Bool = true, padTarget: PadTarget = .instrument) {
         self.name = name; self.model = model; self.channel = channel; self.controls = controls
-        self.passThroughUnmapped = passThroughUnmapped; self.bankBMirrorsA = bankBMirrorsA
+        self.passThroughUnmapped = passThroughUnmapped; self.bankBMirrorsA = bankBMirrorsA; self.padTarget = padTarget
     }
 
-    enum CodingKeys: String, CodingKey { case name, model, channel, controls, passThroughUnmapped, bankBMirrorsA }
+    enum CodingKeys: String, CodingKey { case name, model, channel, controls, passThroughUnmapped, bankBMirrorsA, padTarget }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
@@ -138,6 +142,7 @@ public struct ControllerMapping: Codable, Hashable, Sendable {
         controls = try c.decode([ControlMap].self, forKey: .controls)
         passThroughUnmapped = try c.decodeIfPresent(Bool.self, forKey: .passThroughUnmapped) ?? true
         bankBMirrorsA = try c.decodeIfPresent(Bool.self, forKey: .bankBMirrorsA) ?? true
+        padTarget = try c.decodeIfPresent(PadTarget.self, forKey: .padTarget) ?? .instrument
     }
 
     // The stock layout, measured on a full-size SMC-PAD (github.com/spectalive/smc-pad): pads are notes
@@ -208,6 +213,8 @@ public struct MappingEngine: Sendable {
         /// Which control it came from (for the on-screen pads and Learn).
         public var control: String?
         public var value: UInt8?
+        /// The Shift pad was held, so the control used its shift action.
+        public var shifted = false
     }
 
     private mutating func stepped(_ cc: UInt8, _ delta: Int) -> UInt8 {
@@ -249,6 +256,7 @@ public struct MappingEngine: Sendable {
         }
 
         let useShift = shiftHeld && c.isPad && c.shiftOutput != .off
+        let shifted = shiftHeld && c.isPad
         let output = useShift ? c.shiftOutput : c.output
         let number = useShift ? c.shiftNumber : c.number
         var out: [[UInt8]] = []
@@ -271,7 +279,7 @@ public struct MappingEngine: Sendable {
                 value = v
             }
         }
-        return Result(messages: out, control: c.id, value: value)
+        return Result(messages: out, control: c.id, value: value, shifted: shifted)
     }
 }
 
@@ -307,6 +315,8 @@ public final class ControllerRouter: @unchecked Sendable {
     /// Every raw controller message with its mapping result. Called on a CoreMIDI thread.
     public var onInput: (@Sendable (_ source: String, _ message: [UInt8], _ result: MappingEngine.Result) -> Void)?
     public var onSysEx: (@Sendable (_ source: String, _ message: [UInt8]) -> Void)?
+    /// Pad hits for the in-app sampler, on the CoreMIDI thread (pad index 0-15, velocity 0 = release).
+    public var onPad: (@Sendable (_ model: ControllerModel, _ pad: Int, _ velocity: UInt8) -> Void)?
     public var onSetupChanged: (@Sendable () -> Void)?
 
     public static let smcPadPattern = try! NSRegularExpression(pattern: "smc|m-?vave.*pad", options: .caseInsensitive)
@@ -390,12 +400,20 @@ public final class ControllerRouter: @unchecked Sendable {
     private func handle(_ m: [UInt8], from source: String) {
         guard let first = m.first, first < 0xF8 || first == 0xFA || first == 0xFC else { return } // drop clock/active sensing
         let model = ControllerModel.detect(portName: source)
-        let result: MappingEngine.Result = lock.withLock {
+        let (result, mapping): (MappingEngine.Result, ControllerMapping) = lock.withLock {
             if engines[model] == nil { engines[model] = MappingEngine(mapping: .defaultLayout(for: model)) }
-            return engines[model]!.transform(m)
+            return (engines[model]!.transform(m), engines[model]!.mapping)
+        }
+        // the sampler gets pad hits first: lowest latency
+        var forward = true
+        if let id = result.control, id.hasPrefix("pad-"), !result.shifted, mapping.padTarget != .instrument,
+           let ctl = mapping.controls.first(where: { $0.id == id }), ctl.output != .shift,
+           let pad = Int(id.dropFirst(4)), m.count > 2, m[0] & 0xF0 == 0x80 || m[0] & 0xF0 == 0x90 {
+            onPad?(model, pad, m[0] & 0xF0 == 0x90 ? m[2] : 0)
+            forward = mapping.padTarget == .both
         }
         onInput?(source, m, result)
-        guard enabled else { return }
+        guard enabled, forward else { return }
         for out in result.messages {
             onOutput?(out)
             for uid in outputUIDs { send(out, toUID: uid) }

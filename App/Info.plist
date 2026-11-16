@@ -20,6 +20,18 @@
 				<string>com.example.fm1swapper.fwsc</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Audio</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -43,9 +55,12 @@
 	<false/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Connects to Bluetooth MIDI controllers such as the M-VAVE SMC-PAD.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Records samples for the slice sampler.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>audio</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

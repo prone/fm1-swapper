@@ -44,6 +44,12 @@ final class ControllerHub {
     private(set) var active: [ControllerModel: ControllerProfile] = [:]
     let router: ControllerRouter
     let emulatorSink = MIDISink()
+    /// The in-app slice sampler the pads can play (per layout: Pads target).
+    let sampler = SlicePlayer()
+    /// Pads lit on screen by the sampler, "model/pad-n" -> time.
+    private(set) var samplerFlash: [String: Date] = [:]
+    /// Kits being decoded, by model.
+    private(set) var loadingKit: Set<ControllerModel> = []
 
     init() {
         let d = UserDefaults.standard
@@ -73,6 +79,11 @@ final class ControllerHub {
             }
         }
         router.onSetupChanged = { [weak self] in Task { @MainActor in self?.refresh() } }
+        let player = sampler
+        router.onPad = { model, pad, velocity in player.trigger(model: model, pad: pad, velocity: velocity) }
+        sampler.onTrigger = { [weak self] model, pad in
+            Task { @MainActor in self?.samplerFlash["\(model.rawValue)/pad-\(pad)"] = Date() }
+        }
         refresh()
         if lights { startLights() }
     }
@@ -123,6 +134,48 @@ final class ControllerHub {
         active[model] = profile
         router.setMapping(profile?.mapping ?? .defaultLayout(for: model))
         if lights { lightAll() }
+        loadKit(profile?.kit, for: model)
+    }
+
+    // MARK: sampler
+
+    func kit(for model: ControllerModel) -> SampleKit? { active[model]?.kit }
+
+    /// Decodes a kit off the main thread and hands it to the sampler for this model.
+    func loadKit(_ kit: SampleKit?, for model: ControllerModel) {
+        guard let kit, let data = kit.audio else { sampler.setKit(nil, for: model); return }
+        let name = kit.fileName, settings = kit.settingsData == nil ? nil : kit.settings, format = sampler.format
+        loadingKit.insert(model)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let loaded = try? LoadedKit(data: data, fileName: name, settings: settings, engineFormat: format)
+            await MainActor.run {
+                guard let self else { return }
+                self.loadingKit.remove(model)
+                if let loaded, kit.settingsData == nil {
+                    kit.frames = loaded.mono.count
+                    kit.sampleRate = loaded.sampleRate
+                    kit.settings = loaded.settings
+                }
+                self.sampler.setKit(loaded, for: model)
+            }
+        }
+    }
+
+    /// Plays this kit from a model's pads (creating its editable layout if needed).
+    func assign(_ kit: SampleKit?, to model: ControllerModel, context: ModelContext) {
+        let p = editableProfile(model, context: context)
+        p.kit = kit
+        try? context.save()
+        loadKit(kit, for: model)
+    }
+
+    func setPadTarget(_ t: ControllerMapping.PadTarget, model: ControllerModel, context: ModelContext) {
+        update(model, context: context) { $0.padTarget = t }
+    }
+
+    func flashed(_ model: ControllerModel, _ pad: Int) -> Bool {
+        guard let d = samplerFlash["\(model.rawValue)/pad-\(pad)"] else { return false }
+        return Date().timeIntervalSince(d) < 0.15
     }
 
     /// The profile being edited for a model, created on first edit.
