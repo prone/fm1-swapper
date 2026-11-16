@@ -30,6 +30,7 @@ struct FirmwareDetailView: View {
     @Bindable var firmware: Firmware
     @State private var showSwap = false
     @State private var showEmulator = false
+    @State private var showTutorial = false
     @State private var importingBackup = false
     @State private var importingPackage = false
     @State private var message: String?
@@ -61,8 +62,15 @@ struct FirmwareDetailView: View {
                 .disabled(!firmware.hasPackage || device.busy)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
                 if firmware.hasPackage {
-                    Button { showEmulator = true } label: {
-                        Label("Try it in the emulator", systemImage: "play.rectangle").frame(maxWidth: .infinity).padding(.vertical, 4)
+                    HStack {
+                        Button { showEmulator = true } label: {
+                            Label("Try it in the emulator", systemImage: "play.rectangle").frame(maxWidth: .infinity).padding(.vertical, 4)
+                        }
+                        if TutorialLibrary.tutorial(for: firmware) != nil {
+                            Button { showTutorial = true } label: {
+                                Label("Tutorial", systemImage: "graduationcap").frame(maxWidth: .infinity).padding(.vertical, 4)
+                            }
+                        }
                     }
                     .buttonStyle(.bordered)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
@@ -170,6 +178,11 @@ struct FirmwareDetailView: View {
         .sheet(isPresented: $showSwap) { SwapSheet(target: firmware) }
         .fullScreenCover(isPresented: $showEmulator) {
             if let p = firmware.packageData { EmulatorScreen(title: firmware.name, package: p, fileName: firmware.emulatorFileName, firmware: firmware) }
+        }
+        .fullScreenCover(isPresented: $showTutorial) {
+            if let p = firmware.packageData, let t = TutorialLibrary.tutorial(for: firmware) {
+                EmulatorScreen(title: t.title, package: p, fileName: firmware.emulatorFileName, firmware: firmware, tutorial: t)
+            }
         }
         .fileImporter(isPresented: $importingBackup, allowedContentTypes: [.data, .json, .image], allowsMultipleSelection: true) { r in
             if case let .success(urls) = r { attach(urls) }

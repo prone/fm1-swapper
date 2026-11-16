@@ -14,9 +14,12 @@
 		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
 		44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90470C94E4420DF4C64A1C8 /* Catalog.swift */; };
 		72D3482FDC7FBB7ED207FD28 /* FM1Kit in Frameworks */ = {isa = PBXBuildFile; productRef = 4395B0B9B517C853FC6D07D3 /* FM1Kit */; };
+		779AEE75851D8D0B9E979669 /* TutorialPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */; };
 		85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D29C0B53676467FFDF1FB65 /* CatalogView.swift */; };
 		8DDDE094A05F790E1A81E301 /* EmulatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */; };
+		954CFFD165B002456D08E2EA /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D20BB46C022437C51B2E0E4 /* Tutorial.swift */; };
 		97742A301100ACECDEFE3888 /* DeviceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */; };
+		A040DF929CCC2615B9DE9078 /* Tutorials in Resources */ = {isa = PBXBuildFile; fileRef = 194938F457EA65FAB2408A63 /* Tutorials */; };
 		AAC6325968A95D84A2D5F3A2 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */; };
 		D1FA7194AFCE043F0EA3D26D /* FirmwareDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */; };
 		D4322B93C8DC2AF4726D99A6 /* PadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0B929FAAEB090069D5FBE0 /* PadsView.swift */; };
@@ -25,6 +28,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialPlayer.swift; sourceTree = "<group>"; };
+		194938F457EA65FAB2408A63 /* Tutorials */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Tutorials; sourceTree = SOURCE_ROOT; };
 		2078894A38E17E956727E27A /* SwapSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwapSheet.swift; sourceTree = "<group>"; };
 		2653A28D6F9710CB02DA3504 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
@@ -33,6 +38,7 @@
 		5974C1423816D3BF46EF38B4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5C0B929FAAEB090069D5FBE0 /* PadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadsView.swift; sourceTree = "<group>"; };
 		7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareDetailView.swift; sourceTree = "<group>"; };
+		7D20BB46C022437C51B2E0E4 /* Tutorial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tutorial.swift; sourceTree = "<group>"; };
 		7D29C0B53676467FFDF1FB65 /* CatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogView.swift; sourceTree = "<group>"; };
 		7EFDA4A70905BE3374712A8F /* ControllerHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerHub.swift; sourceTree = "<group>"; };
 		8DF00D4FA675DD34411607CD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -68,6 +74,7 @@
 				ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */,
 				5C0B929FAAEB090069D5FBE0 /* PadsView.swift */,
 				2078894A38E17E956727E27A /* SwapSheet.swift */,
+				08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -91,6 +98,7 @@
 				AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */,
 				5974C1423816D3BF46EF38B4 /* Info.plist */,
 				8DF00D4FA675DD34411607CD /* Models.swift */,
+				7D20BB46C022437C51B2E0E4 /* Tutorial.swift */,
 				1094DE5081FEF79BA7C47AD7 /* Views */,
 			);
 			path = App;
@@ -107,6 +115,7 @@
 		FE37D0A28094983F4B60674B = {
 			isa = PBXGroup;
 			children = (
+				194938F457EA65FAB2408A63 /* Tutorials */,
 				849766643E093C4F35DF83D8 /* App */,
 				980317A17A7E106CD02065B4 /* Packages */,
 				4A7B0C984E95C2A243489A9E /* Products */,
@@ -179,6 +188,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */,
+				A040DF929CCC2615B9DE9078 /* Tutorials in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +212,8 @@
 				3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */,
 				D4322B93C8DC2AF4726D99A6 /* PadsView.swift in Sources */,
 				DCDBE05F482E16E80BEC84E0 /* SwapSheet.swift in Sources */,
+				954CFFD165B002456D08E2EA /* Tutorial.swift in Sources */,
+				779AEE75851D8D0B9E979669 /* TutorialPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

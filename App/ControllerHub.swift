@@ -171,6 +171,7 @@ final class ControllerHub {
         }
         if let c = result.control {
             activity["\(model.rawValue)/\(c)"] = result.value ?? 0
+            if let nav = tutorialNav, (result.value ?? 0) > 0, c == "btn-1" || c == "btn-0" { nav(c == "btn-1" ? 1 : -1) }
             if flashOnPress, let s = lightSession, s.isReady, raw[0] & 0xF0 == 0x80 || raw[0] & 0xF0 == 0x90, raw.count > 2,
                let ctl = mapping(model).controls.first(where: { $0.id == c }) {
                 let on = raw[0] & 0xF0 == 0x90 && raw[2] > 0
@@ -182,6 +183,8 @@ final class ControllerHub {
     }
 
     var contextForLearn: ModelContext?
+    /// While a tutorial is open: the SMC-PAD's > (next) and < (back) buttons step through it.
+    var tutorialNav: ((Int) -> Void)?
 
     private func learnInput(_ key: MIDIInputKey, model: ControllerModel, control: String) {
         guard let context = contextForLearn else { return }

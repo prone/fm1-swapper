@@ -194,6 +194,9 @@ struct FirmwareRow: View {
                 Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
+            if TutorialLibrary.tutorial(for: firmware) != nil {
+                Image(systemName: "graduationcap").font(.caption).foregroundStyle(.secondary).accessibilityLabel("Has a tutorial")
+            }
             if firmware.rating > 0 {
                 Text(String(repeating: "★", count: firmware.rating)).font(.caption).foregroundStyle(.orange)
             }

@@ -20,6 +20,9 @@ targets:
     platform: iOS
     sources:
       - path: App
+      - path: Tutorials
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: FM1Kit
     info:

@@ -1,0 +1,426 @@
+{
+  "format": 1,
+  "id": "felucca",
+  "title": "Felucca: a guided tour",
+  "summary": "A tour of Felucca 1.8.2 on the FM-1: the four tracks, sounds and engines, the sound pages, effects, scales, the arpeggiator, recording, the sequencer, the mixer, saving and the menu.",
+  "firmwareVersion": "1.8.2",
+  "match": {
+    "repos": [
+      "hugelton/Felucca"
+    ],
+    "names": [
+      "Felucca"
+    ]
+  },
+  "sources": [
+    "https://github.com/hugelton/Felucca",
+    "https://github.com/hugelton/Felucca/blob/main/docs/controls.jpg",
+    "https://github.com/hugelton/Felucca/wiki/Home",
+    "https://github.com/hugelton/Felucca/wiki/Controls",
+    "https://github.com/hugelton/Felucca/wiki/Features",
+    "https://github.com/hugelton/Felucca/wiki/Engines",
+    "https://github.com/hugelton/Felucca/wiki/Scale-Keyboard",
+    "https://github.com/hugelton/Felucca/wiki/Menu",
+    "https://github.com/hugelton/Felucca/wiki/Release-Notes",
+    "https://github.com/hugelton/Felucca/wiki/FAQ",
+    "https://github.com/hugelton/Felucca/blob/main/web/EDITOR_PROTOCOL.md"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "steps": [
+    {
+      "title": "Welcome to Felucca",
+      "text": "Felucca is a four-track, multi-engine synth firmware. This is HOME: four knob cards above an oscilloscope. The header shows the selected track, its project slot (\"1 A\"), the play state and the tempo. Tap HOME from any other page to come back here (tapping it here moves on to MIXER and CLOCK).",
+      "highlight": [
+        "SCREEN",
+        "HOME"
+      ]
+    },
+    {
+      "title": "Play the keys",
+      "text": "The keys F3 to G5 play the selected track. OCT- and OCT+ shift the octave; press both together to reset it. MASTER sets the volume.",
+      "highlight": [
+        "KEYS",
+        "OCT-",
+        "OCT+",
+        "MASTER"
+      ],
+      "show": [
+        {
+          "note": "C4",
+          "ms": 300
+        },
+        {
+          "note": "E4",
+          "ms": 300
+        },
+        {
+          "note": "G4",
+          "ms": 300
+        },
+        {
+          "note": "C5",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "anyNote": true,
+        "hint": "Play a few notes"
+      }
+    },
+    {
+      "title": "Four tracks",
+      "text": "Felucca has four tracks, T1 to T4, each with its own engine and sound; they share 8 voices. ALGORITHM selects the track on every page, and the keys play whichever track is selected.",
+      "highlight": [
+        "ALGORITHM",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "ALGORITHM",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        },
+        {
+          "wait": 300
+        },
+        {
+          "turn": "ALGORITHM",
+          "clicks": -1
+        },
+        {
+          "note": "C4",
+          "ms": 400
+        }
+      ],
+      "await": {
+        "turn": "ALGORITHM",
+        "hint": "Turn ALGORITHM to pick another track"
+      }
+    },
+    {
+      "title": "Change the sound",
+      "text": "PRESETS changes the selected track's sound from every page that is not a list. Factory sounds have categories (BASS, LEAD, PAD, PLUCK, KEYS, DRUM, FX). Changed your mind? Hold SAVE to undo the last load, hold it again to redo. Loading a sound never touches your patterns.",
+      "highlight": [
+        "PRESETS",
+        "SAVE",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "turn": "PRESETS",
+          "clicks": 1
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        }
+      ],
+      "await": {
+        "turn": "PRESETS",
+        "hint": "Turn PRESETS and play a key"
+      }
+    },
+    {
+      "title": "Thirteen engines",
+      "text": "Hold EDIT for the EDIT layer: the white keys from F3 pick the engine (ANALOG, FM6, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE, SLICE, DRUM), and the screen shows the map. On a DRUM track the black keys mute lanes. OCT- in the layer undoes, SAVE held undoes the load.",
+      "highlight": [
+        "EDIT",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "hold": "EDIT"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "EDIT"
+        }
+      ],
+      "await": {
+        "press": [
+          "EDIT",
+          "C4"
+        ],
+        "hint": "Hold EDIT and press C4 to switch engine"
+      }
+    },
+    {
+      "title": "Shape the sound",
+      "text": "Tap EDIT for the engine's parameters: EDIT 1, then tap again for EDIT 2 and the VOICE pages. KNOB1 to KNOB4 set the four columns shown on the screen, on this and every other page.",
+      "highlight": [
+        "EDIT",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "EDIT"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": 3
+        },
+        {
+          "note": "C4",
+          "ms": 500
+        },
+        {
+          "turn": "KNOB1",
+          "clicks": -3
+        }
+      ],
+      "await": {
+        "turn": "KNOB1",
+        "hint": "Turn a knob and play a key"
+      }
+    },
+    {
+      "title": "Envelope and LFO",
+      "text": "ENV is the envelope page. LFO steps through LFO, LFO 2, LFO DEST and MOD (the modulation matrix, 4 slots per track). Hold LFO and turn a knob for a MOMENTARY change: let go of LFO and the value jumps back.",
+      "highlight": [
+        "ENV",
+        "LFO",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ENV"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "LFO"
+        },
+        {
+          "wait": 1000
+        }
+      ]
+    },
+    {
+      "title": "Effects",
+      "text": "Tap FX for the track's effects and the SLICER, then INSERT and INSERT 2. Hold FX for performance effects on the white keys (repeat, reverse, filter sweeps, tape stop, freeze and more) and mutes on the black keys, best while something plays.",
+      "highlight": [
+        "FX",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "FX"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "hold": "FX"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "FX"
+        }
+      ]
+    },
+    {
+      "title": "Scales and chord keys",
+      "text": "SCL opens the scale page: set QNT to WHITE to play the scale on the white keys alone, with C4 as the ROOT. Tap SCL again for CHORD, where one finger plays an in-key chord. Hold SCL and press a key to set the root.",
+      "highlight": [
+        "SCL",
+        "KEYS",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 1000
+        },
+        {
+          "press": "SCL"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "title": "Arpeggiator",
+      "text": "ARP opens the arpeggiator: UP, DN, UPDN, RND, ORD (the order you pressed), REPEAT and chord patterns. Its button flashes on the beat. It follows the chord keys too.",
+      "highlight": [
+        "ARP",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "ARP"
+        },
+        {
+          "wait": 1000
+        }
+      ]
+    },
+    {
+      "title": "Play and tempo",
+      "text": "PLAY starts and stops all four tracks (it turns green while playing). SELECT sets the tempo. Hold GLO and press PLAY to restart from the top.",
+      "highlight": [
+        "PLAY",
+        "SELECT",
+        "GLO",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "HOME"
+        },
+        {
+          "turn": "SELECT",
+          "clicks": 2
+        },
+        {
+          "wait": 300
+        },
+        {
+          "turn": "SELECT",
+          "clicks": -2
+        }
+      ],
+      "await": {
+        "press": [
+          "PLAY"
+        ],
+        "hint": "Press PLAY to start, and again to stop"
+      }
+    },
+    {
+      "title": "Record a loop",
+      "text": "REC arms the selected track on any page; while stopped it starts playing too. Play the keys and Felucca records what you play as a loop, with overdub. Hold REC for CLICK, COUNT-IN and CLEAR. Hold SAVE to undo.",
+      "highlight": [
+        "REC",
+        "PLAY",
+        "KEYS"
+      ]
+    },
+    {
+      "title": "The step sequencer",
+      "text": "Tap SEQ for STEP: a piano roll, or a drum grid on DRUM tracks (white keys are steps). Tap again for DETAIL and AUTOMATION. On STEP, stopped, REC enters notes step by step. Hold a step and turn a knob to lock that parameter on that step.",
+      "highlight": [
+        "SEQ",
+        "REC",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "SEQ"
+        },
+        {
+          "wait": 1200
+        }
+      ],
+      "await": {
+        "press": [
+          "SEQ"
+        ],
+        "hint": "Tap SEQ to see the next page"
+      }
+    },
+    {
+      "title": "SEQ tools",
+      "text": "Hold SEQ on any page for tools on the keys: CLEAR, REVERSE, SHIFT, RANDOM, COOK, EUCLID, DOUBLE and HALF. KNOB1 to KNOB4 set LEN, DIV, SWING and GATE. OCT- puts the track back as the layer found it.",
+      "highlight": [
+        "SEQ",
+        "KEYS",
+        "KNOB1",
+        "KNOB2",
+        "KNOB3",
+        "KNOB4",
+        "OCT-"
+      ],
+      "show": [
+        {
+          "hold": "SEQ"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "release": "SEQ"
+        }
+      ]
+    },
+    {
+      "title": "Mixer and the GLO layer",
+      "text": "Tap HOME again for MIXER, then CLOCK (BPM, swing, clock source). Hold GLO for mutes, solos, TAP tempo and the four levels on KNOB1 to KNOB4. Tap GLO for SONG, which chains patterns.",
+      "highlight": [
+        "HOME",
+        "GLO",
+        "SCREEN"
+      ],
+      "show": [
+        {
+          "press": "HOME"
+        },
+        {
+          "press": "HOME"
+        },
+        {
+          "wait": 1200
+        },
+        {
+          "press": "HOME"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "title": "Save, menu and more",
+      "text": "To save a sound: stop, tap SAVE, pick a slot with KNOB1, then OCT+ twice. Tap SAVE again for PRESETS, PROJECT and more. Hold HOME for the menu. More in the wiki: github.com/hugelton/Felucca/wiki.",
+      "highlight": [
+        "SAVE",
+        "KNOB1",
+        "OCT+",
+        "HOME"
+      ],
+      "show": [
+        {
+          "press": "SAVE"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "press": "HOME"
+        }
+      ]
+    }
+  ]
+}

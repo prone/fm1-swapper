@@ -65,7 +65,11 @@ struct RootView: View {
         tabs
         #if DEBUG
             .fullScreenCover(isPresented: Binding(get: { demo != nil }, set: { if !$0 { demo = nil } })) {
-                if let d = demo { EmulatorScreen(title: "Demo", package: d, fileName: "demo.fwsc") }
+                if let d = demo {
+                    let tut = ProcessInfo.processInfo.environment["FM1_DEMO_TUTORIAL"].flatMap(TutorialLibrary.byID)
+                    let name = ProcessInfo.processInfo.environment["FM1_DEMO_NAME"] ?? "demo.fwsc"
+                    EmulatorScreen(title: tut?.title ?? "Demo", package: d, fileName: name, tutorial: tut)
+                }
             }
         #endif
     }

@@ -1,0 +1,125 @@
+{
+  "format": 1,
+  "id": "fm1-open",
+  "title": "FM1 Open: a guided tour",
+  "summary": "M-VAVE's open-source FM1 firmware: the eight-track overview, six sound engines, presets, the 64-step sequencer and track roles, step recording, the arpeggiator, effects with tap tempo, the mixer and saving.",
+  "firmwareVersion": "V14",
+  "match": { "families": ["fm1Open"], "repos": ["m-vave/fm1_open"] },
+  "sources": [
+    "https://github.com/m-vave/fm1_open",
+    "https://github.com/m-vave/fm1_open/blob/main/README.md",
+    "https://github.com/m-vave/fm1_open/blob/main/README.zh-CN.md",
+    "https://github.com/m-vave/fm1_open/blob/main/app/screen.c",
+    "https://github.com/m-vave/fm1_open/blob/main/app/presets.c",
+    "https://github.com/m-vave/fm1_open/blob/main/app/version.h",
+    "https://open.m-vave.com/fm1-workbench"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "setup": [ { "hold": "HOME" }, { "press": "PLAY" }, { "release": "HOME" } ],
+  "steps": [
+    {
+      "title": "The eight-track overview",
+      "text": "FM1 Open is M-VAVE's open-source firmware: eight tracks of 64 steps, six sound engines. The home screen lists all eight tracks, with tempo and transport at the top. From any other page, HOME brings you back here. HOME + PLAY is an emergency stop: it silences everything, rewinds and returns home.",
+      "highlight": ["SCREEN", "HOME", "PLAY"]
+    },
+    {
+      "title": "Play a track",
+      "text": "The keys play the selected track. Turn SELECT to pick one of the eight tracks; each can use a different engine. OCT- and OCT+ shift the keyboard by up to two octaves either way.",
+      "highlight": ["KEYS", "SELECT", "OCT-", "OCT+"],
+      "show": [ { "note": "C4", "ms": 300 }, { "note": "E4", "ms": 300 }, { "note": "G4", "ms": 500 }, { "turn": "SELECT", "clicks": 1 }, { "wait": 400 }, { "turn": "SELECT", "clicks": -1 } ],
+      "await": { "anyNote": true, "hint": "Play a few notes" }
+    },
+    {
+      "title": "The four overview knobs",
+      "text": "On the overview the knobs read K1 LEVEL (the track's volume), K2 SOURCE (its engine), K3 STEP (the step cursor) and K4 BPM. Internal tempo runs from 30 to 300 BPM. On other pages the same knobs take the labels shown at the bottom of the screen.",
+      "highlight": ["KNOB1", "KNOB2", "KNOB3", "KNOB4", "SCREEN"],
+      "show": [ { "turn": "KNOB4", "clicks": 3 }, { "wait": 600 }, { "turn": "KNOB4", "clicks": -3 } ],
+      "await": { "turn": "KNOB1", "hint": "Turn KNOB1 to set the track's level" }
+    },
+    {
+      "title": "Six sound engines",
+      "text": "Turn ALGORITHM (or K2) on the overview to open SELECT SOUND SOURCE: DX7 FM, BASS 303, DRUM 808, PSG, PLUCK and SAMPLER. SAVE applies the new engine to the track; HOME cancels and keeps the old one.",
+      "highlight": ["ALGORITHM", "KNOB2", "SAVE", "HOME", "SCREEN"],
+      "show": [ { "turn": "ALGORITHM", "clicks": 1 }, { "wait": 800 }, { "turn": "ALGORITHM", "clicks": 1 }, { "wait": 800 }, { "press": "HOME" } ]
+    },
+    {
+      "title": "Presets and projects",
+      "text": "Press HOME on the overview to open PRESETS. K1 switches between USER PROJECTS and FACTORY PRESETS (16 of each), SELECT or PRESETS loads one, and white keys 1-16 load directly. PLAY loads and starts it; HOME goes back. On the overview, PRESETS also steps through presets.",
+      "highlight": ["HOME", "KNOB1", "SELECT", "PRESETS", "PLAY", "SCREEN"],
+      "show": [ { "press": "HOME" }, { "wait": 700 }, { "turn": "KNOB1", "clicks": 1 }, { "wait": 1200 }, { "press": "HOME" } ]
+    },
+    {
+      "title": "Play, pause and stop",
+      "text": "PLAY starts the sequencer, and pressing it again pauses; the next press resumes from there. To stop and go back to the start, hold HOME and press PLAY.",
+      "highlight": ["PLAY", "HOME"],
+      "show": [ { "press": "PLAY" }, { "wait": 3000 }, { "hold": "HOME" }, { "press": "PLAY" }, { "release": "HOME" } ],
+      "await": { "press": ["PLAY"], "hint": "Press PLAY to start, and again to pause" }
+    },
+    {
+      "title": "The step sequencer",
+      "text": "SEQ opens the step page. The 16 white keys, F3 to G5, are the 16 steps on screen: press one to turn a step on or off. OCT- and OCT+ move between the four 16-step pages of the 64-step pattern, and PRESETS moves the step cursor. HOME returns to the overview.",
+      "highlight": ["SEQ", "KEYS", "OCT-", "OCT+", "PRESETS", "SCREEN"],
+      "show": [ { "press": "SEQ" }, { "wait": 600 }, { "note": "C4" }, { "wait": 600 }, { "note": "C4" }, { "wait": 600 }, { "press": "HOME" } ],
+      "await": { "press": ["SEQ"], "hint": "Press SEQ, then tap white keys to set steps" }
+    },
+    {
+      "title": "Sequencer pages and track roles",
+      "text": "On the step page, ALGORITHM turns through eight pages: BASIC, STEP DETAILS, RHYTHM/REC, LOCKS, SYNC / LOOP, MIDI TRACK, MIDI ROUTING and TRACK ROLE. On TRACK ROLE, K1 sets NORMAL, PLAY or OFF and K2 the MIDI input channel. PLAY tracks are for live playing and keep their sound across project changes.",
+      "highlight": ["SEQ", "ALGORITHM", "KNOB1", "KNOB2", "SCREEN"],
+      "show": [ { "press": "SEQ" }, { "wait": 500 }, { "turn": "ALGORITHM", "clicks": 4 }, { "wait": 1200 }, { "turn": "ALGORITHM", "clicks": 3 }, { "wait": 1500 }, { "turn": "ALGORITHM", "clicks": -7 }, { "press": "HOME" } ]
+    },
+    {
+      "title": "Step recording",
+      "text": "On a NORMAL track, stop the sequencer, tap REC and play: releasing all keys moves to the next step, and notes played together share a step. Tap REC again to finish. With the sequencer running, REC records in time. HOME + SAVE undoes (or redoes) the last edit.",
+      "highlight": ["REC", "KEYS", "HOME", "SAVE"],
+      "show": [ { "hold": "HOME" }, { "press": "PLAY" }, { "release": "HOME" }, { "wait": 300 }, { "press": "REC" }, { "wait": 400 }, { "note": "C4", "ms": 250 }, { "note": "E4", "ms": 250 }, { "note": "G4", "ms": 250 }, { "press": "REC" }, { "wait": 600 }, { "hold": "HOME" }, { "press": "SAVE" }, { "release": "HOME" } ]
+    },
+    {
+      "title": "Arpeggiator",
+      "text": "Tap ARP to turn the arpeggiator on or off for the track, then hold keys to play it. Hold ARP for about half a second to open its settings: K1 RATE, K2 DIRECTION, K3 RANGE, K4 GATE, with SWING and HOLD on a second page (turn ALGORITHM). The rate follows the tempo.",
+      "highlight": ["ARP", "KEYS", "KNOB1", "KNOB2", "KNOB3", "KNOB4", "ALGORITHM"],
+      "show": [ { "press": "ARP" }, { "wait": 300 }, { "note": "C4", "ms": 1500 }, { "wait": 300 }, { "press": "ARP", "ms": 900 }, { "wait": 1200 }, { "press": "HOME" }, { "press": "ARP" } ],
+      "await": { "press": ["ARP"], "hint": "Tap ARP and hold a key (tap ARP again to turn it off)" }
+    },
+    {
+      "title": "Edit the sound",
+      "text": "Tap EDIT for the track's main parameters; tap again to leave. On a DX7 track, PRESETS picks one of 128 library voices and the knobs set ALGORITHM, FEEDBACK, TRANSPOSE and LEVEL. Hold EDIT for full editing. ENV and LFO open the envelope and LFO pages; SCL opens key scaling.",
+      "highlight": ["EDIT", "PRESETS", "ENV", "LFO", "SCL", "SCREEN"],
+      "show": [ { "press": "EDIT" }, { "wait": 1800 }, { "press": "EDIT" } ],
+      "await": { "press": ["EDIT"], "hint": "Press EDIT to see the track's parameters" }
+    },
+    {
+      "title": "Effects",
+      "text": "FX opens the effects; PRESETS turns through three pages. TRACK: K1 REV SEND, K2 DLY SEND, K3 TRK VOL, K4 ALL RET. SHARED: reverb time, delay time, feedback and return. DELAY: K1 SYNC on or off, K2 the time (about 30-2040 ms) or a note division, K3 BPM, K4 FEEDBACK. FX again leaves.",
+      "highlight": ["FX", "PRESETS", "KNOB1", "KNOB2", "KNOB3", "KNOB4", "SCREEN"],
+      "show": [ { "press": "FX" }, { "wait": 800 }, { "turn": "PRESETS", "clicks": 1 }, { "wait": 800 }, { "turn": "PRESETS", "clicks": 1 }, { "wait": 1000 }, { "turn": "PRESETS", "clicks": -2 }, { "press": "FX" } ],
+      "await": { "press": ["FX"], "hint": "Press FX and turn PRESETS through the pages" }
+    },
+    {
+      "title": "Tap tempo",
+      "text": "Hold HOME and tap SEQ in time to set the tempo. On the FX DELAY page, tapping SEQ alone does the same, which makes a synced delay easy to match to the beat. The workbench has a tap button too.",
+      "highlight": ["HOME", "SEQ"],
+      "show": [ { "hold": "HOME" }, { "press": "SEQ" }, { "wait": 450 }, { "press": "SEQ" }, { "wait": 450 }, { "press": "SEQ" }, { "wait": 450 }, { "press": "SEQ" }, { "release": "HOME" } ],
+      "await": { "press": ["HOME", "SEQ"], "hint": "Hold HOME and tap SEQ in time" }
+    },
+    {
+      "title": "Mixer, mute and solo",
+      "text": "Tap GLO to open the mixer. White keys 1-8 (F3 to F4) mute tracks 1-8, and white keys 9-16 (G4 to G5) solo them. The knobs set track levels, and SELECT chooses which group of four they control. GLO or HOME leaves.",
+      "highlight": ["GLO", "KEYS", "SELECT", "KNOB1", "KNOB2", "KNOB3", "KNOB4", "SCREEN"],
+      "show": [ { "press": "GLO" }, { "wait": 700 }, { "note": "C4" }, { "wait": 800 }, { "note": "C4" }, { "wait": 500 }, { "press": "GLO" } ],
+      "await": { "press": ["GLO"], "hint": "Tap GLO to open the mixer" }
+    },
+    {
+      "title": "Save your project",
+      "text": "SAVE opens SAVE PROJECT. SELECT or PRESETS chooses one of the 16 user slots, K1 moves the name cursor and K2 changes the letter. Press SAVE to store it; saving over another project asks for SAVE again. HOME cancels.",
+      "highlight": ["SAVE", "SELECT", "PRESETS", "KNOB1", "KNOB2", "HOME", "SCREEN"],
+      "show": [ { "press": "SAVE" }, { "wait": 1800 }, { "press": "HOME" } ]
+    },
+    {
+      "title": "Where to learn more",
+      "text": "Hold SEQ on the step page (or press SEQ + EDIT) for copy, paste, clear, repeat and undo. HOME + GLO opens Bluetooth and clock. The workbench at open.m-vave.com/fm1-workbench updates firmware and manages projects, samples and DX7 voices; the source is at github.com/m-vave/fm1_open.",
+      "highlight": ["SEQ", "EDIT", "HOME", "GLO"]
+    }
+  ]
+}

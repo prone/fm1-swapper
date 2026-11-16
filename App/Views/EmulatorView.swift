@@ -23,6 +23,29 @@ final class EmulatorController {
 
     struct ActionResult { var ok: Bool; var message: String; var name: String?; var text: String? }
 
+    /// User touches reported by the page, and MIDI notes from controllers (for tutorials).
+    var onUserEvent: ((String, Bool) -> Void)?
+
+    /// Highlights panel controls; returns names the page didn't recognise.
+    func spotlight(_ names: [String]) async -> [String] {
+        guard let web else { return [] }
+        let r = try? await web.callAsyncJavaScript("return window.__fm1spot(names)", arguments: ["names": names], contentWorld: .page)
+        return r as? [String] ?? []
+    }
+
+    /// Runs tutorial actions in the emulator; "ok" or a problem.
+    func perform(_ actions: [Tutorial.Action]) async -> String {
+        guard let web, let data = try? JSONEncoder().encode(actions),
+              let list = try? JSONSerialization.jsonObject(with: data) else { return "The emulator is not loaded." }
+        do {
+            return try await web.callAsyncJavaScript("return await window.__fm1do(list)", arguments: ["list": list], contentWorld: .page) as? String ?? "?"
+        } catch { return error.localizedDescription }
+    }
+
+    func isRunning() async -> Bool {
+        (try? await web?.callAsyncJavaScript("return document.getElementById('start')?.hidden === true", arguments: [:], contentWorld: .page)) as? Bool ?? false
+    }
+
     func action(_ kind: String, _ arg: String = "") async -> ActionResult {
         guard let web else { return .init(ok: false, message: "The emulator is not loaded.") }
         busy = true
@@ -46,6 +69,8 @@ struct EmulatorScreen: View {
     let package: Data
     let fileName: String
     var firmware: Firmware?
+    /// Opens with this tutorial running.
+    var tutorial: Tutorial?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -59,6 +84,10 @@ struct EmulatorScreen: View {
     @State private var saveName = ""
     @State private var importing = false
     @State private var closing = false
+    @State private var player: TutorialPlayer?
+    @State private var startedTutorial = false
+
+    private var availableTutorial: Tutorial? { tutorial ?? firmware.flatMap(TutorialLibrary.tutorial(for:)) }
 
     static let pageURL = URL(string: "https://joakimeriksson.github.io/fm1-emu/?embed=1")!
     private var sha: String { SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined() }
@@ -75,6 +104,20 @@ struct EmulatorScreen: View {
                         Button(closing ? "Saving…" : "Close") { Task { await close() } }.disabled(closing)
                     }
                     ToolbarItem(placement: .primaryAction) { savesMenu }
+                    if let t = availableTutorial {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button { Task { await toggleTutorial(t) } } label: {
+                                Label("Tutorial", systemImage: player == nil ? "graduationcap" : "graduationcap.fill")
+                            }
+                            .disabled(!emu.ready)
+                        }
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if let player { TutorialCard(player: player) { Task { await closeTutorial() } } }
+                }
+                .onChange(of: emu.ready) {
+                    if emu.ready, tutorial != nil, !startedTutorial, let t = tutorial { startedTutorial = true; Task { await toggleTutorial(t) } }
                 }
                 .safeAreaInset(edge: .bottom) {
                     VStack(spacing: 2) {
@@ -164,6 +207,44 @@ struct EmulatorScreen: View {
 
     private func reset() async { _ = await emu.action("reset") }
 
+    private func toggleTutorial(_ t: Tutorial) async {
+        if player != nil { await closeTutorial(); return }
+        let p = TutorialPlayer(tutorial: t)
+        p.emulator = emu
+        emu.onUserEvent = { [weak p] name, down in p?.userEvent(name, down: down) }
+        pads.tutorialNav = { [weak p] delta in
+            guard let p else { return }
+            Task { delta > 0 ? await p.next() : await p.back() }
+        }
+        player = p
+        await p.begin()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["FM1_DEMO_TUTORIAL"] != nil { await autoplay(p) }
+        #endif
+    }
+
+    #if DEBUG
+    /// tools/tutorial-check.sh: plays every step (and its demo) so each can be screenshotted.
+    private func autoplay(_ p: TutorialPlayer) async {
+        for i in p.tutorial.steps.indices {
+            await p.go(i)
+            NSLog("TUTSTEP \(i + 1)/\(p.tutorial.steps.count) begin \(p.step.title)")
+            await p.showMe()
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            NSLog("TUTSTEP \(i + 1)/\(p.tutorial.steps.count) shown problem=\(p.problem ?? "none")")
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+        NSLog("TUTDONE")
+    }
+    #endif
+
+    private func closeTutorial() async {
+        await player?.stop()
+        player = nil
+        emu.onUserEvent = nil
+        pads.tutorialNav = nil
+    }
+
     private func restore(_ s: EmulatorSave) async {
         guard let d = s.payload, let text = String(data: d, encoding: .utf8) else { return }
         _ = await emu.action("import", text)
@@ -191,6 +272,7 @@ struct EmulatorWebView: UIViewRepresentable {
         config.mediaTypesRequiringUserActionForPlayback = []
         config.allowsInlineMediaPlayback = true
         config.userContentController.addUserScript(WKUserScript(source: Self.bridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.userContentController.add(context.coordinator, name: "fm1tutorial")
         let web = WKWebView(frame: .zero, configuration: config)
         web.isInspectable = true
         web.navigationDelegate = context.coordinator
@@ -213,13 +295,19 @@ struct EmulatorWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "fm1tutorial")
         coordinator.monitor?.stop()
         coordinator.parent.pads.emulatorSink.set(nil)
         web.stopLoading()
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+        func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let d = message.body as? [String: Any], let name = d["name"] as? String else { return }
+            controller.onUserEvent?(name, d["down"] as? Bool ?? true)
+        }
+
         let parent: EmulatorWebView
         var monitor: MIDIInputMonitor?
         var loaded = false
@@ -320,6 +408,9 @@ struct EmulatorWebView: UIViewRepresentable {
 
         private func enqueue(_ bytes: [UInt8]) {
             guard loaded else { return }
+            if bytes.count > 2, bytes[0] & 0xE0 == 0x80 { // note on/off reaches the tutorial too
+                controller.onUserEvent?("#\(bytes[1])", bytes[0] & 0xF0 == 0x90 && bytes[2] > 0)
+            }
             pending.append(bytes)
             guard !flushScheduled else { return }
             flushScheduled = true
@@ -393,6 +484,139 @@ struct EmulatorWebView: UIViewRepresentable {
         if (midi && !midi.disabled) { midi.value = "*"; midi.dispatchEvent(new Event("change")); }
         return "ok";
       };
+
+      // --- tutorials: the FM-1 panel as fm1-emu draws it (crates/fm1-live/src/panel.rs), 1280 x 820
+      const PANEL = (() => {
+        const c = {};
+        const circ = (n, x, y, r) => { c[n] = { x: x - r - 6, y: y - r - 6, w: 2 * r + 12, h: 2 * r + 12, cx: x, cy: y, kind: "knob" }; };
+        circ("MASTER", 110, 135, 44); circ("SELECT", 250, 135, 44); circ("PRESETS", 110, 295, 44); circ("ALGORITHM", 250, 295, 44);
+        [935, 1027, 1119, 1211].forEach((x, i) => circ("KNOB" + (i + 1), x, 120, 36));
+        const btn = (n, x, y, w, h) => { c[n] = { x, y, w, h, cx: x + w / 2, cy: y + h / 2, kind: "button" }; };
+        btn("OCT-", 62, 398, 112, 44); btn("OCT+", 186, 398, 112, 44);
+        [["FX", "SCL", "ENV", "LFO", "EDIT", "GLO"], ["HOME", "SAVE", "ARP", "SEQ", "PLAY", "REC"]].forEach((row, r) =>
+          row.forEach((n, i) => btn(n, 906 + i * 58, 232 + r * 76, 50, 64)));
+        c.SCREEN = { x: 370, y: 42, w: 480, h: 480, kind: "area" };
+        c.KEYS = { x: 55, y: 570, w: 1175, h: 222, kind: "area" };
+        // note keys F3..G5 (MIDI 53..79): whites then blacks, as panel.rs lays them out
+        const whites = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26];
+        whites.forEach((n, i) => { c["#" + (53 + n)] = { x: 61 + i * 73, y: 680, w: 62, h: 106, cx: 61 + i * 73 + 31, cy: 750, kind: "key" }; });
+        [[1, 0], [3, 1], [5, 2], [8, 4], [10, 5], [13, 7], [15, 8], [17, 9], [20, 11], [22, 12], [25, 14]].forEach(([n, a]) => {
+          const cx = 61 + (a + 1) * 73 - 5; c["#" + (53 + n)] = { x: cx - 31, y: 574, w: 62, h: 94, cx, cy: 640, kind: "key" };
+        });
+        return c;
+      })();
+      const NOTE = /^([A-Ga-g])(#|b)?(-?\d)$/;
+      const midiOf = (name) => {
+        const m = NOTE.exec(name); if (!m) return null;
+        const pc = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1].toUpperCase()] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
+        return (Number(m[3]) + 1) * 12 + pc;
+      };
+      const ctl = (name) => { const n = midiOf(name); return n != null ? PANEL["#" + n] : PANEL[name]; };
+      // keyboard shortcuts the page understands (web/main.js)
+      const KEYOF = { "OCT-": "z", "OCT+": "x", PLAY: " ", REC: "r", FX: "1", SCL: "2", ENV: "3", LFO: "4", EDIT: "5",
+                      GLO: "6", HOME: "7", SAVE: "8", ARP: "9", SEQ: "0" };
+      const PIANO = "awsedftgyhujkolp;'";               // C4 (60) .. F5 (77)
+      const keyFor = (name) => {
+        if (KEYOF[name]) return KEYOF[name];
+        const n = midiOf(name); return n != null && n >= 60 && n < 60 + PIANO.length ? PIANO[n - 60] : null;
+      };
+      const canvas = () => $("panel");
+      const toPage = (r) => {
+        const cv = canvas(); if (!cv) return null;
+        const b = cv.getBoundingClientRect(), sx = b.width / (cv.width || 1280), sy = b.height / (cv.height || 820);
+        return { left: b.left + r.x * sx, top: b.top + r.y * sy, width: r.w * sx, height: r.h * sy, cx: b.left + (r.cx ?? r.x + r.w / 2) * sx, cy: b.top + (r.cy ?? r.y + r.h / 2) * sy };
+      };
+      const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, bubbles: true }));
+      const wheel = (r, clicks) => {
+        const p = toPage(r); if (!p) return;
+        const steps = Math.abs(clicks), dy = clicks > 0 ? -40 : 40;
+        for (let i = 0; i < steps; i++)
+          canvas().dispatchEvent(new WheelEvent("wheel", { clientX: p.cx, clientY: p.cy, deltaY: dy, bubbles: true, cancelable: true }));
+      };
+
+      // spotlight: a dimmed page with holes over the named controls
+      let spot = null, spotNames = [], spotRaf = 0;
+      const drawSpot = () => {
+        if (!spot) return;
+        const rects = spotNames.map(ctl).filter(Boolean).map(toPage).filter(Boolean);
+        const pad = 6, dpr = devicePixelRatio || 1;
+        let cv = spot.firstChild;
+        if (!cv) { cv = document.createElement("canvas"); cv.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh"; spot.append(cv); }
+        if (cv.width !== innerWidth * dpr || cv.height !== innerHeight * dpr) { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; }
+        const g = cv.getContext("2d");
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, innerWidth, innerHeight);
+        if (rects.length) {
+          g.fillStyle = "rgba(0,0,0,0.6)";
+          g.fillRect(0, 0, innerWidth, innerHeight);
+          g.globalCompositeOperation = "destination-out";
+          for (const r of rects) { g.beginPath(); g.roundRect(r.left - pad, r.top - pad, r.width + 2 * pad, r.height + 2 * pad, 10); g.fill(); }
+          g.globalCompositeOperation = "source-over";
+          g.strokeStyle = "#f2a33a"; g.lineWidth = 3;
+          for (const r of rects) { g.beginPath(); g.roundRect(r.left - pad, r.top - pad, r.width + 2 * pad, r.height + 2 * pad, 10); g.stroke(); }
+        }
+        spotRaf = requestAnimationFrame(drawSpot);
+      };
+      window.__fm1spot = (names) => {
+        spotNames = names || [];
+        if (!spot) { spot = document.createElement("div"); spot.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:9999"; document.body.append(spot); }
+        cancelAnimationFrame(spotRaf); drawSpot();
+        const first = spotNames.map(ctl).filter(Boolean)[0];
+        if (first) { const p = toPage(first); if (p && (p.top < 0 || p.top + p.height > innerHeight)) canvas()?.scrollIntoView({ block: "center", behavior: "smooth" }); }
+        return spotNames.filter((n) => !ctl(n));      // unknown names, for the app to report
+      };
+
+      // actions: press / hold / release a control or note, turn a knob, wait
+      window.__fm1do = async (actions) => {
+        const held = [];
+        for (const a of actions || []) {
+          if (a.wait) { await sleep(a.wait); continue; }
+          const name = a.press || a.hold || a.release || a.note;
+          if (a.turn) {
+            const r = ctl(a.turn);
+            if (!r) return "unknown control " + a.turn;
+            if (["SELECT", "PRESETS", "ALGORITHM"].includes(a.turn)) {
+              const k = { SELECT: ["ArrowLeft", "ArrowRight"], PRESETS: ["ArrowDown", "ArrowUp"], ALGORITHM: [",", "."] }[a.turn];
+              for (let i = 0; i < Math.abs(a.clicks || 1); i++) { key(k[(a.clicks || 1) > 0 ? 1 : 0], true); await sleep(60); }
+            } else wheel(r, a.clicks || 1);
+            await sleep(120); continue;
+          }
+          const k = keyFor(name);
+          if (!k) return "can't press " + name + " from the app (only buttons and the keys C4–F5)";
+          if (a.release) { key(k, false); continue; }
+          key(k, true);
+          if (a.hold) { held.push(k); continue; }
+          await sleep(a.ms || 160);
+          key(k, false);
+          await sleep(80);
+        }
+        return "ok";
+      };
+
+      // your turn: report every control the user touches on the panel or keyboard
+      const report = (name, down) => { try { window.webkit.messageHandlers.fm1tutorial.postMessage({ name, down }); } catch (e) {} };
+      const hitName = (x, y) => {
+        const cv = canvas(); if (!cv) return null;
+        const b = cv.getBoundingClientRect(), px = (x - b.left) * (cv.width / b.width), py = (y - b.top) * (cv.height / b.height);
+        for (const [n, r] of Object.entries(PANEL)) {
+          if (r.kind !== "area" && px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) return n;
+        }
+        return null;
+      };
+      document.addEventListener("pointerdown", (e) => { if (e.target === canvas()) { const n = hitName(e.clientX, e.clientY); if (n) report(n, true); } }, true);
+      document.addEventListener("pointerup", (e) => { if (e.target === canvas()) { const n = hitName(e.clientX, e.clientY); if (n) report(n, false); } }, true);
+      document.addEventListener("wheel", (e) => { if (e.target === canvas() && e.isTrusted) { const n = hitName(e.clientX, e.clientY); if (n) report("turn:" + n, true); } }, true);
+      const KEYNAME = Object.fromEntries(Object.entries(KEYOF).map(([n, k]) => [k, n]));
+      addEventListener("keydown", (e) => {
+        if (!e.isTrusted || e.repeat) return;
+        const k = e.key.toLowerCase(), i = PIANO.indexOf(k);
+        if (KEYNAME[k]) report(KEYNAME[k], true); else if (i >= 0) report("#" + (60 + i), true);
+      }, true);
+      addEventListener("keyup", (e) => {
+        if (!e.isTrusted) return;
+        const k = e.key.toLowerCase(), i = PIANO.indexOf(k);
+        if (KEYNAME[k]) report(KEYNAME[k], false); else if (i >= 0) report("#" + (60 + i), false);
+      }, true);
 
       // save | export | import (arg: .fm1save text) | reset  ->  { ok, message, name?, text? }
       window.__fm1action = async (kind, arg) => {

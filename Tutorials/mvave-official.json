@@ -1,0 +1,115 @@
+{
+  "format": 1,
+  "id": "mvave-official",
+  "title": "M-VAVE FM-1: a guided tour",
+  "summary": "A tour of the FM-1's own firmware: a DX7-style 6-operator FM synth with 128 presets, 32 algorithms, an ADSR, LFO, six-slot effects chain, arpeggiator and step sequencer. Covers V15 and V16; V16-only features are marked.",
+  "firmwareVersion": "V15/V16",
+  "match": { "families": ["official"], "productPrefixes": ["FM-1_015", "FM-1_016"] },
+  "sources": [
+    "https://m.media-amazon.com/images/I/A1WOydif9HL.pdf",
+    "https://manuals.plus/?p=21387493",
+    "https://www.matrixsynth.com/2026/07/m-vave-fm-1-v15-firmware-update-new.html",
+    "https://www.matrixsynth.com/2026/10/m-vave-fm-1-official-v16-firmware.html",
+    "https://www.matrixsynth.com/2026/10/m-vave-fm-1-do-yoou-really-need-custom.html",
+    "https://www.synthanatomy.com/2026/07/m-vave-fm-1-review-low-budget-pocket-fm-ynthesizer.html",
+    "https://github.com/joakimeriksson/fm1-emu/blob/main/docs/stock-firmware.md"
+  ],
+  "reviewed": false,
+  "author": "Claude Code draft 2026-11-15",
+  "setup": [ { "press": "HOME" } ],
+  "steps": [
+    {
+      "title": "The screen and HOME",
+      "text": "The top bar shows the loaded preset's number and name, the centre shows the current mode (on Home, an oscilloscope of the output) and the bottom bar names the mode and page, e.g. 1/2 LFO. Press HOME at any time to get back here.",
+      "highlight": ["SCREEN", "HOME"],
+      "show": [ { "press": "HOME" } ]
+    },
+    {
+      "title": "Play and set the volume",
+      "text": "The 27 keys play notes, F3 to G5 by default, and light up as you press them. MASTER on the far left sets the output volume. Plugging in headphones mutes the speaker.",
+      "highlight": ["KEYS", "MASTER"],
+      "show": [ { "note": "C4", "ms": 300 }, { "note": "E4", "ms": 300 }, { "note": "G4", "ms": 500 } ],
+      "await": { "anyNote": true, "hint": "Play a few notes" }
+    },
+    {
+      "title": "Octave and transpose",
+      "text": "OCT- and OCT+ shift the keyboard an octave per press (up to 3 either way); their LEDs blink slow, fast or stay solid. Hold OCT- or OCT+ and turn ALGORITHM to transpose by up to 12 semitones. Press both together to reset octave and transpose to 0.",
+      "highlight": ["OCT-", "OCT+", "ALGORITHM"],
+      "show": [ { "press": "OCT+" }, { "note": "C4", "ms": 400 }, { "press": "OCT-" }, { "note": "C4", "ms": 400 } ]
+    },
+    {
+      "title": "Choose a preset",
+      "text": "Turn PRESETS to step through the 128 presets (001-128, wrapping around). Each click loads the next sound at once, and a list pops up for about a second. The top bar keeps showing what is loaded.",
+      "highlight": ["PRESETS", "SCREEN"],
+      "show": [ { "turn": "PRESETS", "clicks": 1 }, { "note": "C4", "ms": 600 }, { "turn": "PRESETS", "clicks": -1 }, { "note": "C4", "ms": 600 } ],
+      "await": { "turn": "PRESETS", "hint": "Turn PRESETS and play to hear other sounds" }
+    },
+    {
+      "title": "Algorithms",
+      "text": "The six operators are sine oscillators; the algorithm (01-32) decides which are carriers you hear and which modulate others. Turn ALGORITHM to change it: the screen draws the routing, including the feedback path.",
+      "highlight": ["ALGORITHM", "SCREEN"],
+      "show": [ { "turn": "ALGORITHM", "clicks": 1 }, { "note": "C4", "ms": 600 }, { "turn": "ALGORITHM", "clicks": -1 }, { "note": "C4", "ms": 600 } ]
+    },
+    {
+      "title": "The amp envelope (ENV)",
+      "text": "Press ENV for a simple ADSR: KNOB1 Attack, KNOB2 Decay, KNOB3 Sustain, KNOB4 Release, each 0-8 and drawn as a bar graph. Press ENV again to return Home.",
+      "highlight": ["ENV", "KNOB1", "KNOB2", "KNOB3", "KNOB4"],
+      "show": [ { "press": "ENV" }, { "turn": "KNOB4", "clicks": 3 }, { "note": "C4", "ms": 400 }, { "wait": 900 }, { "turn": "KNOB4", "clicks": -3 }, { "press": "ENV" } ],
+      "await": { "press": ["ENV"], "hint": "Press ENV, then try the four knobs" }
+    },
+    {
+      "title": "The LFO",
+      "text": "Press LFO. Page 1: KNOB1 wave, KNOB2 speed, KNOB3 pitch depth (PMD), KNOB4 amp depth (AMD). Turn SELECT for page 2: delay, pitch sensitivity, LFO sync and osc sync. Press LFO again to leave.",
+      "highlight": ["LFO", "SELECT", "KNOB1", "KNOB2", "KNOB3", "KNOB4"],
+      "show": [ { "press": "LFO" }, { "turn": "KNOB3", "clicks": 10 }, { "note": "C4", "ms": 1500 }, { "turn": "KNOB3", "clicks": -10 }, { "press": "LFO" } ]
+    },
+    {
+      "title": "Deep editing (EDIT)",
+      "text": "Press EDIT and the labelled keys blink: OP1-OP6 pick an operator, PIT the pitch envelope, GLO algorithm/feedback/sync, MONO or POLY the voice mode. Turn SELECT through up to 6 pages (rates, levels, tuning, level, scaling) and use the knobs. V15 adds Init Voice, Rename and Copy. EDIT again leaves.",
+      "highlight": ["EDIT", "KEYS", "SELECT"],
+      "show": [ { "press": "EDIT" }, { "wait": 1500 }, { "press": "EDIT" } ]
+    },
+    {
+      "title": "The effects chain (FX)",
+      "text": "Press FX for a grid of six slots: Filter, Reverb, Delay, Distortion, Chorus, Phaser (bright = on). Turn SELECT to move the blinking dot, KNOB1-3 for its settings, KNOB4 right for on, left for off. V16: the chain is stereo and shared by all parts.",
+      "highlight": ["FX", "SELECT", "KNOB1", "KNOB2", "KNOB3", "KNOB4", "SCREEN"],
+      "show": [ { "press": "FX" }, { "turn": "SELECT", "clicks": 1 }, { "wait": 800 }, { "turn": "SELECT", "clicks": -1 }, { "wait": 800 }, { "press": "FX" } ],
+      "await": { "turn": "SELECT", "hint": "In FX, turn SELECT to visit the effects" }
+    },
+    {
+      "title": "Reorder the effects",
+      "text": "In FX mode, press SCL (the manual calls it SEL) to grab the selected effect: its dot goes solid. Turn SELECT to move it along the chain, then press SCL again to drop it. V16 also keeps 128 FX groups apart from presets; ALGORITHM picks one on the FX page.",
+      "highlight": ["SCL", "SELECT", "FX"]
+    },
+    {
+      "title": "Arpeggiator",
+      "text": "Press ARP (its LED lights) and hold keys: they play as a pattern. KNOB1 mode (Up, Down, Inclusive, Exclusive, Random, Order, Repeat), KNOB2 octaves, KNOB3 rate, KNOB4 tempo; page 2 has gate, swing and latch. Press ARP again to stop.",
+      "highlight": ["ARP", "KEYS", "KNOB1", "KNOB2", "KNOB3", "KNOB4"],
+      "show": [ { "press": "ARP" }, { "note": "C4", "ms": 2000 }, { "press": "ARP" } ],
+      "await": { "press": ["ARP"], "hint": "Press ARP, then hold some keys" }
+    },
+    {
+      "title": "Record a sequence",
+      "text": "Press SEQ to turn the sequencer on (ARP must be off). Press REC and play notes: each fills the next step, and filled steps light their key. Press REC again to stop recording; playback carries on. V15 adds long notes and custom step lengths.",
+      "highlight": ["SEQ", "REC", "KEYS"],
+      "show": [ { "press": "SEQ" }, { "press": "REC" }, { "note": "C4", "ms": 200 }, { "note": "E4", "ms": 200 }, { "note": "G4", "ms": 200 }, { "note": "C5", "ms": 200 }, { "press": "REC" }, { "wait": 2500 }, { "press": "PLAY" }, { "press": "SEQ" } ]
+    },
+    {
+      "title": "Play and pick patterns",
+      "text": "With SEQ on, PLAY starts and stops the pattern; the playing step's key blinks. KNOB1 picks one of 16 patterns, KNOB2 clears, KNOB3 rate, KNOB4 tempo; page 2 has gate and swing. V16 allows 64 steps, ratchets and an 8-track arrangement, and holding PLAY is a panic.",
+      "highlight": ["PLAY", "SEQ", "KNOB1", "KNOB2", "KNOB3", "KNOB4"],
+      "await": { "press": ["PLAY"], "hint": "With SEQ on, press PLAY" }
+    },
+    {
+      "title": "Global settings (GLO)",
+      "text": "Press GLO for MIDI note and effect channels and pitch-bend ranges; page 2 resets the factory patches or saves the globals (Globe Save). V15 adds Voice Reset and Glide here. V16 adds 8 multitimbral parts, each with Basic, Pitch and Glide pages.",
+      "highlight": ["GLO", "SELECT", "KNOB1", "KNOB2"],
+      "show": [ { "press": "GLO" }, { "wait": 1500 }, { "press": "GLO" } ]
+    },
+    {
+      "title": "Save, and learn more",
+      "text": "Press and hold SAVE to store your changes (voice, effects, patterns, globals): the screen says Preset Saved. V16 lets you choose All, Globe, Preset or Pattern. The FM-1 manual and M-VAVE's MIDI CC guide cover the rest.",
+      "highlight": ["SAVE", "SCREEN"]
+    }
+  ]
+}
