@@ -223,6 +223,63 @@ final class ArchiveTests: XCTestCase {
         XCTAssertEqual(Array(dev.feluccaObjects[32]![512...]), Array(original[32]![512...]))
     }
 
+    func testSLOOPCaptureAndRestore() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        for id: UInt8 in [0, 1, 2, 3, 6, 8, 9] { dev.feluccaObjects[id] = (0..<(id < 2 ? 3000 : 700)).map { UInt8(($0 * 7 + Int(id)) & 0xFF) } }
+        dev.feluccaObjects[32] = (0..<2000).map { UInt8($0 & 0xFF) }
+        let device = try await connect(dev)
+        let archive = try await Archives.capture(device)
+        XCTAssertEqual(archive.format, SLOOPArchive.format)
+        XCTAssertEqual(archive.parts.map(\.id), ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "32", "33", "34", "35"])
+        XCTAssertEqual(archive.part("2")?.label, "Section A")
+        XCTAssertEqual(archive.part("32")?.data, Data(dev.feluccaObjects[32]!))
+        XCTAssertFalse(dev.sloopSaw.contains(65) || dev.sloopSaw.contains(66) || dev.sloopSaw.contains(67))   // never Felucca's commands
+
+        let stored = try DeviceArchive.decode(try archive.encoded())
+        let original = dev.feluccaObjects
+        for id: UInt8 in 0...9 { dev.feluccaObjects[id] = [1, 2, 3] }
+        try await Archives.restore(stored, to: device)
+        for id: UInt8 in 0...9 { XCTAssertEqual(dev.feluccaObjects[id] ?? [], original[id] ?? [], "object \(id)") }
+        XCTAssertEqual(dev.feluccaObjects[32], original[32])                  // samples left as they are
+        XCTAssertEqual(dev.sloopSaw.filter { $0 == 36 }.count > 0, true)
+    }
+
+    func testSLOOPSongSavesAndLoadsOnlyTheSong() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        for id: UInt8 in [0, 1, 2, 3, 4, 6] { dev.feluccaObjects[id] = (0..<1200).map { UInt8(($0 + Int(id) * 3) & 0xFF) } }
+        let device = try await connect(dev)
+        let song = try await SLOOPArchive(link: device.link).capture(firmware: device.identity.text, only: SLOOPArchive.songIDs)
+        XCTAssertEqual(song.parts.map(\.id), ["0", "1", "2", "3", "4", "5"])
+        XCTAssertEqual(song.info["contents"], "song")
+
+        // a new song on the device: other sections, other presets
+        dev.feluccaObjects[2] = [9, 9, 9]; dev.feluccaObjects[5] = [7, 7]; dev.feluccaObjects[6] = [4, 4, 4, 4]
+        try await Archives.restore(song, to: device)
+        XCTAssertEqual(dev.feluccaObjects[2]!.count, 1200)
+        XCTAssertEqual(dev.feluccaObjects[5] ?? [], [])                           // a section empty in the song is emptied
+        XCTAssertEqual(dev.feluccaObjects[6], [4, 4, 4, 4])                     // presets untouched
+    }
+
+    func testSLOOPRestoreChecksTheBackupFirst() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        var bad = DeviceArchive(format: SLOOPArchive.format, family: .felucca, firmware: "FM-1_900",
+                                parts: [.init(id: "0", label: "Loop in progress", data: Data([1, 2, 3])), .init(id: "1", label: "Settings", data: Data([4]))])
+        bad.parts[0].data = Data([1, 2, 4])                                     // damaged: CRC no longer matches
+        let device = try await connect(dev)
+        do { try await Archives.restore(bad, to: device); XCTFail("should refuse") } catch {}
+        XCTAssertFalse(dev.sloopSaw.contains(36))                               // nothing was sent
+    }
+
+    func testSLOOPInfoIsNotFelucca() {
+        var info = Array("FELUCCA 2.8.5".utf8) + [0, 1, 60, 10, 64, 4] + Array("FM6".utf8) + [0]
+        XCTAssertNil(SLOOPArchive.protocolVersion(info: info))
+        info += [4, 12]
+        XCTAssertEqual(SLOOPArchive.protocolVersion(info: info), 12)
+    }
+
     func testOldFeluccaRefusesArchive() async throws {
         let dev = VirtualFM1(identity: "FM-1_906")
         dev.feluccaInfoSupported = false

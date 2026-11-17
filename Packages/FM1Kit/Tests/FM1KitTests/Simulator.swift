@@ -27,6 +27,10 @@ final class VirtualFM1: @unchecked Sendable {
     // Felucca storage
     var feluccaObjects: [UInt8: [UInt8]] = [:]
     var feluccaInfoSupported = true
+    /// Answers as SLOOP 2.8 (editor protocol 12): INFO without Felucca's archive extension, backup commands 34–36.
+    var isSLOOP = false
+    var sloopPlaying = false
+    var sloopSaw: [UInt8] = []
     var pendingPut: (id: UInt8, size: Int, crc: UInt32, buf: [UInt8])?
     var sampleWrite: [UInt8] = []
 
@@ -137,6 +141,7 @@ final class VirtualFM1: @unchecked Sendable {
 
     func felucca(_ cmd: UInt8, _ a: [UInt8]) {
         func send(_ payload: [UInt8]) { reply([0xF0, 0x7D, 0x46, 0x4C, cmd] + payload + [0xF7]) }
+        if isSLOOP { sloop(cmd, a, send); return }
         switch cmd {
         case 1:
             var p = Array("FELUCCA 1.8.2".utf8) + [0]
@@ -178,6 +183,53 @@ final class VirtualFM1: @unchecked Sendable {
             feluccaObjects[32 + a[0]] = header + [UInt8](repeating: 0, count: 32) + sampleWrite
             send([a[0], 0])
         case 14: feluccaObjects[32 + a[0]] = []; send([a[0], 0])
+        default: break
+        }
+    }
+
+    // MARK: SLOOP backup (firmware/src/editor.c ed_backup, device side)
+
+    func sloop(_ cmd: UInt8, _ a: [UInt8], _ send: ([UInt8]) -> Void) {
+        sloopSaw.append(cmd)
+        let ids: [UInt8] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 32, 33, 34, 35]
+        switch cmd {
+        case 1:
+            var p = Array("FELUCCA 2.8.5".utf8) + [0]
+            p += [2, 60, 10, 64, 4] + Array("FM6".utf8) + [0] + Array("PHYS".utf8) + [0]
+            p += [4, 12]                                       // tracks, protocol version
+            send(p)
+        case 34:
+            let listed = ids.filter { !(($0 == 10 || $0 == 11) && (feluccaObjects[$0] ?? []).isEmpty) }
+            var p: [UInt8] = [0, UInt8(listed.count)]
+            for id in listed {
+                let o = feluccaObjects[id] ?? []
+                p += [id] + SysExCoding.u32To7(UInt32(o.count)) + SysExCoding.u32To7(SysExCoding.crc32(o))
+            }
+            send(p)
+        case 35:
+            let id = a[0], off = Int(try! SysExCoding.u32From7(a, at: 1)), size = Int(a[6]) | Int(a[7]) << 7
+            let o = feluccaObjects[id] ?? []
+            send([id, 0] + SysExCoding.u32To7(UInt32(off)) + [UInt8(size & 127), UInt8(size >> 7)] + SysExCoding.maskPack(o[off..<(off + size)]))
+        case 36:
+            let op = a[0], id = a[1]
+            var rc: UInt8 = 0
+            switch op {
+            case 0:
+                let size = Int(try! SysExCoding.u32From7(a, at: 2))
+                if id > 11 || (id < 2 && size == 0) { rc = 1 } else { pendingPut = (id, size, try! SysExCoding.u32From7(a, at: 7), []) }
+            case 1:
+                let off = Int(try! SysExCoding.u32From7(a, at: 2))
+                if let p = pendingPut, p.id == id, off == p.buf.count {
+                    pendingPut!.buf += try! SysExCoding.maskUnpack(Array(a[7...]), size: min(256, p.size - off))
+                } else { rc = 5 }
+            case 2:
+                if sloopPlaying && id >= 6 { rc = 3 }
+                else if let p = pendingPut, p.id == id, p.buf.count == p.size, SysExCoding.crc32(p.buf) == p.crc { feluccaObjects[id] = p.buf }
+                else { rc = 2 }
+                pendingPut = nil
+            default: pendingPut = nil
+            }
+            send([op, id, rc])
         default: break
         }
     }

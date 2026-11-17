@@ -163,6 +163,37 @@ final class DeviceController {
         }
     }
 
+    /// Saves the SLOOP song on the FM-1 (the loop in progress, the song order and sections A–D) under a name.
+    func saveSong(_ name: String, context: ModelContext) async {
+        await run("Save song") {
+            let dev = try await connect()
+            defer { dev.link.close() }
+            let s = SLOOPArchive(link: dev.link)
+            guard await s.supported() else {
+                throw FM1Error.unsupported("\(dev.identity.text) doesn't have SLOOP's song backup. It works with SLOOP 2.3 or later and firmware built on it.")
+            }
+            let archive = try await s.capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs, progress: archiveProgress("Save song", "Reading"))
+            let fw = context.firmware(forIdentity: dev.identity)
+            let b = try Backup.from(archive, label: name, kind: "song")
+            b.firmware = fw
+            context.insert(b)
+            try context.save()
+            return "Saved the song \"\(name)\"."
+        }
+    }
+
+    /// Puts a saved SLOOP song back: the loop, the song order and sections A–D are replaced; presets, kits and
+    /// samples on the FM-1 stay as they are.
+    func loadSong(_ song: Backup) async {
+        await run("Load song") {
+            guard let archive = song.archive else { throw FM1Error.badPackage("This song can't be read.") }
+            let dev = try await connect()
+            defer { dev.link.close() }
+            try await Archives.restore(archive, to: dev, progress: archiveProgress("Load song", "Writing"))
+            return "Loaded \"\(song.label)\"."
+        }
+    }
+
     func restore(_ backup: Backup, context: ModelContext, includeSamples: Bool) async {
         await run("Restore") {
             guard let archive = backup.archive else { throw FM1Error.unsupported("This backup cannot be written back over MIDI.") }

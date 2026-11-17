@@ -44,7 +44,7 @@ struct DeviceView: View {
                             .disabled(device.busy || !id.family.supportsArchive && id.family != .unknown)
                         if let fw = currentFirmware, fw.latestRestorableBackup != nil {
                             Menu {
-                                ForEach(fw.sortedBackups.filter(\.isRestorable)) { b in
+                                ForEach(fw.sortedBackups.filter { $0.isRestorable && !$0.isSong }) { b in
                                     Button("\(b.label) · \(b.date.formatted(date: .abbreviated, time: .shortened))") {
                                         Task { await device.restore(b, context: context, includeSamples: includeSamples) }
                                     }
@@ -58,7 +58,10 @@ struct DeviceView: View {
                              ? "Reads everything \(id.family.displayName) can export (projects, voices, settings\(includeSamples ? ", samples" : "")) and saves it \(CloudSync.whereKept)."
                              : id.family == .official
                              ? "M-VAVE's official firmware has no backup protocol, so its patterns can't be read out. Note anything you want to keep in the firmware's notes."
-                             : "This firmware may not have a backup protocol. Back up now will try Felucca's.")
+                             : "This firmware may not have a backup protocol. Back up now will try Felucca's and SLOOP's.")
+                    }
+                    if id.family == .felucca || id.family == .unknown {
+                        SLOOPSongsSection(firmware: currentFirmware)
                     }
                 }
 
@@ -381,6 +384,71 @@ struct CheckInSettings: View {
 }
 
 /// m-bootloader (or its helper) in MIDI mode: the flash chip, a whole-flash backup, installs through it, restart.
+/// SLOOP keeps one song on the FM-1. This keeps as many as you like in the app: save the one on the FM-1 under a name,
+/// load another back (the loop, the song order and sections A–D; presets, kits and samples stay as they are).
+struct SLOOPSongsSection: View {
+    @Environment(DeviceController.self) private var device
+    @Environment(\.modelContext) private var context
+    let firmware: Firmware?
+    @State private var naming = false
+    @State private var name = ""
+    @State private var loading: Backup?
+    @State private var renaming: Backup?
+    @State private var newName = ""
+
+    var body: some View {
+        Section {
+            Button {
+                name = "Song \((firmware?.songs.count ?? 0) + 1)"
+                naming = true
+            } label: { Label("Save the song on the FM-1…", systemImage: "square.and.arrow.down") }
+                .disabled(device.busy)
+            ForEach(firmware?.songs ?? []) { s in
+                Button { loading = s } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.label).foregroundStyle(.primary)
+                        Text("\(s.date.formatted(date: .abbreviated, time: .shortened)) · \(s.partsSummary.contains("Section") ? sections(s) : "no sections")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(device.busy)
+                .swipeActions {
+                    Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
+                    Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
+                }
+                .contextMenu {
+                    Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
+                    Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
+                }
+            }
+        } header: { Text("SLOOP songs") } footer: {
+            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, then start a new one on the FM-1 (SAVE → TOOLS → NEW, and SECTION → ERASE for A–D). Tap a song to put it back. Stop playback first. Works with SLOOP 2.3 or later and firmware built on it.")
+        }
+        .alert("Save the song", isPresented: $naming) {
+            TextField("Name", text: $name)
+            Button("Save") { let n = name.trimmingCharacters(in: .whitespaces); Task { await device.saveSong(n.isEmpty ? "Song" : n, context: context) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Saves the loop, sections A–D and the song order from the FM-1.") }
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Rename") { if let r = renaming, !newName.trimmingCharacters(in: .whitespaces).isEmpty { r.label = newName; try? context.save() } }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
+                            titleVisibility: .visible) {
+            Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
+        } message: {
+            Text("The loop, sections A–D and the song order on the FM-1 are replaced. Save the current song first if you want to keep it.")
+        }
+    }
+
+    private func sections(_ s: Backup) -> String {
+        guard let a = s.archive else { return "" }
+        let used = ["2": "A", "3": "B", "4": "C", "5": "D"].filter { a.part($0.key).map { !$0.data.isEmpty } ?? false }.values.sorted()
+        return used.isEmpty ? "no sections" : "sections " + used.joined(separator: " ")
+    }
+}
+
 struct MBootSection: View {
     @Environment(DeviceController.self) private var device
     @Environment(\.modelContext) private var context

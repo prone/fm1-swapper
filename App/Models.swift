@@ -100,7 +100,10 @@ final class Firmware {
     var firstInstalled: Date? { successfulInstalls.first?.date }
     var lastInstalled: Date? { lastInstalledAt }
     var sortedBackups: [Backup] { (backups ?? []).sorted { $0.date > $1.date } }
-    var latestRestorableBackup: Backup? { sortedBackups.first { $0.isRestorable } }
+    /// The latest full backup to write back after an install (saved SLOOP songs don't count).
+    var latestRestorableBackup: Backup? { sortedBackups.first { $0.isRestorable && !$0.isSong } }
+    /// Saved SLOOP songs, newest first.
+    var songs: [Backup] { sortedBackups.filter(\.isSong) }
     var displayVersion: String { version.isEmpty ? product : version }
     /// The emulator treats a file named FM-1.fwsc as M-VAVE's own firmware.
     var emulatorFileName: String { isStock ? "FM-1.fwsc" : "\(name.replacingOccurrences(of: "/", with: "-")).fwsc" }
@@ -151,6 +154,8 @@ final class Backup {
     var family: FirmwareFamily { FirmwareFamily(rawValue: familyRaw) ?? .unknown }
     /// Device and imported archives can be written back; attached files can't. (Cheap: no decoding.)
     var isRestorable: Bool { kindRaw != "file" }
+    /// A saved SLOOP song (part of the SLOOP backup: the loop, the song order, sections A–D).
+    var isSong: Bool { kindRaw == "song" }
     /// The device archive, when this backup can be written back over MIDI.
     var archive: DeviceArchive? {
         guard kindRaw != "file", let payload else { return nil }

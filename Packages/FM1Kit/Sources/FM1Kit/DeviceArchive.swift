@@ -47,6 +47,7 @@ public struct DeviceArchive: Codable, Sendable, Equatable {
 
     /// Files to hand to other tools (e.g. Felucca's editor JSON, DX7 banks as .syx).
     public func exportFiles() throws -> [(name: String, data: Data)] {
+        if format == SLOOPArchive.format { return [] }
         switch family {
         case .felucca: return [("Felucca-backup-\(Self.day(created)).json", try FeluccaArchive.nativeJSON(self))]
         case .fm1Open: return FM1OpenArchive.exportFiles(self)
@@ -69,7 +70,11 @@ public enum Archives {
     public static func capture(_ device: ConnectedDevice, includeSamples: Bool = true,
                                progress: @escaping ArchiveProgress = { _, _ in }) async throws -> DeviceArchive {
         switch device.identity.family {
-        case .felucca: return try await FeluccaArchive(link: device.link).capture(firmware: device.identity.text, progress: progress)
+        case .felucca:
+            // SLOOP and its forks answer as Felucca but have their own backup commands.
+            let s = SLOOPArchive(link: device.link)
+            if await s.supported() { return try await s.capture(firmware: device.identity.text, progress: progress) }
+            return try await FeluccaArchive(link: device.link).capture(firmware: device.identity.text, progress: progress)
         case .fm1Open: return try await FM1OpenArchive(link: device.link).capture(firmware: device.identity.text, includeSamples: includeSamples, progress: progress)
         case .updateLoader: throw FM1Error.unsupported("The FM-1 is in update mode, so nothing can be backed up. Finish the install first.")
         case .official:
@@ -77,12 +82,17 @@ public enum Archives {
         case .unknown:
             // Unknown numbers can still be Felucca forks: ask.
             if let a = try? await FeluccaArchive(link: device.link).capture(firmware: device.identity.text, progress: progress) { return a }
+            let s = SLOOPArchive(link: device.link)
+            if await s.supported() { return try await s.capture(firmware: device.identity.text, progress: progress) }
             throw FM1Error.unsupported("\(device.identity.text) has no backup protocol this app knows. Save anything important on the device, or use the firmware's own editor.")
         }
     }
 
     public static func restore(_ archive: DeviceArchive, to device: ConnectedDevice, includeSamples: Bool = true,
                                progress: @escaping ArchiveProgress = { _, _ in }) async throws {
+        if archive.format == SLOOPArchive.format {
+            return try await SLOOPArchive(link: device.link).restore(archive, progress: progress)
+        }
         switch archive.family {
         case .felucca:
             try await FeluccaArchive(link: device.link).restore(archive, progress: progress)
