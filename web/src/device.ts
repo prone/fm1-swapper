@@ -128,6 +128,40 @@ export const device = {
     });
   },
 
+  /** The saved song that matches what's on the FM-1 ("saved"), none ("unsaved"), or why it couldn't tell. */
+  async checkSongSaved(songs: Backup[]): Promise<{ saved?: string; unsaved?: true; failed?: string }> {
+    if (!provider) return { failed: "Connect to the FM-1 first." };
+    if (state.busy) return { failed: "The FM-1 is busy." };
+    const u = new Updater(provider, undefined, note);
+    const d = await u.find((id) => !isLoader(id));
+    if (!d) return { failed: "FM-1 not found." };
+    try {
+      const now = await new SLOOPArchive(d.link).checksums();
+      const s = songs.find((b) => b.archive && SLOOPArchive.matches(b.archive, now));
+      return s ? { saved: s.label } : { unsaved: true };
+    } catch (e) { return { failed: (e as Error).message }; }
+    finally { d.link.close(); }
+  },
+
+  /** Clears the song on the FM-1 (every note of the loop, sections A-D), saving it first when asked. */
+  clearSong(owner: Firmware | undefined, saveFirstAs: string | null) {
+    return device.run("Clearing the song", async (u) => {
+      const d = await u.find((id) => !isLoader(id));
+      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
+      try {
+        const s = new SLOOPArchive(d.link);
+        if (saveFirstAs) {
+          const a = await s.capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ busy: "Saving the song", progress: t ? n / t : null }));
+          await store.saveBackup({ ...backupRecord(a, owner?.id ?? "", "song"), label: saveFirstAs });
+          note(`✓ saved the song "${saveFirstAs}"`);
+        }
+        await s.clearSong((n, t) => set({ busy: "Clearing the song", progress: n / t }));
+        note("✓ cleared the song on the FM-1");
+        return true;
+      } finally { d.link.close(); }
+    });
+  },
+
   /** The swap: back up what's on the FM-1, install, then put back this firmware's latest backup. */
   install(target: Firmware, opts: { backupFirst: boolean; restoreAfter: boolean; resume?: boolean; viaV15?: Firmware }) {
     return device.run(opts.resume ? "Finishing the install" : `Installing ${target.name}`, async (u) => {

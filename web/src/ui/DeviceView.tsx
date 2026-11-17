@@ -215,19 +215,43 @@ function SloopSongs({ lib, owner, busy }: { lib: Library; owner: Firmware | unde
     const used = (b.archive?.parts ?? []).filter((p) => ["2", "3", "4", "5"].includes(p.id) && p.data).map((p) => "ABCD"[Number(p.id) - 2]);
     return used.length ? "sections " + used.join(" ") : "no sections";
   };
+  const [check, setCheck] = useState<{ saved?: string; unsaved?: true; failed?: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const autoName = `Song ${songs.length + 1} · ${fmtDateTime(Date.now())}`;
+  const startClear = async () => { setChecking(true); setCheck(await device.checkSongSaved(songs)); setChecking(false); };
+  const clear = (saveAs: string | null) => { setCheck(null); void device.clearSong(owner, saveAs); };
   const save = () => { void device.saveSong(owner, name.trim() || `Song ${songs.length + 1}`).then((b) => { if (b) setName(""); }); };
   return (
     <>
       <h2>SLOOP songs</h2>
       <div class="card">
         <div class="small dim">SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, then start a new one on
-          the FM-1 (SAVE → TOOLS → NEW, and SECTION → ERASE for A–D). Load puts a saved song back; stop playback first.
-          Presets, drum kits and samples on the FM-1 aren't touched. Works with SLOOP 2.3 or later and firmware built on it.</div>
+          the FM-1 with Clear (it offers to save first; SLOOP 2.7 or later). Load puts a saved song back; stop playback first.
+          Presets, drum kits and samples on the FM-1 aren't touched. Saving and loading work with SLOOP 2.3 or later and firmware built on it.</div>
         <div class="btnrow">
           <input type="text" placeholder={`Song ${songs.length + 1}`} value={name} maxLength={60} aria-label="Song name"
             onInput={(e) => setName((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) save(); }} />
           <button class="btn primary" disabled={busy} onClick={save}>Save the song on the FM-1</button>
         </div>
+        {!check ? (
+          <div class="btnrow">
+            <button class="btn" style={{ color: "var(--red)" }} disabled={busy || checking} onClick={startClear}>{checking ? "Checking…" : "Clear the song on the FM-1…"}</button>
+          </div>
+        ) : (
+          <div class="banner warn">
+            <b>{check.saved ? "Clear the song on the FM-1?" : "The song on the FM-1 isn't saved"}</b>
+            <div class="small">{check.saved
+              ? `It's saved as “${check.saved}”. This erases every note in the loop and empties sections A–D. Sounds, presets, kits and samples stay.`
+              : check.failed
+              ? `Couldn't check whether it's saved (${check.failed}). Save it first to be safe. Clearing erases every note in the loop and sections A–D.`
+              : `Save it first (as “${autoName}”, rename it later), or clear it for good: every note in the loop and sections A–D.`}</div>
+            <div class="btnrow">
+              {!check.saved && <button class="btn primary" disabled={busy} onClick={() => clear(autoName)}>Save, then clear</button>}
+              <button class="btn" style={{ color: "var(--red)" }} disabled={busy} onClick={() => clear(null)}>{check.saved ? "Clear" : "Clear without saving"}</button>
+              <button class="linkbtn" onClick={() => setCheck(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
         {songs.length > 0 && <div class="rows">
           {songs.map((b) => (
             <div key={b.id}>

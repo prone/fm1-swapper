@@ -410,6 +410,54 @@ export class SLOOPArchive {
     return { format: SLOOP_FORMAT, family: "felucca", firmware: identity, created: Date.now() / 1000, parts, info: { identity, contents: song ? "song" : "all" } };
   }
 
+  /** The size and CRC-32 of each object as the FM-1 has it now (LIST: checksums only, nothing is read out). */
+  async checksums(): Promise<Map<number, { size: number; crc: number }>> {
+    if (!(await this.supported())) throw new FM1Error("unsupported", "This firmware doesn't have SLOOP's song backup (SLOOP 2.3 or later).");
+    return new Map(SLOOPArchive.manifest(await this.f.request(34, [], 5000)).map((e) => [e.id, { size: e.size, crc: e.crc }]));
+  }
+
+  /** Whether a saved song holds what the FM-1 has now: the loop and sections A-D (the settings change too often). */
+  static matches(song: DeviceArchive, now: Map<number, { size: number; crc: number }>): boolean {
+    if (song.format !== SLOOP_FORMAT) return false;
+    return [0, 2, 3, 4, 5].every((id) => {
+      const p = song.parts.find((x) => x.id === String(id)), have = now.get(id) ?? { size: 0, crc: 0 };   // empty: CRC 0
+      return (p ? partBytes(p).length : 0) === have.size && (p?.crc ?? 0) === have.crc;
+    });
+  }
+
+  /** Clears the song on the FM-1 as SLOOP's own controls would: stops playback, erases every note of the four
+   *  tracks (LIVE ERASE, as EDIT + a key; sounds, presets and tempo stay) and empties sections A-D. SLOOP 2.7+. */
+  async clearSong(progress: Progress = () => {}) {
+    let v: number | null = null;
+    try { v = sloopProtocol(await this.f.request(1, [])); } catch { /* below */ }
+    if ((v ?? 0) < 12) throw new FM1Error("unsupported", "Clearing from the app needs SLOOP 2.7 or later. On the FM-1: SAVE → TOOLS → NEW, then SECTION → ERASE for A–D.");
+    const live = async (args: number[]) => {
+      const r = await this.f.request(77, args, 1000, 1);
+      if (r.length < 3 || r[0] !== args[0]) throw new FM1Error("protocol", "Unexpected reply from SLOOP");
+      return r;
+    };
+    let state = await live([1, 0]);
+    const end = Date.now() + 3000;
+    while (state[1] & 3) {
+      if (Date.now() > end) throw new FM1Error("device", "SLOOP didn't stop playing. Stop it on the FM-1 and try again.");
+      await new Promise((r) => setTimeout(r, 50));
+      state = await live([0, 0]);
+    }
+    const steps = 4 * 128 * 2 + 4;
+    let done = 0;
+    for (let track = 0; track < 4; track++)
+      for (const down of [1, 0])
+        for (let note = 0; note < 128; note++) { await live([7, track, note, down]); progress(++done, steps); }
+    for (let id = 2; id <= 5; id++) {
+      for (const args of [[0, id, ...u32To7(0), ...u32To7(0)], [2, id]]) {
+        const r = await this.f.request(36, args, 5000);
+        if (r.length < 3 || r[0] !== args[0] || r[1] !== id) throw new FM1Error("protocol", "Unexpected reply from SLOOP");
+        FeluccaArchive.check(r[2]);
+      }
+      progress(++done, steps);
+    }
+  }
+
   /** What a restore writes, in order (everything else, then the settings, the loop in progress last); checked first. */
   static restoreOrder(a: DeviceArchive): { id: number; data: Uint8Array; crc: number }[] {
     if (a.format !== SLOOP_FORMAT) throw new FM1Error("badpkg", "This isn't a SLOOP backup.");

@@ -31,7 +31,7 @@ class VirtualFM1 {
   fromHost = new Inbox();
   link: SimLink | null = null;
   felucca = new Map<number, Uint8Array>();
-  sloop = false; sloopSaw: number[] = [];   // answers as SLOOP 2.8 (editor protocol 12, backup commands 34-36)
+  sloop = false; sloopSaw: number[] = []; sloopProto = 12; sloopPlaying = false; erasedWhilePlaying = false; erased = new Set<number>();   // answers as SLOOP 2.8 (editor protocol 12, backup commands 34-36)
   open = { project: new Uint8Array(4264).map((_, i) => (i * 7) & 0xff), timbres: [...Array(8)].map((_, t) => new Uint8Array(223).fill(t)),
     dx7: [...Array(4)].map((_, g) => new Uint8Array(4096).map((_, i) => (i + g) & 0x7f)), samples: new Uint8Array(300).map((_, i) => i & 0xff) };
   private put: { id: number; size: number; crc: number; buf: number[] } | null = null;
@@ -135,7 +135,7 @@ class VirtualFM1 {
     this.sloopSaw.push(cmd);
     const str = (s: string) => [...s].map((c) => c.charCodeAt(0));
     const ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 32, 33, 34, 35];
-    if (cmd === 1) return send([...str("FELUCCA 2.8.5"), 0, 2, 60, 10, 64, 4, ...str("FM6"), 0, ...str("PHYS"), 0, 4, 12]);
+    if (cmd === 1) return send([...str("FELUCCA 2.8.5"), 0, 2, 60, 10, 64, 4, ...str("FM6"), 0, ...str("PHYS"), 0, 4, this.sloopProto]);
     if (cmd === 34) {
       const listed = ids.filter((id) => !((id === 10 || id === 11) && !(this.felucca.get(id)?.length)));
       const p = [0, listed.length];
@@ -156,6 +156,15 @@ class VirtualFM1 {
         if (p && p.id === id && p.buf.length === p.size && crc32(Uint8Array.from(p.buf)) === p.crc) this.felucca.set(id, Uint8Array.from(p.buf)); else rc = 2;
       }
       return send([op, id, rc]);
+    }
+    if (cmd === 77) {
+      if (a[0] === 1) this.sloopPlaying = a[1] === 1;
+      if (a[0] === 7 && a[3] === 1) {
+        if (this.sloopPlaying) this.erasedWhilePlaying = true;
+        this.erased.add(a[1] * 128 + a[2]);
+        this.felucca.set(0, Uint8Array.from([0xee, this.erased.size & 0x7f]));
+      }
+      return send([a[0] ?? 0, this.sloopPlaying ? 1 : 0, 0, 0, 64]);
     }
   }
 
@@ -409,6 +418,39 @@ describe("archives", () => {
       parts: [{ ...part("0", "Loop in progress", Uint8Array.from([1, 2, 3])), data: "AQIE" }, part("1", "Settings", Uint8Array.from([4]))] };
     await expect(restoreArchive(bad, d, "felucca", true, () => {})).rejects.toThrow(/damaged/);
     expect(dev.sloopSaw.includes(36)).toBe(false);
+  });
+
+  it("knows whether the SLOOP song on the FM-1 is saved", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true;
+    for (const id of [0, 1, 2, 4]) dev.felucca.set(id, new Uint8Array(900).map((_, i) => (i + id) & 0xff));
+    const d = await connect(dev);
+    const s = new SLOOPArchive(d.link);
+    const song = await s.capture(d.identity.text, SLOOP_SONG_IDS);
+    expect(SLOOPArchive.matches(song, await s.checksums())).toBe(true);
+    dev.felucca.set(1, Uint8Array.from([1, 2, 3]));                // settings alone don't count
+    expect(SLOOPArchive.matches(song, await s.checksums())).toBe(true);
+    dev.felucca.set(3, Uint8Array.from([5]));                      // a new section B
+    expect(SLOOPArchive.matches(song, await s.checksums())).toBe(false);
+  });
+
+  it("clears the SLOOP song: stops, erases every note, empties the sections", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true; dev.sloopPlaying = true;
+    for (const id of [0, 1, 2, 3, 4, 5, 6]) dev.felucca.set(id, new Uint8Array(300).fill(id));
+    const d = await connect(dev);
+    await new SLOOPArchive(d.link).clearSong();
+    expect(dev.sloopPlaying).toBe(false);
+    expect(dev.erasedWhilePlaying).toBe(false);
+    expect(dev.erased.size).toBe(4 * 128);
+    for (let id = 2; id <= 5; id++) expect(dev.felucca.get(id)!.length).toBe(0);
+    expect(dev.felucca.get(6)!.length).toBe(300);
+  }, 20_000);
+
+  it("won't clear from the app before SLOOP 2.7", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true; dev.sloopProto = 11;
+    dev.felucca.set(2, Uint8Array.from([1]));
+    const d = await connect(dev);
+    await expect(new SLOOPArchive(d.link).clearSong()).rejects.toMatchObject({ code: "unsupported" });
+    expect(dev.erased.size).toBe(0);
   });
 
   it("tells SLOOP's INFO from Felucca's", () => {
