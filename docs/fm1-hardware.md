@@ -31,8 +31,8 @@ Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.res
 - V15 accepted `fm1-stage.fwsc` (sha e861ad2e…): 19 read requests in step 1, then the unit came back as
   `ota-FM-1_900` on a port named **FM-1 Update**. Our filter found it and the `MBOOT` probe answered within 6 s.
 - `MBOOT` answer: version 2.4, protocol 1, stage, flags 1, chip key 38927, capacity 1,048,576, JEDEC 0x856014.
-  The 8-byte flash unique ID ([serial removed]) is the same as the USB serial number.
-- The whole 1 MB flash read in about 19 s, every 64 KB block matching the chip's CRC-32 on the first pass. The image
+  The 8-byte flash unique ID is the same as the unit's USB serial number.
+- The whole 1 MB flash read in about 19 s, every 64 KB block checked against the chip's CRC-32. The image
   starts with the expected flash header (`0.01` at +4, `AC791N_STORY` at +16).
 - `F0 22 24 35 7E F7` restarted it into V15 (`FM-1_015` again within 6 s).
 
