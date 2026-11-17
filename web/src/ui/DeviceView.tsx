@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { backupRecord, device, mboot } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { readArchiveFile } from "../fm1kit/archive";
-import { Backup, FlashImage, Firmware, store } from "../store";
+import { FlashImage, Firmware, store } from "../store";
 import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
 import { MyChip, RESCUE_URL, myChip, setMyChip } from "../hub";
@@ -208,13 +208,7 @@ function FlashImages() {
 function SloopSongs({ lib, owner, busy }: { lib: Library; owner: Firmware | undefined; busy: boolean }) {
   const songs = lib.backups.filter((b) => b.kind === "song" && (!owner || b.firmwareId === owner.id)).sort((a, b) => b.date - a.date);
   const [name, setName] = useState("");
-  const [confirm, setConfirm] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const sections = (b: Backup) => {
-    const used = (b.archive?.parts ?? []).filter((p) => ["2", "3", "4", "5"].includes(p.id) && p.data).map((p) => "ABCD"[Number(p.id) - 2]);
-    return used.length ? "sections " + used.join(" ") : "no sections";
-  };
+
   const [check, setCheck] = useState<{ saved?: string; unsaved?: true; failed?: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const autoName = `Song ${songs.length + 1} · ${fmtDateTime(Date.now())}`;
@@ -226,7 +220,7 @@ function SloopSongs({ lib, owner, busy }: { lib: Library; owner: Firmware | unde
       <h2>SLOOP songs</h2>
       <div class="card">
         <div class="small dim">SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, then start a new one on
-          the FM-1 with Clear (it offers to save first; SLOOP 2.7 or later). Load puts a saved song back; stop playback first.
+          the FM-1 with Clear (it offers to save first; SLOOP 2.7 or later).
           Presets, drum kits and samples on the FM-1 aren't touched. Saving and loading work with SLOOP 2.3 or later and firmware built on it.</div>
         <div class="btnrow">
           <input type="text" placeholder={`Song ${songs.length + 1}`} value={name} maxLength={60} aria-label="Song name"
@@ -252,33 +246,7 @@ function SloopSongs({ lib, owner, busy }: { lib: Library; owner: Firmware | unde
             </div>
           </div>
         )}
-        {songs.length > 0 && <div class="rows">
-          {songs.map((b) => (
-            <div key={b.id}>
-              {renaming === b.id ? (
-                <>
-                  <input type="text" value={newName} maxLength={60} aria-label="New name" onInput={(e) => setNewName((e.target as HTMLInputElement).value)} />
-                  <button class="linkbtn small" onClick={async () => { if (newName.trim()) await store.saveBackup({ ...b, label: newName.trim() }); setRenaming(null); }}>Save</button>
-                  <button class="linkbtn small" onClick={() => setRenaming(null)}>Cancel</button>
-                </>
-              ) : confirm === b.id ? (
-                <>
-                  <span class="row-main">Replace the song on the FM-1 with “{b.label}”?</span>
-                  <button class="btn small" disabled={busy} onClick={() => { setConfirm(null); void device.restore(b); }}>Replace</button>
-                  <button class="linkbtn small" onClick={() => setConfirm(null)}>Cancel</button>
-                </>
-              ) : (
-                <>
-                  <span class="row-main">{b.label}<span class="dim small"> · {fmtDateTime(b.date)} · {sections(b)}</span></span>
-                  <button class="linkbtn small" disabled={busy} onClick={() => setConfirm(b.id)}>Load</button>
-                  <button class="linkbtn small" onClick={() => { setNewName(b.label); setRenaming(b.id); }}>Rename</button>
-                  <button class="linkbtn small" onClick={() => b.archive && saveFile(`${b.label.replace(/[^\w .-]+/g, "_")}.sloop-song.json`, JSON.stringify(b.archive), "application/json")}>Download</button>
-                  <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => void store.deleteBackup(b)}>Delete</button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>}
+        <p class="small dim" style={{ marginBottom: 0 }}>{songs.length ? `${songs.length} saved song${songs.length === 1 ? "" : "s"}` : "No saved songs yet"}: review, edit and load them in the Firmware Editor tab (no FM-1 needed to edit).</p>
       </div>
     </>
   );

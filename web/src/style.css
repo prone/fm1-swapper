@@ -71,3 +71,7 @@ label.check { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0;
   .emu-body.left, .emu-body.right { flex-direction: column; } .emu-body.left .tut, .emu-body.right .tut { width: auto; max-width: none; max-height: 40vh; }
 }
 .rows .drop { flex: 1; }
+/* the SLOOP song editor: compact tool rows (buttons keep their width) */
+.tools { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.btn.small { padding: 5px 12px; font-size: 13px; }
+.tools label { display: inline-flex; gap: 4px; align-items: center; }

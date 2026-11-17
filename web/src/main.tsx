@@ -11,10 +11,11 @@ import { DeviceView } from "./ui/DeviceView";
 import { LibraryView } from "./ui/LibraryView";
 import { GetFirmware } from "./ui/GetFirmware";
 import { HistoryView } from "./ui/HistoryView";
+import { FirmwareEditor } from "./ui/FirmwareEditor";
 import { Emulator } from "./ui/Emulator";
 import { startPWA, usePWA } from "./pwa";
 
-const TABS = ["Device", "Library", "Get firmware", "History"] as const;
+const TABS = ["Device", "Library", "Get firmware", "Firmware Editor", "History"] as const;
 type Tab = (typeof TABS)[number];
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
         {tab === "Device" && <DeviceView lib={lib} open={open} />}
         {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={(id) => { setOpenId(id); setSwapNow(false); }} swapNow={swapNow} swapped={() => setSwapNow(false)} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
         {tab === "Get firmware" && <GetFirmware lib={lib} opened={open} />}
+        {tab === "Firmware Editor" && <FirmwareEditor lib={lib} />}
         {tab === "History" && <HistoryView lib={lib} open={open} />}
         <footer class="small faint" style={{ marginTop: 40 }}>
           Beta. Not affiliated with M-VAVE. Firmware is written at your own risk; the FM-1's update loader lets an interrupted install be finished.
