@@ -10,6 +10,7 @@ struct DeviceView: View {
     @Query(sort: \Firmware.name) private var firmwares: [Firmware]
     @AppStorage("includeSamples") private var includeSamples = true
     @State private var showLog = false
+    @State private var restoring: Backup?
     @State private var resumeTarget: Firmware?
     @State private var official: Firmware?
     @State private var gettingOfficial = false
@@ -45,9 +46,7 @@ struct DeviceView: View {
                         if let fw = currentFirmware, fw.latestRestorableBackup != nil {
                             Menu {
                                 ForEach(fw.sortedBackups.filter { $0.isRestorable && !$0.isSong }) { b in
-                                    Button("\(b.label) · \(b.date.formatted(date: .abbreviated, time: .shortened))") {
-                                        Task { await device.restore(b, context: context, includeSamples: includeSamples) }
-                                    }
+                                    Button("\(b.label) · \(b.date.formatted(date: .abbreviated, time: .shortened))") { restoring = b }
                                 }
                             } label: { Label("Restore a backup…", systemImage: "arrow.counterclockwise") }
                                 .disabled(device.busy)
@@ -129,6 +128,12 @@ struct DeviceView: View {
                 }
             }
             .navigationTitle("FM-1")
+            .confirmationDialog(restoring.map { "Restore \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }),
+                                titleVisibility: .visible, presenting: restoring) { b in
+                Button("Restore", role: .destructive) { Task { await device.restore(b, context: context, includeSamples: includeSamples) } }
+            } message: { b in
+                Text("Replaces the saved work on the FM-1 with this backup from \(b.date.formatted(date: .abbreviated, time: .shortened))\(includeSamples ? ", samples included" : "").")
+            }
             .sheet(item: $official) { SwapSheet(target: $0) }
             .refreshable { await device.refresh() }
             .toolbar {
@@ -431,7 +436,7 @@ struct SLOOPSongsSection: View {
             Button("Cancel", role: .cancel) {}
         } message: { check in
             switch check {
-            case let .saved(n): Text("It's saved as \"\(n)\". This erases every note in the loop and empties sections A–D. Sounds, presets, kits and samples stay.")
+            case let .saved(n): Text("It's saved as \"\(n)\". This erases every note in the loop and empties sections A–D. Sounds, presets, kits, samples and the song order stay.")
             case .unsaved: Text("This song isn't saved in the app. Save it first (as \"\(autoName)\", rename it later), or clear it for good: every note in the loop and sections A–D.")
             case let .failed(m): Text("Couldn't check whether it's saved (\(m)). Save it first to be safe. Clearing erases every note in the loop and sections A–D.")
             }
@@ -452,6 +457,10 @@ struct MBootSection: View {
     let info: MBootInfo
     let firmwares: [Firmware]
     @State private var target: Firmware?
+    @State private var confirming = false
+
+    /// Firmware that only knows the older flash chip isn't installed on a newer unit, through m-bootloader either.
+    private func refused(_ f: Firmware) -> Bool { info.isNewerChip == true && FirmwareHub.shared.chip(sha256: f.sha256) == .olderOnly }
 
     var body: some View {
         Section {
@@ -466,7 +475,11 @@ struct MBootSection: View {
                 ForEach(firmwares.filter { $0.hasPackage && $0.packageModel == "FM-1" }) { Text($0.name).tag(Optional($0)) }
             }
             if let t = target {
-                Button("Install \(t.name)") { Task { await device.resume(t, context: context) } }.disabled(device.busy)
+                if refused(t) {
+                    Text("\(t.name) only works on older FM-1s, and this one has the newer flash chip (\(info.jedecHex)).").foregroundStyle(.orange)
+                } else {
+                    Button("Install \(t.name)…") { confirming = true }.disabled(device.busy)
+                }
             }
             Button { Task { await device.restartFromMBoot() } } label: { Label("Restart the FM-1", systemImage: "arrow.clockwise.circle") }
                 .disabled(device.busy)
@@ -474,6 +487,9 @@ struct MBootSection: View {
             Text((info.isNewerChip.map { "The app's flash chip setting now says \($0 ? "newer" : "older") unit. " } ?? "")
                  + "Its installer writes only the firmware area, checks the package against this unit, skips unchanged parts and writes the first part last.")
         }
+        .confirmationDialog(target.map { "Install \($0.name) through m-bootloader?" } ?? "", isPresented: $confirming, titleVisibility: .visible) {
+            if let t = target { Button("Install") { Task { await device.resume(t, context: context) } } }
+        } message: { Text("The FM-1's saved work stays; restore a backup afterwards if you need to.") }
     }
 }
 

@@ -11,7 +11,7 @@ import { DeviceView } from "./ui/DeviceView";
 import { LibraryView } from "./ui/LibraryView";
 import { GetFirmware } from "./ui/GetFirmware";
 import { HistoryView } from "./ui/HistoryView";
-import { FirmwareEditor } from "./ui/FirmwareEditor";
+import { FirmwareEditor, unsavedEdits } from "./ui/FirmwareEditor";
 import { Emulator } from "./ui/Emulator";
 import { startPWA, usePWA } from "./pwa";
 
@@ -35,7 +35,11 @@ function App() {
         <div class="brand"><i aria-hidden="true" /><span>FM-1 Swapper</span></div>
         {pwa.canInstall && <button class="btn small" onClick={pwa.install} title="Adds FM-1 Swapper to your apps; it then works offline">Install app</button>}
         <nav class="tabs">
-          {TABS.map((t) => <button key={t} aria-current={t === tab ? "page" : undefined} onClick={() => { setTab(t); if (t === "Library") setOpenId(null); }}>{t}</button>)}
+          {TABS.map((t) => <button key={t} aria-current={t === tab ? "page" : undefined} onClick={() => {
+            if (t !== tab && unsavedEdits.dirty && !confirm("Leave the song editor without saving your changes?")) return;
+            unsavedEdits.dirty = false;
+            setTab(t); if (t === "Library") setOpenId(null);
+          }}>{t}</button>)}
         </nav>
       </header>
       <main class="shell">
@@ -60,6 +64,9 @@ function App() {
     </>
   );
 }
+
+// closing or reloading the page with unsaved song edits asks first
+addEventListener("beforeunload", (e) => { if (unsavedEdits.dirty) e.preventDefault(); });
 
 startPWA();
 render(<App />, document.getElementById("app")!);

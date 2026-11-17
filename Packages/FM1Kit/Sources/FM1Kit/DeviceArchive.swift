@@ -95,7 +95,7 @@ public enum Archives {
         }
         switch archive.family {
         case .felucca:
-            try await FeluccaArchive(link: device.link).restore(archive, progress: progress)
+            try await FeluccaArchive(link: device.link).restore(archive, includeSamples: includeSamples, progress: progress)
         case .fm1Open:
             guard device.identity.family == .fm1Open else {
                 throw FM1Error.unsupported("This backup is for FM1 Open; the FM-1 is running \(device.identity.text).")

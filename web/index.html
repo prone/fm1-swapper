@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <!-- scripts only from this site; downloads over https; no plugins, no base or form tricks (the emulator page in emu/ is its own document) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>FM-1 Swapper</title>
   <meta name="description" content="Swap firmware on the M-VAVE FM-1, keep each firmware's saved work, try firmware in an emulator, and learn it with guided tutorials.">
   <link rel="icon" href="icons/icon-192.png" type="image/png">

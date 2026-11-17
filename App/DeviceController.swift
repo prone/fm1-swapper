@@ -29,7 +29,11 @@ final class DeviceController {
     /// Tells the pad router to stop sending to the FM-1 while it is being written.
     var onBusyChange: ((Bool) -> Void)?
     private(set) var log: [String] = []
-    var busy: Bool { if case .working = phase { true } else { false } }
+    var busy: Bool { if case .working = phase { true } else { checking } }
+    /// A quick read of the FM-1 (the song check) is on: nothing else may use the port meanwhile.
+    private var checking = false
+    /// The FM-1's song checksums from the last song check, so a clear can make sure the song is still that one.
+    private var checkedSong: [UInt8: (size: Int, crc: UInt32)]?
 
     let updater: OTAUpdater
     private var refreshTask: Task<Void, Never>?
@@ -187,10 +191,14 @@ final class DeviceController {
     /// Whether the song on the FM-1 is one of these saved songs (compares checksums; nothing is read out or written).
     func checkSongSaved(_ songs: [Backup]) async -> SongCheck {
         guard !busy else { return .failed("The FM-1 is busy.") }
+        checking = true
+        defer { checking = false }
+        checkedSong = nil
         do {
             let dev = try await connect()
             defer { dev.link.close() }
             let now = try await SLOOPArchive(link: dev.link).checksums()
+            checkedSong = now
             if let s = songs.first(where: { $0.archive.map { SLOOPArchive.matches($0, now) } ?? false }) { return .saved(s.label) }
             return .unsaved
         } catch {
@@ -213,7 +221,8 @@ final class DeviceController {
                 try context.save()
                 saved = "Saved it as \"\(name)\", then cleared"
             }
-            try await s.clearSong { [weak self] done, total in
+            // (not saved first: only if it's still the song that was checked)
+            try await s.clearSong(unchangedSince: name == nil ? checkedSong : nil) { [weak self] done, total in
                 Task { @MainActor in self?.progress("Clear the song", "Clearing…", Double(done) / Double(total)) }
             }
             return (saved.isEmpty ? "Cleared" : saved) + " the song on the FM-1: the loop's notes and sections A–D. Sounds and presets are as they were."
@@ -222,15 +231,29 @@ final class DeviceController {
 
     /// Puts a saved SLOOP song back: the loop, the song order and sections A–D are replaced; presets, kits and
     /// samples on the FM-1 stay as they are.
-    func loadSong(_ song: Backup) async {
+    /// With `saveFirstAs`, the song on the FM-1 is saved under that name first (a failed save stops the load).
+    func loadSong(_ song: Backup, saveFirstAs name: String? = nil, context: ModelContext? = nil) async {
         await run("Load song") {
             guard let archive = song.archive else { throw FM1Error.badPackage("This song can't be read.") }
             let dev = try await connect()
             defer { dev.link.close() }
+            var saved = ""
+            if let name, let context {
+                let mine = try await SLOOPArchive(link: dev.link).capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs,
+                                                                          progress: archiveProgress("Load song", "Saving the FM-1's song"))
+                let b = try Backup.from(mine, label: name, kind: "song")
+                b.firmware = context.firmware(forIdentity: dev.identity)
+                context.insert(b)
+                try context.save()
+                saved = "Saved the FM-1's song as \"\(name)\", then l"
+            }
             try await Archives.restore(archive, to: dev, progress: archiveProgress("Load song", "Writing"))
-            return "Loaded \"\(song.label)\"."
+            return (saved.isEmpty ? "L" : saved) + "oaded \"\(song.label)\"."
         }
     }
+
+    /// A name for a song saved automatically before it's replaced or cleared.
+    static func autoSongName() -> String { "Saved \(Date().formatted(date: .abbreviated, time: .shortened))" }
 
     func restore(_ backup: Backup, context: ModelContext, includeSamples: Bool) async {
         await run("Restore") {
@@ -298,7 +321,8 @@ final class DeviceController {
 
             // 2a. official V15 first, as a clean base
             var installFrom = from.text
-            if let v15 = options.viaV15, let v15Data = v15.packageData {
+            if let v15 = options.viaV15 {
+                guard let v15Data = v15.packageData else { throw FM1Error.badPackage("The official V15 file is missing from your library, so the install via V15 can't run. Nothing was installed.") }
                 let v15Pkg = try FirmwarePackage(data: v15Data)
                 guard v15Pkg.stock?.version == "V15" else { throw FM1Error.badPackage("The V15 file in your library doesn't match the official release.") }
                 let hop = InstallEvent(firmware: v15, from: from.text, to: v15Pkg.product)

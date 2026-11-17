@@ -75,11 +75,14 @@ struct SLOOPSongEditor: View {
                 Button("Keep editing", role: .cancel) {}
             }
             .confirmationDialog("Send \"\(song.label)\" to the FM-1?", isPresented: $sending, titleVisibility: .visible) {
-                Button("Save and replace the song on the FM-1", role: .destructive) {
+                Button("Save the FM-1's song first, then send") {
+                    if save() { Task { await device.loadSong(song, saveFirstAs: DeviceController.autoSongName(), context: context) } }
+                }
+                Button("Send without saving the FM-1's song", role: .destructive) {
                     if save() { Task { await device.loadSong(song) } }
                 }
             } message: {
-                Text("Saves your changes, then replaces the loop, sections A–D and the song order on the FM-1 (stop playback first). Save the FM-1's current song first if you want to keep it."
+                Text("Saves your changes here, then replaces the loop, sections A–D and the song order on the FM-1. Save the FM-1's song first to keep it."
                      + (doc?.emptyEntries.isEmpty == false ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""))
             }
             .alert("Save as a new song", isPresented: $namingCopy) {

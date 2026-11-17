@@ -46,6 +46,12 @@ async function holdAwake(on: boolean) {
   }
 }
 
+/** The FM-1's song checksums from the last song check, so a clear can make sure the song is still that one. */
+let checkedSong: Map<number, { size: number; crc: number }> | null = null;
+
+/** A name for a song saved automatically before it's replaced or cleared. */
+export const autoSongName = () => `Saved ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+
 export const device = {
   get state() { return state; },
   subscribe(f: (s: DeviceState) => void) { listeners.add(f); return () => { listeners.delete(f); }; },
@@ -132,15 +138,37 @@ export const device = {
   async checkSongSaved(songs: Backup[]): Promise<{ saved?: string; unsaved?: true; failed?: string }> {
     if (!provider) return { failed: "Connect to the FM-1 first." };
     if (state.busy) return { failed: "The FM-1 is busy." };
+    set({ busy: "Checking the song on the FM-1", progress: null });           // (nothing else uses the port meanwhile)
+    checkedSong = null;
     const u = new Updater(provider, undefined, note);
     const d = await u.find((id) => !isLoader(id));
-    if (!d) return { failed: "FM-1 not found." };
+    if (!d) { set({ busy: null }); return { failed: "FM-1 not found." }; }
     try {
       const now = await new SLOOPArchive(d.link).checksums();
+      checkedSong = now;
       const s = songs.find((b) => b.archive && SLOOPArchive.matches(b.archive, now));
       return s ? { saved: s.label } : { unsaved: true };
     } catch (e) { return { failed: (e as Error).message }; }
-    finally { d.link.close(); }
+    finally { d.link.close(); set({ busy: null }); }
+  },
+
+  /** Puts a saved song on the FM-1; with `saveFirstAs`, the FM-1's song is saved first (a failed save stops it). */
+  loadSong(song: Backup, saveFirstAs: string | null = null) {
+    return device.run("Loading the song", async (u) => {
+      const d = await u.find((id) => !isLoader(id));
+      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
+      try {
+        if (!song.archive) throw new FM1Error("badpkg", "This song can't be read.");
+        if (saveFirstAs) {
+          const a = await new SLOOPArchive(d.link).capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ busy: "Saving the FM-1's song", progress: t ? n / t : null }));
+          await store.saveBackup({ ...backupRecord(a, song.firmwareId, "song"), label: saveFirstAs });
+          note(`✓ saved the FM-1's song as "${saveFirstAs}"`);
+        }
+        await restoreArchive(song.archive, d, familyOf(d.identity), false, (n, t) => set({ busy: "Loading the song", progress: t ? n / t : null }));
+        note(`✓ loaded "${song.label}"`);
+        return true;
+      } finally { d.link.close(); }
+    });
   },
 
   /** Clears the song on the FM-1 (every note of the loop, sections A-D), saving it first when asked. */
@@ -155,7 +183,8 @@ export const device = {
           await store.saveBackup({ ...backupRecord(a, owner?.id ?? "", "song"), label: saveFirstAs });
           note(`✓ saved the song "${saveFirstAs}"`);
         }
-        await s.clearSong((n, t) => set({ busy: "Clearing the song", progress: n / t }));
+        // (not saved first: only if it's still the song that was checked)
+        await s.clearSong((n, t) => set({ busy: "Clearing the song", progress: n / t }), saveFirstAs ? null : checkedSong);
         note("✓ cleared the song on the FM-1");
         return true;
       } finally { d.link.close(); }
@@ -176,11 +205,15 @@ export const device = {
         if (!now) throw new FM1Error("notfound", "FM-1 not found. Check the USB cable, and close any other app using the FM-1.");
         from = now.identity.text;
         const fam = familyOf(now.identity);
-        if (opts.backupFirst && supportsArchive(fam)) {
+        // (unknown firmware: Felucca's and SLOOP's backups are tried; a backup that fails stops the install)
+        if (opts.backupFirst && (supportsArchive(fam) || fam === "unknown")) {
           const owner = all.find((f) => f.product === from && f.sha256);
           const d = await u.find((id) => !isLoader(id));
-          if (d) try {
-            const a = await captureArchive(d, fam, true, (n, t) => set({ progress: t ? n / t : null }));
+          if (!d) throw new FM1Error("notfound", "The FM-1 couldn't be backed up (it wasn't found). Nothing was installed.");
+          try {
+            const a = await captureArchive(d, fam, true, (n, t) => set({ progress: t ? n / t : null })).catch((e: Error) => {
+              throw new FM1Error("unsupported", `${e.message} Nothing was installed: untick “Back up first” to install without a backup.`);
+            });
             await store.saveBackup(backupRecord(a, owner?.id ?? "", "auto"));
             backupTaken = true; note("✓ backed up the current firmware's work");
           } finally { d.link.close(); }
@@ -225,10 +258,14 @@ export const device = {
           const latest = (await store.backups()).filter((b) => b.firmwareId === target.id && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0];
           if (latest?.archive) {
             const d = await u.find((i) => !isLoader(i));
-            if (d) try {
+            // the install itself succeeded: a restore that fails is said as such (not as a failed install)
+            try {
+              if (!d) throw new Error("the FM-1 wasn't found after the restart");
               await restoreArchive(latest.archive, d, familyOf(d.identity), true, (n, t) => set({ busy: "Putting your work back", progress: t ? n / t : null }));
               event.restored = true; note("✓ restored the last backup for this firmware");
-            } finally { d.link.close(); }
+            } catch (e) {
+              throw new FM1Error("restore", `${id.text} is installed, but putting your work back failed (${(e as Error).message}). Restore it from Device → Restore latest.`);
+            } finally { d?.link.close(); }
           }
         }
         return id;

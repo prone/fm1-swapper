@@ -110,7 +110,9 @@ public struct FeluccaArchive: Sendable {
                              info: ["identity": firmware])
     }
 
-    public func restore(_ archive: DeviceArchive, progress: @escaping ArchiveProgress = { _, _ in }) async throws {
+    /// Writes a backup back. Without `includeSamples` the sample slots on the FM-1 aren't touched (an empty slot in the
+    /// backup would otherwise clear one loaded since).
+    public func restore(_ archive: DeviceArchive, includeSamples: Bool = true, progress: @escaping ArchiveProgress = { _, _ in }) async throws {
         // Validate everything before the first destructive request.
         try Self.validate(archive)
         let info = try await supportsArchive()
@@ -131,6 +133,7 @@ public struct FeluccaArchive: Sendable {
             guard let id = UInt8(o.id) else { continue }
             let bytes = [UInt8](o.data)
             if id >= 32 {
+                guard includeSamples else { continue }
                 let slot = id - 32
                 func checkSample(_ a: [UInt8]) throws {
                     guard a.first == slot, let rc = a.last else { throw FM1Error.protocolError("Unexpected sample reply") }

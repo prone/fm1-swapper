@@ -223,6 +223,17 @@ final class ArchiveTests: XCTestCase {
         XCTAssertEqual(Array(dev.feluccaObjects[32]![512...]), Array(original[32]![512...]))
     }
 
+    func testFeluccaRestoreWithoutSamplesLeavesThem() async throws {
+        let dev = VirtualFM1(identity: "FM-1_918")
+        for id in FeluccaArchive.ids where id < 32 { dev.feluccaObjects[id] = [UInt8](repeating: id, count: id < 2 ? 3000 : 700) }
+        let device = try await connect(dev)
+        let archive = try await Archives.capture(device)                       // sample slots empty in the backup
+        dev.feluccaObjects[33] = [UInt8](repeating: 7, count: 1500)            // a sample loaded since
+        try await Archives.restore(archive, to: device, includeSamples: false)
+        XCTAssertEqual(dev.feluccaObjects[33]?.count, 1500, "the sample is still there")
+        XCTAssertEqual(dev.feluccaObjects[0], [UInt8](repeating: 0, count: 3000))
+    }
+
     func testSLOOPCaptureAndRestore() async throws {
         let dev = VirtualFM1(identity: "FM-1_900")
         dev.isSLOOP = true
@@ -302,6 +313,34 @@ final class ArchiveTests: XCTestCase {
         XCTAssertEqual(dev.sloopErased.count, 4 * 128)
         for id: UInt8 in 2...5 { XCTAssertEqual(dev.feluccaObjects[id] ?? [1], [], "section \(id)") }
         XCTAssertEqual(dev.feluccaObjects[6], [UInt8](repeating: 6, count: 300))   // presets untouched
+    }
+
+    func testSLOOPClearRefusesASongThatChangedSinceTheCheck() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        for id: UInt8 in [0, 1, 2] { dev.feluccaObjects[id] = [UInt8](repeating: id, count: 300) }
+        let device = try await connect(dev)
+        let s = SLOOPArchive(link: device.link)
+        let checked = try await s.checksums()
+        dev.feluccaObjects[2] = [UInt8](repeating: 9, count: 300)             // recorded on the FM-1 since
+        do { try await s.clearSong(unchangedSince: checked); XCTFail("should refuse") } catch let e as FM1Error {
+            if case .device = e {} else { XCTFail("\(e)") }
+        }
+        XCTAssertTrue(dev.sloopErased.isEmpty, "nothing erased")
+        try await s.clearSong(unchangedSince: try await s.checksums())
+        XCTAssertEqual(dev.sloopErased.count, 4 * 128)
+    }
+
+    func testSLOOPRestoreStopsPlaybackFirst() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        for id: UInt8 in [0, 1, 2, 6] { dev.feluccaObjects[id] = [UInt8](repeating: id, count: 300) }
+        let device = try await connect(dev)
+        let archive = try await Archives.capture(device)
+        dev.sloopPlaying = true
+        try await Archives.restore(archive, to: device)
+        XCTAssertFalse(dev.sloopPlaying)
+        XCTAssertEqual(dev.feluccaObjects[6], [UInt8](repeating: 6, count: 300))
     }
 
     func testSLOOPClearSongNeedsSLOOP27() async throws {

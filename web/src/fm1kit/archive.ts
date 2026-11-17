@@ -122,7 +122,9 @@ export class FeluccaArchive {
     if (!partBytes(a.parts[0]).length || !partBytes(a.parts[1]).length) throw new FM1Error("badpkg", "The backup is missing the current music or settings.");
   }
 
-  async restore(a: DeviceArchive, progress: Progress = () => {}) {
+  /** Writes a backup back. Without `includeSamples` the sample slots on the FM-1 aren't touched (an empty slot in the
+   *  backup would otherwise clear one loaded since). */
+  async restore(a: DeviceArchive, progress: Progress = () => {}, includeSamples = true) {
     FeluccaArchive.validate(a);
     const info = await this.info();
     if (!info.supported) throw new FM1Error("unsupported", `This Felucca (${info.version}) cannot restore complete backups. Update Felucca first.`);
@@ -135,6 +137,7 @@ export class FeluccaArchive {
     for (const o of [...a.parts.slice(2), a.parts[1], a.parts[0]]) {
       const id = Number(o.id), bytes = partBytes(o);
       if (id >= 32) {
+        if (!includeSamples) continue;
         const slot = id - 32;
         const checkSample = (r: number[]) => { if (r[0] !== slot) throw new Error("Unexpected sample reply"); FeluccaArchive.check(r[r.length - 1]); };
         if (!bytes.length) { checkSample(await ask(14, [slot])); continue; }
@@ -369,8 +372,29 @@ export class SLOOPArchive {
   private f: FeluccaArchive;
   constructor(link: SysExLink) { this.f = new FeluccaArchive(link); }
 
-  async supported(): Promise<boolean> {
-    try { return (sloopProtocol(await this.f.request(1, [])) ?? 0) >= 6; } catch { return false; }
+  async supported(): Promise<boolean> { return (await this.protocol() ?? 0) >= 6; }
+
+  /** The editor protocol version of the running SLOOP, or null. */
+  async protocol(): Promise<number | null> {
+    try { return sloopProtocol(await this.f.request(1, [])); } catch { return null; }
+  }
+
+  private async live(args: number[]) {
+    const r = await this.f.request(77, args, 1000, 1);
+    if (r.length < 3 || r[0] !== args[0]) throw new FM1Error("protocol", "Unexpected reply from SLOOP");
+    return r;
+  }
+
+  /** Stops playback and waits until it has stopped (LIVE, protocol 12): SLOOP refuses a restore while playing, and
+   *  erases the whole pattern only when stopped. */
+  async stopPlayback() {
+    let state = await this.live([1, 0]);
+    const end = Date.now() + 3000;
+    while (state[1] & 3) {
+      if (Date.now() > end) throw new FM1Error("device", "SLOOP didn't stop playing. Stop it on the FM-1 and try again.");
+      await new Promise((r) => setTimeout(r, 50));
+      state = await this.live([0, 0]);
+    }
   }
 
   static manifest(a: number[]) {
@@ -428,22 +452,15 @@ export class SLOOPArchive {
 
   /** Clears the song on the FM-1 as SLOOP's own controls would: stops playback, erases every note of the four
    *  tracks (LIVE ERASE, as EDIT + a key; sounds, presets and tempo stay) and empties sections A-D. SLOOP 2.7+. */
-  async clearSong(progress: Progress = () => {}) {
-    let v: number | null = null;
-    try { v = sloopProtocol(await this.f.request(1, [])); } catch { /* below */ }
-    if ((v ?? 0) < 12) throw new FM1Error("unsupported", "Clearing from the app needs SLOOP 2.7 or later. On the FM-1: SAVE → TOOLS → NEW, then SECTION → ERASE for A–D.");
-    const live = async (args: number[]) => {
-      const r = await this.f.request(77, args, 1000, 1);
-      if (r.length < 3 || r[0] !== args[0]) throw new FM1Error("protocol", "Unexpected reply from SLOOP");
-      return r;
-    };
-    let state = await live([1, 0]);
-    const end = Date.now() + 3000;
-    while (state[1] & 3) {
-      if (Date.now() > end) throw new FM1Error("device", "SLOOP didn't stop playing. Stop it on the FM-1 and try again.");
-      await new Promise((r) => setTimeout(r, 50));
-      state = await live([0, 0]);
+  async clearSong(progress: Progress = () => {}, unchangedSince: Map<number, { size: number; crc: number }> | null = null) {
+    if ((await this.protocol() ?? 0) < 12) throw new FM1Error("unsupported", "Clearing from the app needs SLOOP 2.7 or later. On the FM-1: SAVE → TOOLS → NEW, then SECTION → ERASE for A–D.");
+    await this.stopPlayback();
+    if (unchangedSince) {
+      const now = await this.checksums(), key = (m: typeof now, id: number) => `${m.get(id)?.size ?? 0}/${m.get(id)?.crc ?? 0}`;
+      if ([0, 2, 3, 4, 5].some((id) => key(now, id) !== key(unchangedSince, id)))
+        throw new FM1Error("device", "The song on the FM-1 changed since it was checked. Nothing was cleared: try Clear again.");
     }
+    const live = (args: number[]) => this.live(args);
     const steps = 4 * 128 * 2 + 4;
     let done = 0;
     for (let track = 0; track < 4; track++)
@@ -480,8 +497,10 @@ export class SLOOPArchive {
   static validate(a: DeviceArchive) { SLOOPArchive.restoreOrder(a); }
 
   async restore(a: DeviceArchive, progress: Progress = () => {}) {
-    const order = SLOOPArchive.restoreOrder(a);
-    if (!(await this.supported())) throw new FM1Error("unsupported", "This firmware can't restore a SLOOP backup (SLOOP 2.3 or later).");
+    const order = SLOOPArchive.restoreOrder(a);                              // checked before anything is sent
+    const v = await this.protocol() ?? 0;
+    if (v < 6) throw new FM1Error("unsupported", "This firmware can't restore a SLOOP backup (SLOOP 2.3 or later).");
+    if (v >= 12) await this.stopPlayback();                                  // (older: SLOOP says to stop it)
     const total = order.reduce((n, o) => n + o.data.length, 0);
     let done = 0;
     const put = async (args: number[]) => {
@@ -490,7 +509,14 @@ export class SLOOPArchive {
       FeluccaArchive.check(r[2]);
     };
     for (const o of order) {
-      await put([0, o.id, ...u32To7(o.data.length), ...u32To7(o.crc)]);
+      const begin = [0, o.id, ...u32To7(o.data.length), ...u32To7(o.crc)];
+      if (o.id >= 6) {
+        // presets, kits, MIDI learn, theme: an older SLOOP that doesn't know the object says "invalid" (1); skip it
+        const r = await this.f.request(36, begin, 5000);
+        if (r.length < 3 || r[0] !== 0 || r[1] !== o.id) throw new FM1Error("protocol", "Unexpected restore reply");
+        if (r[2] === 1) { done += o.data.length; progress(done, total); continue; }
+        FeluccaArchive.check(r[2]);
+      } else await put(begin);
       try {
         for (let off = 0; off < o.data.length; off += 256) {
           const c = o.data.subarray(off, Math.min(off + 256, o.data.length));
@@ -528,7 +554,7 @@ export async function captureArchive(dev: Connected, family: Family, includeSamp
 
 export async function restoreArchive(a: DeviceArchive, dev: Connected, family: Family, includeSamples: boolean, progress: Progress) {
   if (a.format === SLOOP_FORMAT) return new SLOOPArchive(dev.link).restore(a, progress);
-  if (a.family === "felucca") return new FeluccaArchive(dev.link).restore(a, progress);
+  if (a.family === "felucca") return new FeluccaArchive(dev.link).restore(a, progress, includeSamples);
   if (a.family === "fm1Open") {
     if (family !== "fm1Open") throw new FM1Error("unsupported", `This backup is for FM1 Open; the FM-1 is running ${dev.identity.text}.`);
     return new FM1OpenArchive(dev.link).restore(a, includeSamples, progress);

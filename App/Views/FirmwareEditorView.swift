@@ -113,9 +113,10 @@ struct SLOOPSongsView: View {
         } message: { Text("The saved song is removed from the app. The FM-1 isn't changed.") }
         .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
                             titleVisibility: .visible) {
-            Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
+            Button("Save the FM-1's song, then load") { if let l = loading { Task { await device.loadSong(l, saveFirstAs: DeviceController.autoSongName(), context: context) } } }
+            Button("Replace without saving", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
         } message: {
-            Text("Needs the FM-1 connected with SLOOP, stopped. The loop, sections A–D and the song order on the FM-1 are replaced: save its current song first (Device tab) if you want to keep it.")
+            Text("Needs the FM-1 connected with SLOOP. The loop, sections A–D and the song order on the FM-1 are replaced; save its song first to keep it (as “\(DeviceController.autoSongName())”, rename it later).")
         }
         .safeAreaInset(edge: .bottom) { LoadStatus() }
     }

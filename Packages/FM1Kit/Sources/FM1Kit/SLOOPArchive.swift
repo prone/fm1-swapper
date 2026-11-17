@@ -130,25 +130,45 @@ public struct SLOOPArchive: Sendable {
 
     static let live: UInt8 = 77
 
-    /// Clears the song on the FM-1, as SLOOP's own controls would: stops playback, erases every note of the four tracks
-    /// (LIVE ERASE, as EDIT + a key; sounds, presets and tempo stay) and empties sections A–D. Needs SLOOP 2.7 or later
-    /// (editor protocol 12).
-    public func clearSong(progress: @escaping ArchiveProgress = { _, _ in }) async throws {
-        guard let a = try? await felucca.request(Cmd.info, []), let v = Self.protocolVersion(info: a), v >= 12 else {
-            throw FM1Error.unsupported("Clearing from the app needs SLOOP 2.7 or later. On the FM-1: SAVE → TOOLS → NEW, then SECTION → ERASE for A–D.")
-        }
-        func liveState(_ args: [UInt8]) async throws -> [UInt8] {
-            let r = try await felucca.request(Self.live, args, timeout: 1, retries: 1)
-            guard r.count >= 3, r[0] == args[0] else { throw FM1Error.protocolError("Unexpected reply from SLOOP") }
-            return r
-        }
-        // Stop, and wait until the transport has really stopped (the whole pattern is erased only while stopped).
+    /// The editor protocol version of the running SLOOP, or nil.
+    func protocolVersion() async -> Int? {
+        guard let a = try? await felucca.request(Cmd.info, []) else { return nil }
+        return Self.protocolVersion(info: a)
+    }
+
+    private func liveState(_ args: [UInt8]) async throws -> [UInt8] {
+        let r = try await felucca.request(Self.live, args, timeout: 1, retries: 1)
+        guard r.count >= 3, r[0] == args[0] else { throw FM1Error.protocolError("Unexpected reply from SLOOP") }
+        return r
+    }
+
+    /// Stops playback and waits until the transport has really stopped (LIVE, protocol 12): SLOOP refuses a restore
+    /// while playing, and erases the whole pattern only when stopped.
+    func stopPlayback() async throws {
         var state = try await liveState([1, 0])
         let end = Date().addingTimeInterval(3)
         while state[1] & 3 != 0 {
             guard Date() < end else { throw FM1Error.device("SLOOP didn't stop playing. Stop it on the FM-1 and try again.") }
             try await Task.sleep(nanoseconds: 50_000_000)
             state = try await liveState([0, 0])
+        }
+    }
+
+    /// Clears the song on the FM-1, as SLOOP's own controls would: stops playback, erases every note of the four tracks
+    /// (LIVE ERASE, as EDIT + a key; sounds, presets and tempo stay) and empties sections A–D. Needs SLOOP 2.7 or later
+    /// (editor protocol 12). With `unchangedSince`, it first checks the song is still the one checked then (so a song
+    /// played or recorded since the "it's saved" check isn't erased).
+    public func clearSong(unchangedSince checked: [UInt8: (size: Int, crc: UInt32)]? = nil,
+                          progress: @escaping ArchiveProgress = { _, _ in }) async throws {
+        guard let v = await protocolVersion(), v >= 12 else {
+            throw FM1Error.unsupported("Clearing from the app needs SLOOP 2.7 or later. On the FM-1: SAVE → TOOLS → NEW, then SECTION → ERASE for A–D.")
+        }
+        try await stopPlayback()
+        if let checked {
+            let now = try await checksums()
+            for id: UInt8 in [0, 2, 3, 4, 5] where (now[id]?.size ?? 0, now[id]?.crc ?? 0) != (checked[id]?.size ?? 0, checked[id]?.crc ?? 0) {
+                throw FM1Error.device("The song on the FM-1 changed since it was checked. Nothing was cleared: try Clear again.")
+            }
         }
         let steps = 4 * 128 * 2 + 4
         var done = 0
@@ -184,7 +204,8 @@ public struct SLOOPArchive: Sendable {
 
     public func restore(_ archive: DeviceArchive, progress: @escaping ArchiveProgress = { _, _ in }) async throws {
         let order = try Self.restoreOrder(archive)                             // checked before anything is sent
-        guard await supported() else { throw FM1Error.unsupported("This firmware can't restore a SLOOP backup (SLOOP 2.3 or later).") }
+        guard let v = await protocolVersion(), v >= 6 else { throw FM1Error.unsupported("This firmware can't restore a SLOOP backup (SLOOP 2.3 or later).") }
+        if v >= 12 { try await stopPlayback() }                                // (older: SLOOP says to stop it)
         let total = order.reduce(0) { $0 + $1.data.count }
         var done = 0
         func put(_ args: [UInt8]) async throws {
@@ -193,7 +214,16 @@ public struct SLOOPArchive: Sendable {
             try FeluccaArchive.check(a[2])
         }
         for o in order {
-            try await put([0, o.id] + SysExCoding.u32To7(UInt32(o.data.count)) + SysExCoding.u32To7(o.crc))
+            let begin = [0, o.id] + SysExCoding.u32To7(UInt32(o.data.count)) + SysExCoding.u32To7(o.crc)
+            if o.id >= 6 {
+                // presets, kits, MIDI learn, theme: an older SLOOP that doesn't know the object says "invalid" (1); skip it
+                let a = try await felucca.request(Cmd.put, begin, timeout: 5)
+                guard a.count >= 3, a[0] == 0, a[1] == o.id else { throw FM1Error.protocolError("Unexpected restore reply") }
+                if a[2] == 1 { done += o.data.count; progress(done, total); continue }
+                try FeluccaArchive.check(a[2])
+            } else {
+                try await put(begin)
+            }
             do {
                 var off = 0
                 while off < o.data.count {

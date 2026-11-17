@@ -47,10 +47,11 @@ function db(): Promise<IDBDatabase> {
 
 async function tx<T>(store: StoreName, mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const d = await db();
+  // done when the transaction has committed (a write that fails late, e.g. over quota, rejects instead)
   return new Promise((resolve, reject) => {
-    const req = f(d.transaction(store, mode).objectStore(store));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    const t = d.transaction(store, mode), req = f(t.objectStore(store));
+    t.oncomplete = () => resolve(req.result);
+    t.onerror = t.onabort = () => reject(t.error ?? req.error ?? new Error("Couldn't save in this browser."));
   });
 }
 

@@ -126,7 +126,7 @@ function Detail({ f, lib, back, tryIt, swapNow, swapped }: { f: Firmware; lib: L
           <>
             <button class="btn primary wide" style={{ marginTop: 12 }} disabled={!!dev.busy} onClick={() => setSwap(true)}>Install on FM-1</button>
             {inLoader && <button class="btn wide" style={{ marginTop: 8 }} disabled={!!dev.busy}
-              onClick={() => device.install(f, { backupFirst: false, restoreAfter: true, resume: true })}>Finish install (FM-1 is in update mode)</button>}
+              onClick={() => device.install(f, { backupFirst: false, restoreAfter: false, resume: true })}>Finish install (FM-1 is in update mode)</button>}
             <div class="btnrow">
               <button class="btn" onClick={() => tryIt(f, false)}>▶ Try it</button>
               {tut && <button class="btn" onClick={() => tryIt(f, true)}>🎓 Tutorial</button>}
@@ -193,7 +193,7 @@ function BackupRow({ b, f }: { b: Backup; f: Firmware }) {
   return (
     <div>
       <span class="row-main">{b.label}<div class="small dim">{fmtDateTime(b.date)} · {b.partsSummary}{b.sizeBytes ? ` · ${fmtBytes(b.sizeBytes)}` : ""}</div></span>
-      {b.archive && <button class="linkbtn small" disabled={!canRestore || !!dev.busy} title={canRestore ? "" : `Install ${f.name} first`} onClick={() => device.restore(b)}>Restore</button>}
+      {b.archive && <button class="linkbtn small" disabled={!canRestore || !!dev.busy} title={canRestore ? "" : `Install ${f.name} first`} onClick={() => confirm(`Restore “${b.label}”? It replaces the saved work on the FM-1.`) && device.restore(b)}>Restore</button>}
       <button class="linkbtn small" onClick={() => {
         if (b.archive) saveFile(`${f.name}-${new Date(b.date).toISOString().slice(0, 10)}.json`, b.family === "felucca" ? FeluccaArchive.toNativeJSON(b.archive) : JSON.stringify(b.archive), "application/json");
         else if (b.file) saveFile(b.file.name, Uint8Array.from(atob(b.file.data), (c) => c.charCodeAt(0)));
@@ -244,7 +244,7 @@ function SwapDialog({ f, lib, chip, close }: { f: Firmware; lib: Library; chip: 
       {!cur ? <p class="dim">Connect the FM-1 on the Device page first.</p> : (
         <>
           <p class="dim" style={{ marginTop: 0 }}>The FM-1 is running <b>{curName}</b>. It will restart a few times; keep the USB cable in until it's done (about a minute).</p>
-          {curFam && supportsArchive(curFam) && <label class="check"><input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst((e.target as HTMLInputElement).checked)} />Back up {curName}'s work first</label>}
+          {curFam && (supportsArchive(curFam) || curFam === "unknown") && <label class="check"><input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst((e.target as HTMLInputElement).checked)} />Back up {curName}'s work first</label>}
           {curFam === "official" && <div class="banner warn small">M-VAVE's official firmware can't be backed up. Its patterns are usually erased by other firmware.</div>}
           <ChipWarning chip={chip} mine={mine} setMine={setMine} ack={ack} setAck={setAck} />
           {viaV15Recommended(cur, f) && (

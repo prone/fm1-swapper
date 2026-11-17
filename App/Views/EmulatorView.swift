@@ -446,7 +446,8 @@ struct EmulatorWebView: UIViewRepresentable {
             var vc = top
             while let p = vc.presentedViewController { vc = p }
             return await withCheckedContinuation { cont in
-                let a = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+                // titled as the page's, so a message from the third-party page can't pass for one of the app's own
+                let a = UIAlertController(title: "The emulator page says", message: String(message.prefix(500)), preferredStyle: .alert)
                 a.addAction(UIAlertAction(title: "OK", style: .default) { _ in cont.resume(returning: true) })
                 if cancel { a.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in cont.resume(returning: false) }) }
                 vc.present(a, animated: true)

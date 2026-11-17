@@ -7,7 +7,7 @@ import { readArchiveFile } from "../fm1kit/archive";
 import { FlashImage, Firmware, store } from "../store";
 import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
-import { MyChip, RESCUE_URL, myChip, setMyChip } from "../hub";
+import { MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
 import { chipOfJedec, helperFor, hex } from "../fm1kit/mboot";
 
 export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swap?: boolean) => void }) {
@@ -73,7 +73,7 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
                     <label class="check"><input type="checkbox" checked={samples} onChange={(e) => setSamples((e.target as HTMLInputElement).checked)} /> Include sample banks</label>
                     <div class="btnrow">
                       <button class="btn primary" disabled={!!s.busy} onClick={() => device.backup(installed, samples)}>Back up now</button>
-                      <button class="btn" disabled={!!s.busy || !latest} onClick={() => latest && device.restore(latest, samples)}>
+                      <button class="btn" disabled={!!s.busy || !latest} onClick={() => latest && confirm(`Restore the backup from ${fmtDateTime(latest.date)}? It replaces the saved work on the FM-1.`) && device.restore(latest, samples)}>
                         Restore latest{latest ? ` (${fmtDateTime(latest.date)})` : ""}
                       </button>
                     </div>
@@ -91,9 +91,10 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
                   const a = readArchiveFile(await f.text());
                   const b = backupRecord(a, installed?.id ?? "", "import");
                   await store.saveBackup(b);
-                  setMsg(`Imported ${f.name}. Restoring…`);
-                  await device.restore(b, samples);
+                  // kept in the library first; written to the FM-1 only when asked
+                  if (!confirm(`Imported ${f.name}. Restore it to the FM-1 now? It replaces the saved work on the FM-1.`)) { setMsg(`Imported ${f.name}: it's in your backups.`); return; }
                   setMsg(null);
+                  await device.restore(b, samples);
                 } catch (e) { setMsg((e as Error).message); }
               }}>A backup .json from this app, the iOS app, or Felucca's own editor.</FileDrop>
               {msg && <div class="banner warn">{msg}</div>}
@@ -151,7 +152,13 @@ function MBootCard({ lib }: { lib: Library }) {
   const m = s.mboot!;
   const [pick, setPick] = useState("");
   const chip = chipOfJedec(m.jedec);
+  const hub = useHub();
   const choices = lib.firmwares.filter((f: Firmware) => f.sha256 && f.product.startsWith("FM-1_"));
+  /** Through the helper too: firmware that only knows the older flash chip isn't put on a newer unit. */
+  const installThrough = (f: Firmware) => {
+    if (chip === "new" && chipOf(hub, f.sha256) === "old") { alert(`${f.name} only works on older FM-1s, and this one has the newer flash chip (${hex(m.jedec)}).`); return; }
+    if (confirm(`Install ${f.name} through m-bootloader? The FM-1's saved work stays; restore a backup afterwards if you need to.`)) void device.install(f, { backupFirst: false, restoreAfter: false, resume: true });
+  };
   return (
     <>
       <h2>m-bootloader {m.kind === "stage" ? "helper" : ""}</h2>
@@ -172,7 +179,7 @@ function MBootCard({ lib }: { lib: Library }) {
             <option value="">Choose…</option>
             {choices.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
-          <button class="btn" disabled={!pick || !!s.busy} onClick={() => { const f = choices.find((x) => x.id === pick); if (f) void device.install(f, { backupFirst: false, restoreAfter: true, resume: true }); }}>Install</button>
+          <button class="btn" disabled={!pick || !!s.busy} onClick={() => { const f = choices.find((x) => x.id === pick); if (f) installThrough(f); }}>Install</button>
         </div>
         <p class="small faint" style={{ marginBottom: 0 }}>Its installer writes only the firmware area, checks the package against this unit, skips unchanged parts and writes the first part last.</p>
       </div>

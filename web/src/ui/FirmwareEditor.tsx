@@ -5,9 +5,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Backup, Firmware, store, uid } from "../store";
 import { emulatorSaveText, emulatorSectors, putSong } from "../fm1kit/sloopflash";
-import { device } from "../device";
+import { autoSongName, device } from "../device";
 import { totalBytes } from "../fm1kit/archive";
-import { Clip, SONG_EXT, readSongFile, sameSong, songFile, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
+import { Clip, SONG_EXT, readSongFile, sameSong, songFile, stepNotes, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
+
+/** Whether the song editor has unsaved changes (main.tsx asks before another tab replaces it). */
+export const unsavedEdits = { dirty: false };
 import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 
 type Play = (f: Firmware, save: string, title: string) => void;
@@ -47,7 +50,7 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
   const songs = lib.backups.filter((b) => b.kind === "song").sort((a, b) => b.date - a.date);
   const shown = q ? songs.filter((b) => b.label.toLowerCase().includes(q.toLowerCase())) : songs;
   const open = songs.find((b) => b.id === editing);
-  if (open) return <SongEditor song={open} lib={lib} play={play} close={() => setEditing(null)} />;
+  if (open) return <SongEditor song={open} lib={lib} play={play} reopen={setEditing} close={() => setEditing(null)} />;
   const fwName = (b: Backup) => lib.firmwares.find((f) => f.id === b.firmwareId)?.name;
   return (
     <>
@@ -67,8 +70,9 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
               </>
             ) : confirm === b.id ? (
               <>
-                <span class="row-main">Replace the song on the FM-1 with “{b.label}”? Needs SLOOP connected and stopped.</span>
-                <button class="btn small" disabled={busy} onClick={() => { setConfirm(null); void device.restore(b); }}>Replace</button>
+                <span class="row-main">Replace the song on the FM-1 with “{b.label}”? Save the FM-1's song first to keep it.</span>
+                <button class="btn small" disabled={busy} onClick={() => { setConfirm(null); void device.loadSong(b, autoSongName()); }}>Save it, then load</button>
+                <button class="btn small danger" disabled={busy} onClick={() => { setConfirm(null); void device.loadSong(b); }}>Replace</button>
                 <button class="linkbtn small" onClick={() => setConfirm(null)}>Cancel</button>
               </>
             ) : (
@@ -89,16 +93,18 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
       </div>}
       <h2>Import song files</h2>
       <FileDrop accept={`.${SONG_EXT},.json`} multiple onFiles={async (files) => {
-        const out: string[] = [];
+        const out: string[] = [], have = (await store.backups()).filter((x) => x.kind === "song" && x.archive);
         for (const f of files) {
           try {
             const { archive, name } = readSongFile(await f.text());
             const label = name ?? f.name.replace(/\.(fm1song|json)$/i, "").replace(/\.sloop-song$/i, "");
-            const twin = (await store.backups()).find((x) => x.kind === "song" && x.archive && sameSong(x.archive, archive));
+            const twin = have.find((x) => sameSong(x.archive!, archive));
             if (twin) { out.push(`“${twin.label}” is already here, with the same notes.`); continue; }
             const fw = lib.firmwares.find((x) => x.product === (archive.info.identity ?? archive.firmware));
-            await store.saveBackup({ id: uid(), firmwareId: fw?.id ?? "", date: Date.now(), identity: archive.info.identity ?? archive.firmware, family: archive.family, kind: "song",
-              label, sizeBytes: totalBytes(archive), partsSummary: `${archive.parts.length} parts`, archive });
+            const added: Backup = { id: uid(), firmwareId: fw?.id ?? "", date: Date.now(), identity: archive.info.identity ?? archive.firmware, family: archive.family, kind: "song",
+              label, sizeBytes: totalBytes(archive), partsSummary: `${archive.parts.length} parts`, archive };
+            await store.saveBackup(added);
+            have.push(added);
             out.push(`Added “${label}”.`);
           } catch (e) { out.push(`${f.name}: ${(e as Error).message}`); }
         }
@@ -116,12 +122,12 @@ const NOTE = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A�
 const noteName = (p: number) => `${NOTE[p % 12]}${Math.floor(p / 12) - 1}`;
 const fmtBars = (b: number) => Number.isInteger(b) ? String(b) : b.toFixed(2).replace(/0+$/, "");
 
-function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; play: Play; close: () => void }) {
+function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Library; play: Play; reopen: (id: string) => void; close: () => void }) {
   const s = useDevice();
   const [doc, setDoc] = useState<SongDoc | null>(null);
   const [saved, setSaved] = useState<SongDoc | null>(null);
   const [err, setErr] = useState("");
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const undo = useRef<SongDoc[]>([]);
   const [slot, setSlot] = useState<Slot>("loop");
   const [track, setTrack] = useState(0);
@@ -131,7 +137,7 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
   const [noteLen, setNoteLen] = useState(0);
   const [low, setLow] = useState<Record<string, number>>({});
   const [sending, setSending] = useState(false);
-  const [playErr, setPlayErr] = useState("");
+  const [problem, setProblem] = useState("");
 
   useEffect(() => {
     try { if (!song.archive) throw new Error("The saved song can't be read."); const d = SongDoc.open(song.archive); setDoc(d); setSaved(d.clone()); }
@@ -140,6 +146,7 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
   if (!doc) return (<><p><button class="linkbtn" onClick={close}>‹ SLOOP songs</button></p><div class="banner err">Can't open this song. {err}</div></>);
 
   const dirty = !!saved && !doc.same(saved);
+  unsavedEdits.dirty = dirty;
   const edit = (f: (d: SongDoc) => void) => {
     const before = doc.clone();
     f(doc);
@@ -149,33 +156,42 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
     setTick((t) => t + 1);
   };
   const doUndo = () => { const last = undo.current.pop(); if (last) { setDoc(last); setTick((t) => t + 1); } };
-  const save = async (): Promise<Backup> => {
+  /** Saves the edits into the song (as a new song with `asLabel`); null, with the reason shown, when that failed. */
+  const save = async (asLabel?: string): Promise<Backup | null> => {
     const a = doc.archive();
-    const b: Backup = { ...song, archive: a, date: Date.now(), sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts` };
-    await store.saveBackup(b);
+    const b: Backup = { ...song, ...(asLabel ? { id: uid(), label: asLabel } : {}), archive: a, date: Date.now(), sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts` };
+    try { await store.saveBackup(b); } catch (e) { setProblem(`Couldn't save: ${(e as Error).message}`); return null; }
     setSaved(doc.clone());
     return b;
   };
+  /** Saves as a new song and goes on editing that one (the original stays as it was). */
   const saveCopy = async () => {
     const name = prompt("Save as a new song", `${song.label} (edit)`);
     if (name == null) return;
-    const a = doc.archive();
-    await store.saveBackup({ ...song, id: uid(), label: name.trim() || `${song.label} (edit)`, archive: a, date: Date.now(), sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts` });
+    const b = await save(name.trim() || `${song.label} (edit)`);
+    if (b) reopen(b.id);
+  };
+  const send = async (saveFirst: boolean) => {
+    setSending(false);
+    const b = dirty ? await save() : song;
+    if (b) void device.loadSong(b, saveFirst ? autoSongName() : null);
   };
   /** SLOOP in the emulator with the song as it is now (edits included): written into the emulator's saved flash. */
   const playIt = async () => {
-    setPlayErr("");
-    const sloop = lib.firmwares.filter((f) => f.sha256 && /sloop/i.test(f.name));
-    const fw = sloop.find((f) => f.id === song.firmwareId) ?? sloop.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
-    const pkg = fw && await store.packageBytes(fw.sha256);
-    if (!fw || !pkg) { setPlayErr("The emulator needs SLOOP in your library. Add it from Get firmware (SLOOP 2.6 or later), then try again."); return; }
+    setProblem("");
+    // the song's own SLOOP first, then the newest; the first one whose package is in the library
+    const sloop = lib.firmwares.filter((f) => f.sha256 && /sloop/i.test(f.name))
+      .sort((a, b) => Number(b.id === song.firmwareId) - Number(a.id === song.firmwareId) || b.version.localeCompare(a.version, undefined, { numeric: true }));
+    let fw: Firmware | undefined, pkg: Uint8Array | null = null;
+    for (const f of sloop) if ((pkg = await store.packageBytes(f.sha256))) { fw = f; break; }
+    if (!fw || !pkg) { setProblem("The emulator needs SLOOP in your library. Add it from Get firmware (SLOOP 2.6 or later), then try again."); return; }
     try {
       const sectors = await emulatorSectors(fw.sha256);
       putSong(doc.archive(), sectors);
       play(fw, emulatorSaveText(pkg, fw.sha256, fw.name, sectors), `${song.label} · ${fw.name}`);
-    } catch (e) { setPlayErr((e as Error).message); }
+    } catch (e) { setProblem((e as Error).message); }
   };
-  const leave = () => { if (!dirty || window.confirm("Close without saving your changes?")) close(); };
+  const leave = () => { if (!dirty || window.confirm("Close without saving your changes?")) { unsavedEdits.dirty = false; close(); } };
 
   const p = doc.patterns[slot];
   const t = p?.track(track);
@@ -228,14 +244,15 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
       </div>
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
       <DeviceBusy s={s} />
-      {playErr && <div class="banner warn">{playErr}</div>}
+      {problem && <div class="banner warn">{problem}</div>}
       {sending && (
         <div class="banner warn">
           <b>Send “{song.label}” to the FM-1?</b>
-          <div class="small">Saves your changes, then replaces the loop, sections A–D and the song order on the FM-1 (SLOOP connected, playback stopped).
-            Save the FM-1's current song first (Device tab) if you want to keep it.{doc.emptyEntries.length ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""}</div>
+          <div class="small">Saves your changes here, then replaces the loop, sections A–D and the song order on the FM-1 (SLOOP connected).
+            Save the FM-1's song first to keep it.{doc.emptyEntries.length ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""}</div>
           <div class="btnrow">
-            <button class="btn primary" disabled={!!s.busy} onClick={async () => { setSending(false); const b = await save(); void device.restore(b); }}>Save and replace the song on the FM-1</button>
+            <button class="btn primary" disabled={!!s.busy} onClick={() => void send(true)}>Save the FM-1's song first, then send</button>
+            <button class="btn danger" disabled={!!s.busy} onClick={() => void send(false)}>Send without saving it</button>
             <button class="linkbtn" onClick={() => setSending(false)}>Cancel</button>
           </div>
         </div>
@@ -252,13 +269,13 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
                   <select value={e.section} onChange={(ev) => edit((d) => { d.order!.entries[i].section = Number((ev.target as HTMLSelectElement).value); })}>
                     {[0, 1, 2, 3].map((k) => <option key={k} value={k}>{"ABCD"[k]}{doc.isEmpty(sectionSlot(k)) ? " (empty)" : ""}</option>)}
                   </select>
-                  <button class="btn small" disabled={e.bars <= 1} onClick={() => edit((d) => { d.order!.entries[i].bars--; })}>−</button>
+                  <button class="btn small" disabled={e.bars <= 1} onClick={() => edit((d) => { d.order!.entries[i].bars--; })} aria-label={`Entry ${i + 1}: fewer bars`}>−</button>
                   <span style={{ minWidth: 64, textAlign: "center" }}>{e.bars} bar{e.bars === 1 ? "" : "s"}</span>
-                  <button class="btn small" disabled={e.bars >= 64} onClick={() => edit((d) => { d.order!.entries[i].bars++; })}>+</button>
-                  {doc.isEmpty(sectionSlot(e.section)) && <span style={{ color: "var(--orange)" }} title="Empty section">⚠︎</span>}
+                  <button class="btn small" disabled={e.bars >= 64} onClick={() => edit((d) => { d.order!.entries[i].bars++; })} aria-label={`Entry ${i + 1}: more bars`}>+</button>
+                  {doc.isEmpty(sectionSlot(e.section)) && <span style={{ color: "var(--orange)" }} title="Empty section" role="img" aria-label="Empty section">⚠︎</span>}
                   <span style={{ flex: 1 }} />
-                  <button class="linkbtn" disabled={i === 0} onClick={() => edit((d) => { const x = d.order!.entries; [x[i - 1], x[i]] = [x[i], x[i - 1]]; })}>↑</button>
-                  <button class="linkbtn" disabled={i === order.entries.length - 1} onClick={() => edit((d) => { const x = d.order!.entries; [x[i + 1], x[i]] = [x[i], x[i + 1]]; })}>↓</button>
+                  <button class="linkbtn" disabled={i === 0} onClick={() => edit((d) => { const x = d.order!.entries; [x[i - 1], x[i]] = [x[i], x[i - 1]]; })} aria-label={`Move entry ${i + 1} up`}>↑</button>
+                  <button class="linkbtn" disabled={i === order.entries.length - 1} onClick={() => edit((d) => { const x = d.order!.entries; [x[i + 1], x[i]] = [x[i], x[i + 1]]; })} aria-label={`Move entry ${i + 1} down`}>↓</button>
                   <button class="linkbtn" style={{ color: "var(--red)" }} disabled={order.entries.length === 1} onClick={() => edit((d) => { d.order!.entries.splice(i, 1); })}>Remove</button>
                 </div>
               ))}
@@ -270,7 +287,7 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
               }}>Add {"ABCD"[slotSection(slot) ?? 0]}</button>
               <label class="small"><input type="checkbox" checked={order.loops} onChange={(ev) => edit((d) => { d.order!.loops = (ev.target as HTMLInputElement).checked; })} /> Loop the song</label>
             </div>
-            <p class="small dim" style={{ marginBottom: 0 }}>{order.entries.length} of 16 entries · {totalBars(order)} bars · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} at {bpm} BPM{order.loops ? ", then again" : ""}.
+            <p class="small dim" style={{ marginBottom: 0 }}>{order.entries.length} of {MAX_ENTRIES} entries · {totalBars(order)} bars · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} at {bpm} BPM{order.loops ? ", then again" : ""}.
               Each entry plays its section for that many bars, repeating the section's loop. On the FM-1, play it in song mode (SONG screen, or SAVE + key 13).
               {doc.emptyEntries.length > 0 && ` ⚠︎ Entries ${doc.emptyEntries.map((i) => i + 1).join(", ")} point at empty sections.`}</p>
           </>
@@ -296,9 +313,9 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
               </nav>
               <div class="tools">
                 <span>Length</span>
-                <button class="btn small" disabled={t.length <= 1} onClick={() => edit((d) => { d.patterns[slot]!.track(track).length = t.length - 1; })}>−</button>
+                <button class="btn small" disabled={t.length <= 1} onClick={() => edit((d) => { d.patterns[slot]!.track(track).length = t.length - 1; })} aria-label="Shorter">−</button>
                 <span>{t.length} steps</span>
-                <button class="btn small" disabled={t.length >= 64} onClick={() => edit((d) => { d.patterns[slot]!.track(track).length = t.length + 1; })}>+</button>
+                <button class="btn small" disabled={t.length >= 64} onClick={() => edit((d) => { d.patterns[slot]!.track(track).length = t.length + 1; })} aria-label="Longer">+</button>
                 <span class="dim small">{DIV_NAMES[t.div]} steps · {fmtBars(t.length / t.stepsPerBar)} bars</span>
                 <span style={{ flex: 1 }} />
                 <select value="" onChange={(ev) => {
@@ -308,7 +325,7 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
                   else if (v) edit((d) => d.copy(slot, v as Slot));
                 }}>
                   <option value="">Section…</option>
-                  {SLOTS.filter((x) => x !== slot).map((x) => <option key={x} value={x}>Copy {slotName(slot)} to {slotName(x)}{doc.isEmpty(x) ? "" : " (replaces it)"}</option>)}
+                  {SLOTS.filter((x) => x !== slot && !doc.locked.has(x)).map((x) => <option key={x} value={x}>Copy {slotName(slot)} to {slotName(x)}{doc.isEmpty(x) ? "" : " (replaces it)"}</option>)}
                   {slot !== "loop" && <option value="erase">Erase section {slotName(slot)}</option>}
                   <option value="clear">Clear this track's notes</option>
                 </select>
@@ -346,24 +363,24 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
                 </>
               ) : <p class="small dim">Each step of this track is longer than a bar, so bar edits don't apply to it.</p>}
               {t.isDrum ? (
-                <Grid track={t} rows={16} label={(r) => DRUM_LANES[r]} sel={stepRange(t)} onTap={(r, i) => edit((d) => d.patterns[slot]!.track(track).toggleDrum(r, i))} />
+                <Grid version={`${slot}${track}${tick}`} track={t} rows={16} label={(r) => DRUM_LANES[r]} sel={stepRange(t)} onTap={(r, i) => edit((d) => d.patterns[slot]!.track(track).toggleDrum(r, i))} />
               ) : (
                 <>
                   <div class="tools">
                     <span class="small">Note length</span>
                     {LENGTHS.map(([n], i) => <button key={n} class={"btn small" + (i === noteLen ? " primary" : "")} onClick={() => setNoteLen(i)}>{n}</button>)}
                     <span style={{ flex: 1 }} />
-                    <button class="btn small" onClick={() => setLow({ ...low, [key]: Math.max(0, lowNote - 12) })}>▼</button>
+                    <button class="btn small" onClick={() => setLow({ ...low, [key]: Math.max(0, lowNote - 12) })} aria-label="Octave down">▼</button>
                     <span class="small dim">{noteName(lowNote)}–{noteName(Math.min(127, lowNote + 24))}</span>
-                    <button class="btn small" onClick={() => setLow({ ...low, [key]: Math.min(103, lowNote + 12) })}>▲</button>
+                    <button class="btn small" onClick={() => setLow({ ...low, [key]: Math.min(103, lowNote + 12) })} aria-label="Octave up">▲</button>
                   </div>
-                  <Grid track={t} rows={Math.min(25, 128 - lowNote)} low={lowNote} label={(r) => { const pt = lowNote + Math.min(25, 128 - lowNote) - 1 - r; return pt % 12 === 0 || r === Math.min(25, 128 - lowNote) - 1 ? noteName(pt) : ""; }}
+                  <Grid version={`${slot}${track}${tick}`} track={t} rows={Math.min(25, 128 - lowNote)} low={lowNote} label={(r) => { const pt = lowNote + Math.min(25, 128 - lowNote) - 1 - r; return pt % 12 === 0 || r === Math.min(25, 128 - lowNote) - 1 ? noteName(pt) : ""; }}
                     sel={stepRange(t)} onTap={(r, i) => {
                       const pitch = lowNote + Math.min(25, 128 - lowNote) - 1 - r;
                       const steps = Math.max(1, Math.round(t.stepsPerBar * LENGTHS[noteLen][1]));
                       edit((d) => {
                         const tr = d.patterns[slot]!.track(track), o = tr.owner(i);
-                        if (o != null && tr.step(o).subarray(0, tr.step(o)[4]).includes(pitch)) tr.remove(pitch, o); else tr.place(pitch, i, steps);
+                        if (o != null && stepNotes(tr.step(o)).includes(pitch)) tr.remove(pitch, o); else tr.place(pitch, i, steps);
                       });
                     }} />
                 </>
@@ -377,7 +394,15 @@ function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; pl
 }
 
 /** A piano roll (with `low`: rows are pitches, high at the top) or the drum grid (16 lanes), 64 steps across. */
-function Grid({ track, rows, low, label, sel, onTap }: { track: Track; rows: number; low?: number; label: (r: number) => string; sel: [number, number] | null; onTap: (row: number, step: number) => void }) {
+/** What a grid holds, for screen readers (the canvas has no elements of its own). */
+function gridSummary(t: Track): string {
+  if (t.isDrum) { let hits = 0; for (let i = 0; i < t.length; i++) for (let l = 0; l < 16; l++) hits += +t.drum(i, l); return `Drum grid, ${t.length} steps, ${hits} hits`; }
+  const c = t.chords;
+  return `Piano roll, ${t.length} steps, ${c.length} note${c.length === 1 ? "" : "s"}` + (c[0] ? `, first ${c[0].notes.map(noteName).join(" ")} on step ${c[0].at + 1}` : "");
+}
+
+/** `version` changes with every edit (and the slot and track shown): the canvas is drawn again only then. */
+function Grid({ version, track, rows, low, label, sel, onTap }: { version: string; track: Track; rows: number; low?: number; label: (r: number) => string; sel: [number, number] | null; onTap: (row: number, step: number) => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const W = 22, H = low == null ? 20 : 18, L = low == null ? 76 : 40;
   useEffect(() => {
@@ -398,7 +423,7 @@ function Grid({ track, rows, low, label, sel, onTap }: { track: Track; rows: num
     }
     if (low == null) {
       for (let r = 0; r < 16; r++) for (let i = 0; i < 64; i++) {
-        const s = track.step(i), on = ((s[r >> 3] >> (r & 7)) & 1) === 1;
+        const on = track.drum(i, r);
         g.fillStyle = on ? col("--blue") : Math.floor(i / per) % 2 ? "rgba(255,255,255,.05)" : "rgba(255,255,255,.1)";
         g.fillRect(L + i * W + 2, r * H + 2, W - 4, H - 4);
       }
@@ -411,10 +436,10 @@ function Grid({ track, rows, low, label, sel, onTap }: { track: Track; rows: num
       }
     }
     if (track.length < 64) { g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(L + track.length * W, 0, (64 - track.length) * W, h); }
-  });
+  }, [version, rows, low, sel?.[0], sel?.[1]]);
   return (
     <div style={{ overflowX: "auto", borderRadius: 10, margin: "8px 0" }}>
-      <canvas ref={ref} style={{ display: "block", cursor: "pointer" }} onClick={(e) => {
+      <canvas ref={ref} style={{ display: "block", cursor: "pointer" }} role="img" aria-label={gridSummary(track)} onClick={(e) => {
         const b = (e.target as HTMLCanvasElement).getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top;
         if (x < L) return;
         const i = Math.floor((x - L) / W), r = Math.floor(y / H);
