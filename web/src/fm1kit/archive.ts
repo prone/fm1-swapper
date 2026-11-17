@@ -337,21 +337,148 @@ export class FM1OpenArchive {
   }
 }
 
+// ---------------------------------------------------------------- SLOOP (mirrors SLOOPArchive.swift)
+// isod89/sloop-fm1 firmware/src/editor.c, editor protocol 6+ (SLOOP 2.3 and later, and its forks). Same frame as
+// Felucca's archive, its own commands: 34 LIST (snapshots the working project), 35 GET, 36 PUT (begin, data,
+// commit; each object checked as a load would and written through SLOOP's A/B commit). Objects: 0 the loop in
+// progress, 1 the settings (with the song order), 2-5 sections A-D, 6-7 user presets, 8 FM6 patches, 9 SYN kits,
+// 10 MIDI learn, 11 theme, 32-35 sample slots. Sample slots are read but not written back.
+
+export const SLOOP_FORMAT = "sloop-backup";
+/** A SLOOP song: the loop in progress, the settings (they hold the song order) and sections A-D. */
+export const SLOOP_SONG_IDS = [0, 1, 2, 3, 4, 5];
+export function sloopLabel(id: number): string {
+  if (id >= 2 && id <= 5) return `Section ${"ABCD"[id - 2]}`;
+  if (id >= 32 && id <= 35) return `Sample slot USR${id - 31}`;
+  return ({ 0: "Loop in progress", 1: "Settings and song order", 6: "User presets 1–16", 7: "User presets 17–32", 8: "FM6 patches",
+    9: "SYN drum kits", 10: "MIDI learn", 11: "Theme" } as Record<number, string>)[id] ?? `Object ${id}`;
+}
+
+/** The editor protocol version when INFO is SLOOP-style (ends with the track count and the version, and has no
+ *  Felucca archive extension), else null. */
+export function sloopProtocol(a: number[]): number | null {
+  let pos = a.indexOf(0);
+  if (pos < 0 || ++pos >= a.length) return null;
+  const engines = a[pos]; pos += 5;
+  for (let i = 0; i < engines; i++) { const end = a.indexOf(0, pos); if (end < 0) return null; pos = end + 1; }
+  return a.length - pos === 2 && a[pos] >= 1 && a[pos] <= 8 ? a[pos + 1] : null;
+}
+
+export class SLOOPArchive {
+  private f: FeluccaArchive;
+  constructor(link: SysExLink) { this.f = new FeluccaArchive(link); }
+
+  async supported(): Promise<boolean> {
+    try { return (sloopProtocol(await this.f.request(1, [])) ?? 0) >= 6; } catch { return false; }
+  }
+
+  static manifest(a: number[]) {
+    if (a.length < 2) throw new FM1Error("protocol", "Short backup list");
+    FeluccaArchive.check(a[0]);
+    const n = a[1];
+    if (a.length !== 2 + n * 11) throw new FM1Error("protocol", "Incomplete backup list");
+    return Array.from({ length: n }, (_, i) => {
+      const p = 2 + i * 11, size = u32From7(a, p + 1), crc = u32From7(a, p + 6);
+      if (size > 256 * 1024) throw new FM1Error("protocol", "Backup object too large");
+      return { id: a[p], size, crc };
+    });
+  }
+
+  async capture(identity: string, only: number[] | null = null, progress: Progress = () => {}): Promise<DeviceArchive> {
+    if (!(await this.supported())) throw new FM1Error("unsupported", "This firmware doesn't have SLOOP's backup (SLOOP 2.3 or later).");
+    const manifest = SLOOPArchive.manifest(await this.f.request(34, [], 5000)).filter((o) => !only || only.includes(o.id));
+    const total = manifest.reduce((n, o) => n + o.size, 0);
+    let done = 0;
+    const parts: Part[] = [];
+    for (const o of manifest) {
+      const bytes = new Uint8Array(o.size);
+      for (let off = 0; off < o.size; off += 256) {
+        const size = Math.min(256, o.size - off);
+        const a = await this.f.request(35, [o.id, ...u32To7(off), size & 127, size >>> 7], 1000, 1);
+        if (a.length < 9) throw new FM1Error("protocol", "Short backup reply");
+        FeluccaArchive.check(a[1]);
+        if (a[0] !== o.id || u32From7(a, 2) !== off || (a[7] | (a[8] << 7)) !== size) throw new FM1Error("protocol", "Unexpected backup reply");
+        bytes.set(maskUnpack(a.slice(9), size), off);
+        done += size; progress(done, total);
+      }
+      if (crc32(bytes) !== o.crc) throw new FM1Error("device", "The FM-1 changed during the backup. Stop playback and try again.");
+      parts.push(part(String(o.id), sloopLabel(o.id), bytes));
+    }
+    if (!parts.some((p) => p.id === "0" && p.data) || !parts.some((p) => p.id === "1" && p.data))
+      throw new FM1Error("device", "The backup is missing the loop in progress or the settings.");
+    const song = !!only && only.length === SLOOP_SONG_IDS.length && SLOOP_SONG_IDS.every((i) => only.includes(i));
+    return { format: SLOOP_FORMAT, family: "felucca", firmware: identity, created: Date.now() / 1000, parts, info: { identity, contents: song ? "song" : "all" } };
+  }
+
+  /** What a restore writes, in order (everything else, then the settings, the loop in progress last); checked first. */
+  static restoreOrder(a: DeviceArchive): { id: number; data: Uint8Array; crc: number }[] {
+    if (a.format !== SLOOP_FORMAT) throw new FM1Error("badpkg", "This isn't a SLOOP backup.");
+    const out: { id: number; data: Uint8Array; crc: number }[] = [];
+    for (const p of a.parts) {
+      const id = Number(p.id);
+      if (!Number.isInteger(id) || id < 0) throw new FM1Error("badpkg", "Damaged backup.");
+      if (id > 11) continue;                                              // sample slots: left as they are
+      const data = partBytes(p);
+      if (crc32(data) !== p.crc) throw new FM1Error("badpkg", `The backup is damaged (${p.label}).`);
+      if (id < 2 && !data.length) throw new FM1Error("badpkg", `The backup is missing ${p.label}.`);
+      out.push({ id, data, crc: p.crc });
+    }
+    if (!out.some((o) => o.id === 0)) throw new FM1Error("badpkg", "The backup is missing the loop in progress.");
+    const rank = (id: number) => (id === 0 ? 2 : id === 1 ? 1 : 0);
+    return out.sort((x, y) => rank(x.id) - rank(y.id));
+  }
+
+  static validate(a: DeviceArchive) { SLOOPArchive.restoreOrder(a); }
+
+  async restore(a: DeviceArchive, progress: Progress = () => {}) {
+    const order = SLOOPArchive.restoreOrder(a);
+    if (!(await this.supported())) throw new FM1Error("unsupported", "This firmware can't restore a SLOOP backup (SLOOP 2.3 or later).");
+    const total = order.reduce((n, o) => n + o.data.length, 0);
+    let done = 0;
+    const put = async (args: number[]) => {
+      const r = await this.f.request(36, args, 5000);
+      if (r.length < 3 || r[0] !== args[0] || r[1] !== args[1]) throw new FM1Error("protocol", "Unexpected restore reply");
+      FeluccaArchive.check(r[2]);
+    };
+    for (const o of order) {
+      await put([0, o.id, ...u32To7(o.data.length), ...u32To7(o.crc)]);
+      try {
+        for (let off = 0; off < o.data.length; off += 256) {
+          const c = o.data.subarray(off, Math.min(off + 256, o.data.length));
+          await put([1, o.id, ...u32To7(off), ...maskPack(c)]);
+          done += c.length; progress(done, total);
+        }
+        await put([2, o.id]);
+      } catch (e) { try { await put([3, o.id]); } catch { /* already failing */ } throw e; }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- by family
 
 export async function captureArchive(dev: Connected, family: Family, includeSamples: boolean, progress: Progress): Promise<DeviceArchive> {
   switch (family) {
-    case "felucca": return new FeluccaArchive(dev.link).capture(dev.identity.text, progress);
+    case "felucca": {
+      // SLOOP and its forks answer as Felucca but have their own backup commands.
+      const s = new SLOOPArchive(dev.link);
+      if (await s.supported()) return s.capture(dev.identity.text, null, progress);
+      return new FeluccaArchive(dev.link).capture(dev.identity.text, progress);
+    }
     case "fm1Open": return new FM1OpenArchive(dev.link).capture(dev.identity.text, includeSamples, progress);
     case "updateLoader": throw new FM1Error("unsupported", "The FM-1 is in update mode, so nothing can be backed up. Finish the install first.");
     case "official": throw new FM1Error("unsupported", "M-VAVE's official firmware has no backup protocol. Its patterns and settings stay on the device, and are usually erased when other firmware is installed.");
     default:
-      try { return await new FeluccaArchive(dev.link).capture(dev.identity.text, progress); }
-      catch { throw new FM1Error("unsupported", `${dev.identity.text} has no backup protocol this app knows. Save anything important on the device, or use the firmware's own editor.`); }
+      try { return await new FeluccaArchive(dev.link).capture(dev.identity.text, progress); } catch { /* try SLOOP's */ }
+      {
+        const s = new SLOOPArchive(dev.link);
+        if (await s.supported()) return s.capture(dev.identity.text, null, progress);
+      }
+      throw new FM1Error("unsupported", `${dev.identity.text} has no backup protocol this app knows. Save anything important on the device, or use the firmware's own editor.`);
   }
 }
 
 export async function restoreArchive(a: DeviceArchive, dev: Connected, family: Family, includeSamples: boolean, progress: Progress) {
+  if (a.format === SLOOP_FORMAT) return new SLOOPArchive(dev.link).restore(a, progress);
   if (a.family === "felucca") return new FeluccaArchive(dev.link).restore(a, progress);
   if (a.family === "fm1Open") {
     if (family !== "fm1Open") throw new FM1Error("unsupported", `This backup is for FM1 Open; the FM-1 is running ${dev.identity.text}.`);
@@ -365,6 +492,7 @@ export function readArchiveFile(text: string): DeviceArchive {
   if (j?.format === "felucca-backup" && Array.isArray(j.objects)) return FeluccaArchive.fromNativeJSON(text);
   if (typeof j?.format !== "string" || !Array.isArray(j.parts)) throw new FM1Error("badpkg", "Not an FM-1 Swapper backup.");
   const a = j as DeviceArchive;
-  if (a.family === "felucca") FeluccaArchive.validate(a); else FM1OpenArchive.validate(a);
+  if (a.format === SLOOP_FORMAT) SLOOPArchive.validate(a);
+  else if (a.family === "felucca") FeluccaArchive.validate(a); else FM1OpenArchive.validate(a);
   return a;
 }

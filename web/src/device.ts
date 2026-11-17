@@ -4,7 +4,7 @@
 import { WebMIDIProvider } from "./fm1kit/midi";
 import { FM1Error, Step, Updater } from "./fm1kit/ota";
 import { FirmwarePackage, Identity, STOCK, familyOf, isLoader, readPackage, supportsArchive } from "./fm1kit/package";
-import { DeviceArchive, captureArchive, restoreArchive, totalBytes } from "./fm1kit/archive";
+import { DeviceArchive, SLOOPArchive, SLOOP_SONG_IDS, captureArchive, restoreArchive, totalBytes } from "./fm1kit/archive";
 import { HELPERS, MbootInfo, chipOfJedec, helperFor } from "./fm1kit/mboot";
 import { crc32, sha256Hex } from "./fm1kit/sysex";
 import { setMyChip } from "./hub";
@@ -111,6 +111,23 @@ export const device = {
     });
   },
 
+  /** Saves the SLOOP song on the FM-1 (the loop in progress, the song order, sections A-D) under a name. */
+  saveSong(owner: Firmware | undefined, name: string) {
+    return device.run("Saving the song", async (u) => {
+      const d = await u.find((id) => !isLoader(id));
+      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
+      try {
+        const s = new SLOOPArchive(d.link);
+        if (!(await s.supported())) throw new FM1Error("unsupported", `${d.identity.text} doesn't have SLOOP's song backup. It works with SLOOP 2.3 or later and firmware built on it.`);
+        const a = await s.capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ progress: t ? n / t : null }));
+        const b = { ...backupRecord(a, owner?.id ?? "", "song"), label: name };
+        await store.saveBackup(b);
+        note(`✓ saved the song "${name}"`);
+        return b;
+      } finally { d.link.close(); }
+    });
+  },
+
   /** The swap: back up what's on the FM-1, install, then put back this firmware's latest backup. */
   install(target: Firmware, opts: { backupFirst: boolean; restoreAfter: boolean; resume?: boolean; viaV15?: Firmware }) {
     return device.run(opts.resume ? "Finishing the install" : `Installing ${target.name}`, async (u) => {
@@ -171,7 +188,7 @@ export const device = {
         Object.assign(target, { lastInstalledAt: Date.now(), installCount: target.installCount + 1, status: target.status === "notTried" ? "tried" : target.status });
         await store.saveFirmware(target);
         if (opts.restoreAfter) {
-          const latest = (await store.backups()).filter((b) => b.firmwareId === target.id && b.archive).sort((a, b) => b.date - a.date)[0];
+          const latest = (await store.backups()).filter((b) => b.firmwareId === target.id && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0];
           if (latest?.archive) {
             const d = await u.find((i) => !isLoader(i));
             if (d) try {
@@ -260,7 +277,7 @@ export const mboot = {
 
 export function backupRecord(a: DeviceArchive, firmwareId: string, kind: Backup["kind"]): Backup {
   return { id: uid(), firmwareId, date: Date.now(), identity: a.info.identity ?? a.firmware, family: a.family, kind,
-    label: kind === "auto" ? "Before a swap" : "Backup", sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts`, archive: a };
+    label: kind === "auto" ? "Before a swap" : kind === "song" ? "Song" : "Backup", sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts`, archive: a };
 }
 
 export type { FirmwarePackage };

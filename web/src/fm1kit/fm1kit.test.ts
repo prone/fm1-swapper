@@ -7,7 +7,7 @@ import { familyOf, logicalImage, parseIdentity, readPackage } from "./package";
 import { DEFAULT_TIMING, FM1Error, HANDSHAKE, HELPER_REFUSED, Timing, UPGRADE, Updater, identityReply, parseIdentityReply, parseRequest, request } from "./ota";
 import { Inbox, PortCandidate, PortProvider, SysExLink } from "./midi";
 import { MBoot, chipOfJedec, frame, helperFor, parseFrame } from "./mboot";
-import { DeviceArchive, FELUCCA_IDS, FM1OpenArchive, FeluccaArchive, captureArchive, part, partBytes, readArchiveFile, restoreArchive } from "./archive";
+import { DeviceArchive, FELUCCA_IDS, FM1OpenArchive, FeluccaArchive, SLOOPArchive, SLOOP_FORMAT, SLOOP_SONG_IDS, captureArchive, part, partBytes, readArchiveFile, restoreArchive, sloopProtocol } from "./archive";
 
 const FAST: Timing = { ...DEFAULT_TIMING, replyDelay: 0, afterUpgrade: 5, beforeLoader: 5, beforeReboot: 5, idleCheck: 800, idleWrite: 1500, waitLoader: 1500, waitReboot: 1500, poll: 20, handshake: 150 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -31,6 +31,7 @@ class VirtualFM1 {
   fromHost = new Inbox();
   link: SimLink | null = null;
   felucca = new Map<number, Uint8Array>();
+  sloop = false; sloopSaw: number[] = [];   // answers as SLOOP 2.8 (editor protocol 12, backup commands 34-36)
   open = { project: new Uint8Array(4264).map((_, i) => (i * 7) & 0xff), timbres: [...Array(8)].map((_, t) => new Uint8Array(223).fill(t)),
     dx7: [...Array(4)].map((_, g) => new Uint8Array(4096).map((_, i) => (i + g) & 0x7f)), samples: new Uint8Array(300).map((_, i) => i & 0xff) };
   private put: { id: number; size: number; crc: number; buf: number[] } | null = null;
@@ -106,6 +107,7 @@ class VirtualFM1 {
 
   feluccaCmd(cmd: number, a: number[]) {
     const send = (p: number[]) => this.reply([0xf0, 0x7d, 0x46, 0x4c, cmd, ...p, 0xf7]);
+    if (this.sloop) return this.sloopCmd(cmd, a, send);
     if (cmd === 1) return send([...[..."FELUCCA 1.8.2"].map((c) => c.charCodeAt(0)), 0, 1, 0, 0, 0, 0, ...[..."FM6"].map((c) => c.charCodeAt(0)), 0, 0, 16, 0x55, 1, 0, 0x4d, 1, 0, 0, 0x42, 1, 1]);
     if (cmd === 65) {
       const p = [1, 0, FELUCCA_IDS.length];
@@ -127,6 +129,34 @@ class VirtualFM1 {
     if (cmd === 12) { const n = a.length - 4; this.sampleIn.push(...maskUnpack(a.slice(4), n - Math.ceil(n / 8))); return send([a[0], 0]); }
     if (cmd === 13) { this.felucca.set(32 + a[0], Uint8Array.from([...maskUnpack(a.slice(1), 480), ...new Array(32).fill(0), ...this.sampleIn])); return send([a[0], 0]); }
     if (cmd === 14) { this.felucca.set(32 + a[0], new Uint8Array()); return send([a[0], 0]); }
+  }
+
+  sloopCmd(cmd: number, a: number[], send: (p: number[]) => void) {
+    this.sloopSaw.push(cmd);
+    const str = (s: string) => [...s].map((c) => c.charCodeAt(0));
+    const ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 32, 33, 34, 35];
+    if (cmd === 1) return send([...str("FELUCCA 2.8.5"), 0, 2, 60, 10, 64, 4, ...str("FM6"), 0, ...str("PHYS"), 0, 4, 12]);
+    if (cmd === 34) {
+      const listed = ids.filter((id) => !((id === 10 || id === 11) && !(this.felucca.get(id)?.length)));
+      const p = [0, listed.length];
+      for (const id of listed) { const o = this.felucca.get(id) ?? new Uint8Array(); p.push(id, ...u32To7(o.length), ...u32To7(crc32(o))); }
+      return send(p);
+    }
+    if (cmd === 35) {
+      const id = a[0], off = u32From7(a, 1), size = a[6] | (a[7] << 7), o = this.felucca.get(id)!;
+      return send([id, 0, ...u32To7(off), size & 127, size >> 7, ...maskPack(o.subarray(off, off + size))]);
+    }
+    if (cmd === 36) {
+      const op = a[0], id = a[1];
+      let rc = 0;
+      if (op === 0) { const size = u32From7(a, 2); if (id > 11 || (id < 2 && !size)) rc = 1; else this.put = { id, size, crc: u32From7(a, 7), buf: [] }; }
+      if (op === 1) { const off = u32From7(a, 2); if (this.put?.id === id && off === this.put.buf.length) this.put.buf.push(...maskUnpack(a.slice(7), Math.min(256, this.put.size - off))); else rc = 5; }
+      if (op === 2) {
+        const p = this.put; this.put = null;
+        if (p && p.id === id && p.buf.length === p.size && crc32(Uint8Array.from(p.buf)) === p.crc) this.felucca.set(id, Uint8Array.from(p.buf)); else rc = 2;
+      }
+      return send([op, id, rc]);
+    }
   }
 
   openCmd(m: number[]) {
@@ -340,6 +370,51 @@ describe("archives", () => {
     await restoreArchive(readArchiveFile(JSON.stringify(a)), d, "felucca", true, () => {});
     for (const id of FELUCCA_IDS) if (id < 32) expect(dev.felucca.get(id) ?? new Uint8Array()).toEqual(before.get(id) ?? new Uint8Array());
     expect([...dev.felucca.get(32)!.subarray(512)]).toEqual([...before.get(32)!.subarray(512)]);
+  });
+
+  it("captures and restores a SLOOP backup with SLOOP's own commands, leaving samples as they are", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true;
+    for (const id of [0, 1, 2, 3, 6, 8, 9]) dev.felucca.set(id, new Uint8Array(id < 2 ? 3000 : 700).map((_, i) => (i * 7 + id) & 0xff));
+    dev.felucca.set(32, new Uint8Array(2000).map((_, i) => i & 0xff));
+    const d = await connect(dev);
+    const a = await captureArchive(d, "felucca", true, () => {});
+    expect(a.format).toBe(SLOOP_FORMAT);
+    expect(a.parts.map((p) => p.id)).toEqual(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "32", "33", "34", "35"]);
+    expect(dev.sloopSaw.some((c) => c >= 65 && c <= 67)).toBe(false);
+    const before = new Map(dev.felucca);
+    for (let id = 0; id <= 9; id++) dev.felucca.set(id, Uint8Array.from([1, 2, 3]));
+    await restoreArchive(readArchiveFile(JSON.stringify(a)), d, "felucca", true, () => {});
+    for (let id = 0; id <= 9; id++) expect(dev.felucca.get(id) ?? new Uint8Array()).toEqual(before.get(id) ?? new Uint8Array());
+    expect(dev.felucca.get(32)).toEqual(before.get(32));
+  });
+
+  it("saves and loads only a SLOOP song", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true;
+    for (const id of [0, 1, 2, 3, 4, 6]) dev.felucca.set(id, new Uint8Array(1200).map((_, i) => (i + id * 3) & 0xff));
+    const d = await connect(dev);
+    const song = await new SLOOPArchive(d.link).capture(d.identity.text, SLOOP_SONG_IDS);
+    expect(song.parts.map((p) => p.id)).toEqual(["0", "1", "2", "3", "4", "5"]);
+    expect(song.info.contents).toBe("song");
+    dev.felucca.set(2, Uint8Array.from([9, 9])); dev.felucca.set(5, Uint8Array.from([7])); dev.felucca.set(6, Uint8Array.from([4, 4]));
+    await restoreArchive(song, d, "felucca", true, () => {});
+    expect(dev.felucca.get(2)!.length).toBe(1200);
+    expect(dev.felucca.get(5)!.length).toBe(0);                // empty in the song: emptied
+    expect([...dev.felucca.get(6)!]).toEqual([4, 4]);         // presets untouched
+  });
+
+  it("refuses a damaged SLOOP backup before sending anything", async () => {
+    const dev = new VirtualFM1("FM-1_900"); dev.sloop = true;
+    const d = await connect(dev);
+    const bad = { format: SLOOP_FORMAT, family: "felucca" as const, firmware: "FM-1_900", created: 0, info: {},
+      parts: [{ ...part("0", "Loop in progress", Uint8Array.from([1, 2, 3])), data: "AQIE" }, part("1", "Settings", Uint8Array.from([4]))] };
+    await expect(restoreArchive(bad, d, "felucca", true, () => {})).rejects.toThrow(/damaged/);
+    expect(dev.sloopSaw.includes(36)).toBe(false);
+  });
+
+  it("tells SLOOP's INFO from Felucca's", () => {
+    const base = [..."FELUCCA 2.8.5"].map((c) => c.charCodeAt(0)).concat([0, 1, 60, 10, 64, 4], [..."FM6"].map((c) => c.charCodeAt(0)), [0]);
+    expect(sloopProtocol(base)).toBeNull();
+    expect(sloopProtocol([...base, 4, 12])).toBe(12);
   });
 
   it("captures and restores an FM1 Open archive", async () => {

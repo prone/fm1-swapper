@@ -15,7 +15,7 @@ export interface Firmware {
 }
 export interface Backup {
   id: string; firmwareId: string; date: number; identity: string; family: Family; label: string;
-  kind: "device" | "auto" | "import" | "file"; sizeBytes: number; partsSummary: string;
+  kind: "device" | "auto" | "import" | "file" | "song"; sizeBytes: number; partsSummary: string;   // song: a saved SLOOP song
   archive?: DeviceArchive; file?: { name: string; data: string };
 }
 export interface InstallEvent {

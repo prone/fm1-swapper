@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { backupRecord, device, mboot } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { readArchiveFile } from "../fm1kit/archive";
-import { FlashImage, Firmware, store } from "../store";
+import { Backup, FlashImage, Firmware, store } from "../store";
 import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
 import { MyChip, RESCUE_URL, myChip, setMyChip } from "../hub";
@@ -20,7 +20,7 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
   const fam = id ? familyOf(id) : null;
   const installed = id ? lib.firmwares.find((f) => f.product === id.text && f.sha256) : undefined;
   const loader = id && isLoader(id);
-  const latest = installed ? lib.backups.filter((b) => b.firmwareId === installed.id && b.archive).sort((a, b) => b.date - a.date)[0] : undefined;
+  const latest = installed ? lib.backups.filter((b) => b.firmwareId === installed.id && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0] : undefined;
 
   if (s.midi === "unsupported") return (
     <>
@@ -67,7 +67,7 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
             <>
               <h2>Saved work</h2>
               <div class="card">
-                {supportsArchive(fam!) ? (
+                {supportsArchive(fam!) || fam === "unknown" ? (
                   <>
                     <div>Reads everything {FAMILY_NAMES[fam!]} can export (projects, voices, settings{samples ? ", samples" : ""}) and saves it in this browser.</div>
                     <label class="check"><input type="checkbox" checked={samples} onChange={(e) => setSamples((e.target as HTMLInputElement).checked)} /> Include sample banks</label>
@@ -84,6 +84,7 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
                     : `${id.text} has no backup protocol this app knows. Use the firmware's own editor, or attach its files in the library.`}</div>
                 )}
               </div>
+              {(fam === "felucca" || fam === "unknown") && <SloopSongs lib={lib} owner={installed} busy={!!s.busy} />}
               <h2>Restore from a file</h2>
               <FileDrop accept=".json" onFiles={async ([f]) => {
                 try {
@@ -201,3 +202,61 @@ function FlashImages() {
     </>
   );
 }
+
+/** SLOOP keeps one song on the FM-1. This keeps as many as you like: save the one on the FM-1 under a name, put
+ *  another back (the loop, the song order and sections A-D; presets, kits and samples stay as they are). */
+function SloopSongs({ lib, owner, busy }: { lib: Library; owner: Firmware | undefined; busy: boolean }) {
+  const songs = lib.backups.filter((b) => b.kind === "song" && (!owner || b.firmwareId === owner.id)).sort((a, b) => b.date - a.date);
+  const [name, setName] = useState("");
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const sections = (b: Backup) => {
+    const used = (b.archive?.parts ?? []).filter((p) => ["2", "3", "4", "5"].includes(p.id) && p.data).map((p) => "ABCD"[Number(p.id) - 2]);
+    return used.length ? "sections " + used.join(" ") : "no sections";
+  };
+  const save = () => { void device.saveSong(owner, name.trim() || `Song ${songs.length + 1}`).then((b) => { if (b) setName(""); }); };
+  return (
+    <>
+      <h2>SLOOP songs</h2>
+      <div class="card">
+        <div class="small dim">SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, then start a new one on
+          the FM-1 (SAVE → TOOLS → NEW, and SECTION → ERASE for A–D). Load puts a saved song back; stop playback first.
+          Presets, drum kits and samples on the FM-1 aren't touched. Works with SLOOP 2.3 or later and firmware built on it.</div>
+        <div class="btnrow">
+          <input type="text" placeholder={`Song ${songs.length + 1}`} value={name} maxLength={60} aria-label="Song name"
+            onInput={(e) => setName((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy) save(); }} />
+          <button class="btn primary" disabled={busy} onClick={save}>Save the song on the FM-1</button>
+        </div>
+        {songs.length > 0 && <div class="rows">
+          {songs.map((b) => (
+            <div key={b.id}>
+              {renaming === b.id ? (
+                <>
+                  <input type="text" value={newName} maxLength={60} aria-label="New name" onInput={(e) => setNewName((e.target as HTMLInputElement).value)} />
+                  <button class="linkbtn small" onClick={async () => { if (newName.trim()) await store.saveBackup({ ...b, label: newName.trim() }); setRenaming(null); }}>Save</button>
+                  <button class="linkbtn small" onClick={() => setRenaming(null)}>Cancel</button>
+                </>
+              ) : confirm === b.id ? (
+                <>
+                  <span class="row-main">Replace the song on the FM-1 with “{b.label}”?</span>
+                  <button class="btn small" disabled={busy} onClick={() => { setConfirm(null); void device.restore(b); }}>Replace</button>
+                  <button class="linkbtn small" onClick={() => setConfirm(null)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <span class="row-main">{b.label}<span class="dim small"> · {fmtDateTime(b.date)} · {sections(b)}</span></span>
+                  <button class="linkbtn small" disabled={busy} onClick={() => setConfirm(b.id)}>Load</button>
+                  <button class="linkbtn small" onClick={() => { setNewName(b.label); setRenaming(b.id); }}>Rename</button>
+                  <button class="linkbtn small" onClick={() => b.archive && saveFile(`${b.label.replace(/[^\w .-]+/g, "_")}.sloop-song.json`, JSON.stringify(b.archive), "application/json")}>Download</button>
+                  <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => void store.deleteBackup(b)}>Delete</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>}
+      </div>
+    </>
+  );
+}
+
