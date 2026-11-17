@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Firmware, store } from "../store";
 import { toB64 } from "../fm1kit/archive";
+import { sleep } from "../fm1kit/ota";
 import { Action, AwaitTracker, Dock, Tutorial, awaitText } from "../tutorial";
 
 interface EmuWindow extends Window {
@@ -14,8 +15,6 @@ interface EmuWindow extends Window {
   __fm1action?: (kind: string, arg: string) => Promise<{ ok: boolean; message: string }>;
 }
 declare global { interface Window { __fm1onEvent?: (name: string, down: boolean) => void } }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const DOCKS: Dock[] = ["bottom", "top", "left", "right"];
 function savedDock(): Dock { try { const d = localStorage.getItem("tutorialDock") as Dock; return DOCKS.includes(d) ? d : "bottom"; } catch { return "bottom"; } }
 

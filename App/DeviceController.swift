@@ -265,7 +265,7 @@ final class DeviceController {
 
     /// Whether to route an install through official V15: whenever the FM-1 isn't already running it, unless the target is V15.
     static func viaV15Recommended(from: DeviceIdentity, target: Firmware) -> Bool {
-        let v15 = StockFirmware.all.first { $0.version == "V15" }!
+        let v15 = StockFirmware.v15
         return !from.isLoader && from.text != v15.product && target.sha256 != v15.sha256
     }
 
@@ -391,7 +391,6 @@ final class DeviceController {
         }
     }
 
-    /// Finish an install that was cut off (the device is waiting in update mode).
     // MARK: m-bootloader (docs/flash-chips.md; roadmap safety track levels 0–1)
 
     /// The chip m-bootloader reports becomes the flash chip setting (it can't be read any other way over USB).
@@ -458,6 +457,7 @@ final class DeviceController {
         }
     }
 
+    /// Finish an install that was cut off (the device is waiting in update mode).
     func resume(_ target: Firmware, context: ModelContext) async {
         await run("Resume install") {
             guard let data = target.packageData else { throw FM1Error.badPackage("No firmware file for \(target.name).") }

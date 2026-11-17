@@ -21,7 +21,7 @@ struct SwapSheet: View {
     @Environment(\.openURL) private var openURL
     private var hub: FirmwareHub { .shared }
 
-    var hasV15: Bool { firmwares.contains { f in f.hasPackage && StockFirmware.all.contains { $0.version == "V15" && $0.sha256 == f.sha256 } } }
+    var hasV15: Bool { firmwares.contains { f in f.hasPackage && StockFirmware.v15.sha256 == f.sha256 } }
     var chip: FlashChipSupport? { hub.chip(sha256: target.sha256) }
     /// Installing a package that may not know this FM-1's flash chip (docs/flash-chips.md).
     var chipRisky: Bool { chip == .olderOnly ? myChip != .older : (chip == nil && myChip == .newer) }

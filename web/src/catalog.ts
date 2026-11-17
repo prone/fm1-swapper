@@ -3,7 +3,7 @@
 // Where firmware comes from (mirrors App/Catalog.swift). Browsers can only download from servers that allow it
 // (CORS): The Firmware Hub, GitHub Pages and raw.githubusercontent.com do; GitHub release files and M-VAVE's server
 // don't, so those open as a normal download for the user to drop into the app.
-import { Family, STOCK, familyOf, parseIdentity, readPackage } from "./fm1kit/package";
+import { Family, STOCK, STOCK_V15, familyOf, parseIdentity, readPackage } from "./fm1kit/package";
 import { HUB, HubFirmware, loadHub } from "./hub";
 import { workbenchPackages } from "./fm1kit/workbench";
 import { Firmware, store, uid } from "./store";
@@ -122,19 +122,12 @@ export async function addFromHub(e: HubFirmware): Promise<AddResult> {
 export async function officialFirmware(): Promise<Firmware> {
   const all = await store.firmwares();
   const have = STOCK.slice().reverse().map((s) => all.find((f) => f.sha256 === s.sha256)).find(Boolean);
-  if (have) return have;
-  const hub = await loadHub();
-  const bytes = await tryDownload(hub?.stockURL ?? HUB + "fw/mvave/FM-1_015.fwsc");
-  if (!bytes) throw new Error("Couldn't download the official firmware. Check the connection, or add FM-1.fwsc from M-VAVE's site.");
-  const pkg = await readPackage(bytes);
-  if (!pkg.stock) throw new Error("The downloaded file isn't M-VAVE's official firmware (its checksum doesn't match), so it wasn't added.");
-  return (await addPackage(bytes, { fileName: "FM-1.fwsc", sourceURL: hub?.stockURL ?? "" })).firmware;
+  return have ?? stockV15();
 }
 
 /** Official V15 exactly (the route base): the library copy, or downloaded and checked against its digest. */
 export async function stockV15(): Promise<Firmware> {
-  const v15 = STOCK.find((s) => s.version === "V15")!;
-  const have = (await store.firmwares()).find((f) => f.sha256 === v15.sha256);
+  const have = (await store.firmwares()).find((f) => f.sha256 === STOCK_V15.sha256);
   if (have) return have;
   const hub = await loadHub();
   const bytes = await tryDownload(hub?.stockURL ?? HUB + "fw/mvave/FM-1_015.fwsc");

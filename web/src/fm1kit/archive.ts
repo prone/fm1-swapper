@@ -6,7 +6,7 @@
 import { Family } from "./package";
 import { SysExLink } from "./midi";
 import { crc32, le32, le32Bytes, maskPack, maskUnpack, pack7, u32From7, u32To7, unpack7Strict } from "./sysex";
-import { FM1Error, Connected } from "./ota";
+import { FM1Error, Connected, sleep } from "./ota";
 
 export interface Part { id: string; label: string; data: string; crc: number }   // data: base64
 export interface DeviceArchive {
@@ -30,6 +30,9 @@ const feluccaIds = (n: number) => [FELUCCA_IDS, FELUCCA_V2, FELUCCA_V1].find((x)
 const feluccaLabel = (id: number) =>
   ({ 0: "Current music", 1: "Settings", 8: "FM6 patch bank (old)", 9: "FM6 user patches", 32: "Sample slot 1", 33: "Sample slot 2", 34: "Sample slot 3" } as Record<number, string>)[id]
   ?? `Saved music ${id - 1}`;
+
+/** The largest object Felucca keeps: a sample slot, or one of its settings and pattern objects. */
+const feluccaMax = (id: number) => (id >= 32 ? 81920 : 3840);
 
 export class FeluccaArchive {
   constructor(private link: SysExLink) {}
@@ -78,7 +81,7 @@ export class FeluccaArchive {
       const p = 3 + i * 11;
       if (a[p] !== id) throw new Error("Unexpected archive object");
       const size = u32From7(a, p + 1), crc = u32From7(a, p + 6);
-      if (size > (id >= 32 ? 81920 : 3840) || (!size && crc)) throw new Error("Archive object too large");
+      if (size > feluccaMax(id) || (!size && crc)) throw new Error("Archive object too large");
       return { id, size, crc };
     });
   }
@@ -135,7 +138,7 @@ export class FeluccaArchive {
     a.parts.forEach((p, i) => {
       const id = ids[i], b = partBytes(p);
       if (p.id !== String(id)) throw new FM1Error("badpkg", `Unexpected object ${p.id} in the backup.`);
-      if (b.length > (id >= 32 ? 81920 : 3840)) throw new FM1Error("badpkg", `Object ${id} is too large.`);
+      if (b.length > feluccaMax(id)) throw new FM1Error("badpkg", `Object ${id} is too large.`);
       if (id >= 32 && b.length && b.length < 512) throw new FM1Error("badpkg", "Short sample backup.");
       if (crc32(b) !== p.crc) throw new FM1Error("badpkg", "Backup checksum mismatch.");
     });
@@ -381,6 +384,9 @@ export function sloopProtocol(a: number[]): number | null {
   return a.length - pos === 2 && a[pos] >= 1 && a[pos] <= 8 ? a[pos + 1] : null;
 }
 
+/** The objects that hold a song's notes: the loop in progress and sections A-D (the settings change too often to compare). */
+const SONG_NOTES = [0, 2, 3, 4, 5];
+
 export class SLOOPArchive {
   private f: FeluccaArchive;
   constructor(link: SysExLink) { this.f = new FeluccaArchive(link); }
@@ -405,7 +411,7 @@ export class SLOOPArchive {
     const end = Date.now() + 3000;
     while (state[1] & 3) {
       if (Date.now() > end) throw new FM1Error("device", "SLOOP didn't stop playing. Stop it on the FM-1 and try again.");
-      await new Promise((r) => setTimeout(r, 50));
+      await sleep(50);
       state = await this.live([0, 0]);
     }
   }
@@ -441,7 +447,7 @@ export class SLOOPArchive {
   /** Whether a saved song holds what the FM-1 has now: the loop and sections A-D (the settings change too often). */
   static matches(song: DeviceArchive, now: Map<number, { size: number; crc: number }>): boolean {
     if (song.format !== SLOOP_FORMAT) return false;
-    return [0, 2, 3, 4, 5].every((id) => {
+    return SONG_NOTES.every((id) => {
       const p = song.parts.find((x) => x.id === String(id)), have = now.get(id) ?? { size: 0, crc: 0 };   // empty: CRC 0
       return (p ? partBytes(p).length : 0) === have.size && (p?.crc ?? 0) === have.crc;
     });
@@ -454,15 +460,14 @@ export class SLOOPArchive {
     await this.stopPlayback();
     if (unchangedSince) {
       const now = await this.checksums(), key = (m: typeof now, id: number) => `${m.get(id)?.size ?? 0}/${m.get(id)?.crc ?? 0}`;
-      if ([0, 2, 3, 4, 5].some((id) => key(now, id) !== key(unchangedSince, id)))
+      if (SONG_NOTES.some((id) => key(now, id) !== key(unchangedSince, id)))
         throw new FM1Error("device", "The song on the FM-1 changed since it was checked. Nothing was cleared: try Clear again.");
     }
-    const live = (args: number[]) => this.live(args);
     const steps = 4 * 128 * 2 + 4;
     let done = 0;
     for (let track = 0; track < 4; track++)
       for (const down of [1, 0])
-        for (let note = 0; note < 128; note++) { await live([7, track, note, down]); progress(++done, steps); }
+        for (let note = 0; note < 128; note++) { await this.live([7, track, note, down]); progress(++done, steps); }
     for (let id = 2; id <= 5; id++) {
       for (const args of [[0, id, ...u32To7(0), ...u32To7(0)], [2, id]]) {
         const r = await this.f.request(36, args, 5000);

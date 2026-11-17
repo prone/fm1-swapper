@@ -17,6 +17,8 @@ public struct SLOOPArchive: Sendable {
     enum Cmd { static let info: UInt8 = 1, list: UInt8 = 34, get: UInt8 = 35, put: UInt8 = 36 }
     /// A SLOOP song: the loop in progress, the settings (they hold the song order) and sections A–D.
     public static let songIDs: Set<UInt8> = [0, 1, 2, 3, 4, 5]
+    /// The objects that hold a song's notes: the loop in progress and sections A–D (the settings change too often to compare).
+    static let songNotes: [UInt8] = [0, 2, 3, 4, 5]
 
     public static func label(_ id: UInt8) -> String {
         switch id {
@@ -97,7 +99,7 @@ public struct SLOOPArchive: Sendable {
     /// Whether a saved song holds what the FM-1 has now: the loop and sections A–D (the settings change too often to count).
     public static func matches(_ song: DeviceArchive, _ now: [UInt8: (size: Int, crc: UInt32)]) -> Bool {
         guard song.format == format else { return false }
-        for id: UInt8 in [0, 2, 3, 4, 5] {
+        for id in songNotes {
             let p = song.part("\(id)"), have = now[id] ?? (0, 0)          // an empty object's CRC-32 is 0
             guard (p?.data.count ?? 0) == have.size, (p?.crc ?? 0) == have.crc else { return false }
         }
@@ -142,7 +144,7 @@ public struct SLOOPArchive: Sendable {
         try await stopPlayback()
         if let checked {
             let now = try await checksums()
-            for id: UInt8 in [0, 2, 3, 4, 5] where (now[id]?.size ?? 0, now[id]?.crc ?? 0) != (checked[id]?.size ?? 0, checked[id]?.crc ?? 0) {
+            for id in Self.songNotes where (now[id]?.size ?? 0, now[id]?.crc ?? 0) != (checked[id]?.size ?? 0, checked[id]?.crc ?? 0) {
                 throw FM1Error.device("The song on the FM-1 changed since it was checked. Nothing was cleared: try Clear again.")
             }
         }

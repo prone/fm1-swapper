@@ -212,16 +212,15 @@ struct PhaseSection: View {
                     Text("Keep this screen open and the cable connected.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-        case let .finished(title, detail):
-            Section {
-                Label { Text(detail) } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                Button("Dismiss") { device.clearResult() }
-            } header: { Text(title) }
-        case let .failed(title, detail):
-            Section {
-                Label { Text(detail) } icon: { Image(systemName: "xmark.octagon.fill").foregroundStyle(.red) }
-                Button("Dismiss") { device.clearResult() }
-            } header: { Text(title) }
+        case let .finished(title, detail): result(title, detail, "checkmark.circle.fill", .green)
+        case let .failed(title, detail): result(title, detail, "xmark.octagon.fill", .red)
+        }
+    }
+
+    private func result(_ title: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
+        Section(title) {
+            Label { Text(detail) } icon: { Image(systemName: icon).foregroundStyle(color) }
+            Button("Dismiss") { device.clearResult() }
         }
     }
 }

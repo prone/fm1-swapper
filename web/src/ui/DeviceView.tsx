@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { backupRecord, device, mboot } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { readArchiveFile } from "../fm1kit/archive";
-import { FlashImage, Firmware, store } from "../store";
+import { FlashImage, Firmware, latestBackup, store } from "../store";
 import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
 import { MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
@@ -20,7 +20,7 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
   const fam = id ? familyOf(id) : null;
   const installed = id ? lib.firmwares.find((f) => f.product === id.text && f.sha256) : undefined;
   const loader = id && isLoader(id);
-  const latest = installed ? lib.backups.filter((b) => b.firmwareId === installed.id && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0] : undefined;
+  const latest = installed ? latestBackup(lib.backups, installed.id) : undefined;
 
   if (s.midi === "unsupported") return (
     <>

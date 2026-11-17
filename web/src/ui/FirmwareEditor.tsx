@@ -5,13 +5,13 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Backup, Firmware, store, uid } from "../store";
 import { emulatorSaveText, emulatorSectors, putSong } from "../fm1kit/sloopflash";
-import { autoSongName, device } from "../device";
+import { autoSongName, backupRecord, device } from "../device";
 import { totalBytes } from "../fm1kit/archive";
 import { Clip, SONG_EXT, readSongFile, sameSong, songFile, stepNotes, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
+import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 
 /** Whether the song editor has unsaved changes (main.tsx asks before another tab replaces it). */
 export const unsavedEdits = { dirty: false };
-import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 
 type Play = (f: Firmware, save: string, title: string) => void;
 
@@ -101,8 +101,7 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
             const twin = have.find((x) => sameSong(x.archive!, archive));
             if (twin) { out.push(`“${twin.label}” is already here, with the same notes.`); continue; }
             const fw = lib.firmwares.find((x) => x.product === (archive.info.identity ?? archive.firmware));
-            const added: Backup = { id: uid(), firmwareId: fw?.id ?? "", date: Date.now(), identity: archive.info.identity ?? archive.firmware, family: archive.family, kind: "song",
-              label, sizeBytes: totalBytes(archive), partsSummary: `${archive.parts.length} parts`, archive };
+            const added = { ...backupRecord(archive, fw?.id ?? "", "song"), label };
             await store.saveBackup(added);
             have.push(added);
             out.push(`Added “${label}”.`);
@@ -393,7 +392,6 @@ function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Lib
   );
 }
 
-/** A piano roll (with `low`: rows are pitches, high at the top) or the drum grid (16 lanes), 64 steps across. */
 /** What a grid holds, for screen readers (the canvas has no elements of its own). */
 function gridSummary(t: Track): string {
   if (t.isDrum) { let hits = 0; for (let i = 0; i < t.length; i++) for (let l = 0; l < 16; l++) hits += +t.drum(i, l); return `Drum grid, ${t.length} steps, ${hits} hits`; }
@@ -401,7 +399,8 @@ function gridSummary(t: Track): string {
   return `Piano roll, ${t.length} steps, ${c.length} note${c.length === 1 ? "" : "s"}` + (c[0] ? `, first ${c[0].notes.map(noteName).join(" ")} on step ${c[0].at + 1}` : "");
 }
 
-/** `version` changes with every edit (and the slot and track shown): the canvas is drawn again only then. */
+/** A piano roll (with `low`: rows are pitches, high at the top) or the drum grid (16 lanes), 64 steps across.
+ *  `version` changes with every edit (and the slot and track shown): the canvas is drawn again only then. */
 function Grid({ version, track, rows, low, label, sel, onTap }: { version: string; track: Track; rows: number; low?: number; label: (r: number) => string; sel: [number, number] | null; onTap: (row: number, step: number) => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const W = 22, H = low == null ? 20 : 18, L = low == null ? 76 : 40;

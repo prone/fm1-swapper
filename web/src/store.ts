@@ -62,6 +62,10 @@ const get = <T>(s: StoreName, key: string) => tx<T | undefined>(s, "readonly", (
 
 export const uid = () => crypto.randomUUID();
 
+/** A firmware's newest backup that can be written back (saved songs are kept apart). */
+export const latestBackup = (backups: Backup[], firmwareId: string) =>
+  backups.filter((b) => b.firmwareId === firmwareId && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0];
+
 // change notifications, so screens refresh after any write
 const listeners = new Set<() => void>();
 export const onChange = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };

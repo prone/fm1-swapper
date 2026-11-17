@@ -2,13 +2,13 @@
 // Copyright (C) 2026 FM-1 Swapper contributors
 // The connected FM-1 and every operation on it (mirrors App/DeviceController.swift). One operation at a time.
 import { WebMIDIProvider } from "./fm1kit/midi";
-import { FM1Error, Step, Updater } from "./fm1kit/ota";
-import { FirmwarePackage, Identity, STOCK, familyOf, isLoader, readPackage, supportsArchive } from "./fm1kit/package";
+import { Connected, FM1Error, Step, Updater, sleep } from "./fm1kit/ota";
+import { FirmwarePackage, Identity, STOCK_V15, familyOf, isLoader, readPackage, supportsArchive } from "./fm1kit/package";
 import { DeviceArchive, SLOOPArchive, SLOOP_SONG_IDS, captureArchive, restoreArchive, totalBytes } from "./fm1kit/archive";
 import { HELPERS, MbootInfo, chipOfJedec, helperFor } from "./fm1kit/mboot";
 import { crc32, sha256Hex } from "./fm1kit/sysex";
 import { setMyChip } from "./hub";
-import { Backup, Firmware, store, uid } from "./store";
+import { Backup, Firmware, latestBackup, store, uid } from "./store";
 
 export interface DeviceState {
   midi: "none" | "unsupported" | "ready";
@@ -26,12 +26,11 @@ const listeners = new Set<(s: DeviceState) => void>();
 const set = (p: Partial<DeviceState>) => { state = { ...state, ...p }; listeners.forEach((f) => f(state)); };
 const note = (s: string) => set({ log: [...state.log.slice(-60), `${new Date().toLocaleTimeString()}  ${s}`] });
 
-const V15 = STOCK.find((s) => s.version === "V15")!;
 
 /** Route an install through official V15 whenever the FM-1 isn't already on it (unless V15 is the target): most community
  *  firmware expects stock V15 underneath, and custom-to-custom installs fail most often. */
 export const viaV15Recommended = (from: Identity | null, target: Firmware) =>
-  !!from && !isLoader(from) && from.text !== V15.product && target.sha256 !== V15.sha256;
+  !!from && !isLoader(from) && from.text !== STOCK_V15.product && target.sha256 !== STOCK_V15.sha256;
 
 // keep the computer awake and the tab open while the FM-1 is being written
 let wake: { release(): Promise<void> } | null = null;
@@ -51,6 +50,25 @@ let checkedSong: Map<number, { size: number; crc: number }> | null = null;
 
 /** A name for a song saved automatically before it's replaced or cleared. */
 export const autoSongName = () => `Saved ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+
+/** Runs `f` with the FM-1 (not its update loader), closing the link afterwards. */
+async function withFM1<T>(u: Updater, f: (d: Connected) => Promise<T>): Promise<T> {
+  const d = await u.find((id) => !isLoader(id));
+  if (!d) throw new FM1Error("notfound", "FM-1 not found.");
+  try { return await f(d); } finally { d.link.close(); }
+}
+
+/** A progress callback that shows `busy` and the fraction done. */
+const progressTo = (busy: string) => (n: number, t: number) => set({ busy, progress: t ? n / t : null });
+
+/** Reads the SLOOP song on the FM-1 and keeps it under `name`. */
+async function saveSongOf(d: Connected, firmwareId: string, name: string): Promise<Backup> {
+  const a = await new SLOOPArchive(d.link).capture(d.identity.text, SLOOP_SONG_IDS, progressTo(`Saving the song “${name}”`));
+  const b = { ...backupRecord(a, firmwareId, "song"), label: name };
+  await store.saveBackup(b);
+  note(`✓ saved the song "${name}"`);
+  return b;
+}
 
 export const device = {
   get state() { return state; },
@@ -94,44 +112,31 @@ export const device = {
 
   /** Saves the FM-1's current work to the library entry it belongs to. */
   backup(owner: Firmware | undefined, includeSamples = true, kind: Backup["kind"] = "device") {
-    return device.run("Backing up", async (u) => {
-      const d = await u.find((id) => !isLoader(id));
-      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
-      try {
-        const a = await captureArchive(d, familyOf(d.identity), includeSamples, (n, t) => set({ progress: t ? n / t : null }));
-        const b = backupRecord(a, owner?.id ?? "", kind);
-        await store.saveBackup(b);
-        note(`✓ saved ${b.partsSummary}`);
-        return b;
-      } finally { d.link.close(); }
-    });
+    return device.run("Backing up", (u) => withFM1(u, async (d) => {
+      const b = backupRecord(await captureArchive(d, familyOf(d.identity), includeSamples, progressTo("Backing up")), owner?.id ?? "", kind);
+      await store.saveBackup(b);
+      note(`✓ saved ${b.partsSummary}`);
+      return b;
+    }));
   },
 
   restore(b: Backup, includeSamples = true) {
     return device.run("Restoring", async (u) => {
       if (!b.archive) throw new FM1Error("unsupported", "This backup cannot be written back.");
-      const d = await u.find((id) => !isLoader(id));
-      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
-      try { await restoreArchive(b.archive, d, familyOf(d.identity), includeSamples, (n, t) => set({ progress: t ? n / t : null })); note("✓ restored"); return true; }
-      finally { d.link.close(); }
+      return withFM1(u, async (d) => {
+        await restoreArchive(b.archive!, d, familyOf(d.identity), includeSamples, progressTo("Restoring"));
+        note("✓ restored");
+        return true;
+      });
     });
   },
 
   /** Saves the SLOOP song on the FM-1 (the loop in progress, the song order, sections A-D) under a name. */
   saveSong(owner: Firmware | undefined, name: string) {
-    return device.run("Saving the song", async (u) => {
-      const d = await u.find((id) => !isLoader(id));
-      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
-      try {
-        const s = new SLOOPArchive(d.link);
-        if (!(await s.supported())) throw new FM1Error("unsupported", `${d.identity.text} doesn't have SLOOP's song backup. It works with SLOOP 2.3 or later and firmware built on it.`);
-        const a = await s.capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ progress: t ? n / t : null }));
-        const b = { ...backupRecord(a, owner?.id ?? "", "song"), label: name };
-        await store.saveBackup(b);
-        note(`✓ saved the song "${name}"`);
-        return b;
-      } finally { d.link.close(); }
-    });
+    return device.run("Saving the song", (u) => withFM1(u, async (d) => {
+      if (!(await new SLOOPArchive(d.link).supported())) throw new FM1Error("unsupported", `${d.identity.text} doesn't have SLOOP's song backup. It works with SLOOP 2.3 or later and firmware built on it.`);
+      return saveSongOf(d, owner?.id ?? "", name);
+    }));
   },
 
   /** The saved song that matches what's on the FM-1 ("saved"), none ("unsaved"), or why it couldn't tell. */
@@ -155,40 +160,25 @@ export const device = {
   /** Puts a saved song on the FM-1; with `saveFirstAs`, the FM-1's song is saved first (a failed save stops it). */
   loadSong(song: Backup, saveFirstAs: string | null = null) {
     return device.run("Loading the song", async (u) => {
-      const d = await u.find((id) => !isLoader(id));
-      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
-      try {
-        if (!song.archive) throw new FM1Error("badpkg", "This song can't be read.");
-        if (saveFirstAs) {
-          const a = await new SLOOPArchive(d.link).capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ busy: "Saving the FM-1's song", progress: t ? n / t : null }));
-          await store.saveBackup({ ...backupRecord(a, song.firmwareId, "song"), label: saveFirstAs });
-          note(`✓ saved the FM-1's song as "${saveFirstAs}"`);
-        }
-        await restoreArchive(song.archive, d, familyOf(d.identity), false, (n, t) => set({ busy: "Loading the song", progress: t ? n / t : null }));
+      if (!song.archive) throw new FM1Error("badpkg", "This song can't be read.");
+      return withFM1(u, async (d) => {
+        if (saveFirstAs) await saveSongOf(d, song.firmwareId, saveFirstAs);
+        await restoreArchive(song.archive!, d, familyOf(d.identity), false, progressTo("Loading the song"));
         note(`✓ loaded "${song.label}"`);
         return true;
-      } finally { d.link.close(); }
+      });
     });
   },
 
   /** Clears the song on the FM-1 (every note of the loop, sections A-D), saving it first when asked. */
   clearSong(owner: Firmware | undefined, saveFirstAs: string | null) {
-    return device.run("Clearing the song", async (u) => {
-      const d = await u.find((id) => !isLoader(id));
-      if (!d) throw new FM1Error("notfound", "FM-1 not found.");
-      try {
-        const s = new SLOOPArchive(d.link);
-        if (saveFirstAs) {
-          const a = await s.capture(d.identity.text, SLOOP_SONG_IDS, (n, t) => set({ busy: "Saving the song", progress: t ? n / t : null }));
-          await store.saveBackup({ ...backupRecord(a, owner?.id ?? "", "song"), label: saveFirstAs });
-          note(`✓ saved the song "${saveFirstAs}"`);
-        }
-        // (not saved first: only if it's still the song that was checked)
-        await s.clearSong((n, t) => set({ busy: "Clearing the song", progress: n / t }), saveFirstAs ? null : checkedSong);
-        note("✓ cleared the song on the FM-1");
-        return true;
-      } finally { d.link.close(); }
-    });
+    return device.run("Clearing the song", (u) => withFM1(u, async (d) => {
+      if (saveFirstAs) await saveSongOf(d, owner?.id ?? "", saveFirstAs);
+      // (not saved first: only if it's still the song that was checked)
+      await new SLOOPArchive(d.link).clearSong(progressTo("Clearing the song"), saveFirstAs ? null : checkedSong);
+      note("✓ cleared the song on the FM-1");
+      return true;
+    }));
   },
 
   /** The swap: back up what's on the FM-1, install, then put back this firmware's latest backup. */
@@ -243,7 +233,7 @@ export const device = {
           if (hop.success) await store.saveFirmware(Object.assign(opts.viaV15, { lastInstalledAt: Date.now(), installCount: opts.viaV15.installCount + 1 }));
         }
         from = v15.product;
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000);
       }
       const onStep = steps(opts.viaV15 && !opts.resume ? "Step 2 of 2: " : "", pkg.bytes.length);
       const event = { id: uid(), firmwareId: target.id, date: Date.now(), from, to: pkg.product, success: false, message: "", duration: 0, backupTaken, restored: false };
@@ -255,7 +245,7 @@ export const device = {
         Object.assign(target, { lastInstalledAt: Date.now(), installCount: target.installCount + 1, status: target.status === "notTried" ? "tried" : target.status });
         await store.saveFirmware(target);
         if (opts.restoreAfter) {
-          const latest = (await store.backups()).filter((b) => b.firmwareId === target.id && b.archive && b.kind !== "song").sort((a, b) => b.date - a.date)[0];
+          const latest = latestBackup(await store.backups(), target.id);
           if (latest?.archive) {
             const d = await u.find((i) => !isLoader(i));
             // the install itself succeeded: a restore that fails is said as such (not as a failed install)
@@ -340,7 +330,7 @@ export const mboot = {
       if (!d) throw new FM1Error("notfound", "m-bootloader isn't answering.");
       d.mboot.restart(); d.link.close();
       set({ mboot: null });
-      await new Promise((r) => setTimeout(r, 3000));
+      await sleep(3000);
       return true;
     });
   },

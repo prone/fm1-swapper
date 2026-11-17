@@ -60,6 +60,9 @@ public struct FeluccaArchive: Sendable {
         return (version, supported)
     }
 
+    /// The largest object Felucca keeps: a sample slot, or one of its settings and pattern objects.
+    static func maxSize(_ id: UInt8) -> Int { id >= 32 ? 81920 : 3840 }
+
     struct ManifestEntry { let id: UInt8; let size: Int; let crc: UInt32 }
 
     static func manifest(_ a: [UInt8]) throws -> [ManifestEntry] {
@@ -70,7 +73,7 @@ public struct FeluccaArchive: Sendable {
             let p = 3 + i * 11
             guard a[p] == id else { throw FM1Error.protocolError("Unexpected archive object") }
             let size = Int(try SysExCoding.u32From7(a, at: p + 1)), crc = try SysExCoding.u32From7(a, at: p + 6)
-            guard size <= (id >= 32 ? 81920 : 3840), size > 0 || crc == 0 else { throw FM1Error.protocolError("Archive object too large") }
+            guard size <= maxSize(id), size > 0 || crc == 0 else { throw FM1Error.protocolError("Archive object too large") }
             return ManifestEntry(id: id, size: size, crc: crc)
         }
     }
@@ -216,7 +219,7 @@ public struct FeluccaArchive: Sendable {
         }
         for (p, id) in zip(archive.parts, ids) {
             guard p.id == "\(id)" else { throw FM1Error.badPackage("Unexpected object \(p.id) in the backup.") }
-            guard p.data.count <= (id >= 32 ? 81920 : 3840) else { throw FM1Error.badPackage("Object \(id) is too large.") }
+            guard p.data.count <= maxSize(id) else { throw FM1Error.badPackage("Object \(id) is too large.") }
             if id >= 32, !p.data.isEmpty, p.data.count < 512 { throw FM1Error.badPackage("Short sample backup.") }
             guard SysExCoding.crc32(p.data) == p.crc else { throw FM1Error.badPackage("Backup checksum mismatch.") }
         }

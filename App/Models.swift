@@ -227,6 +227,14 @@ final class ControllerProfile {
     }
 }
 
+extension [Firmware] {
+    /// The library entry for the firmware the FM-1 runs now (the most recently installed one with its identity).
+    func installed(_ id: DeviceIdentity?) -> Firmware? {
+        guard let id, !id.isLoader else { return nil }
+        return filter { $0.product == id.text }.max { ($0.lastInstalled ?? .distantPast) < ($1.lastInstalled ?? .distantPast) }
+    }
+}
+
 extension ModelContext {
     /// The library entry for whatever the device reports, creating a placeholder if needed.
     /// Keeps an archive as a backup of `firmware` (a song, a device backup, one taken before an install) and saves.

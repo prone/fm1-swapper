@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "preact/hooks";
 import { Backup, Firmware, STATUS_LABEL, TryStatus, store } from "../store";
 import { importFile, stockV15 } from "../catalog";
 import { device, viaV15Recommended } from "../device";
-import { FAMILY_NAMES, STOCK, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
+import { FAMILY_NAMES, STOCK_V15, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { FeluccaArchive } from "../fm1kit/archive";
 import { tutorialFor } from "../tutorial";
 import { CHIP_TEXT, Chip, MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
@@ -12,7 +12,7 @@ import { ChipBadge } from "./GetFirmware";
 import { DeviceBusy, FileDrop, Library, Stars, ago, fmtBytes, fmtDate, fmtDateTime, saveFile, useDevice } from "./common";
 
 type Sort = "recent" | "name" | "rating" | "installed";
-const STOCK_V15 = STOCK.find((s) => s.version === "V15")!.sha256;
+
 
 export function LibraryView({ lib, openId, setOpenId, tryIt, swapNow, swapped }: { lib: Library; openId: string | null; setOpenId: (id: string | null) => void; tryIt: (f: Firmware, tutorial: boolean) => void; swapNow?: boolean; swapped?: () => void }) {
   const [filter, setFilter] = useState<TryStatus | null>(null);
@@ -249,7 +249,7 @@ function SwapDialog({ f, lib, chip, close }: { f: Firmware; lib: Library; chip: 
           <ChipWarning chip={chip} mine={mine} setMine={setMine} ack={ack} setAck={setAck} />
           {viaV15Recommended(cur, f) && (
             <label class="check"><input type="checkbox" checked={viaV15} onChange={(e) => setViaV15((e.target as HTMLInputElement).checked)} />
-              <span><b>Go via official V15 (recommended)</b><br /><span class="small dim">Installs M-VAVE's V15 first{lib.firmwares.some((x) => x.sha256 === STOCK_V15) ? "" : " (downloaded and checked, about 700 KB)"}, then {f.name}.
+              <span><b>Go via official V15 (recommended)</b><br /><span class="small dim">Installs M-VAVE's V15 first{lib.firmwares.some((x) => x.sha256 === STOCK_V15.sha256) ? "" : " (downloaded and checked, about 700 KB)"}, then {f.name}.
                 Most community firmware expects official V15 underneath, and installs straight from one community firmware to another fail most often. Adds about two minutes.</span></span></label>
           )}
           {hasBackup && <label class="check"><input type="checkbox" checked={restoreAfter} onChange={(e) => setRestoreAfter((e.target as HTMLInputElement).checked)} />Put back my latest {f.name} backup afterwards</label>}

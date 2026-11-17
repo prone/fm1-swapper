@@ -76,7 +76,7 @@ export interface Timing { replyDelay: number; afterUpgrade: number; beforeLoader
 export const DEFAULT_TIMING: Timing = { replyDelay: 10, afterUpgrade: 2000, beforeLoader: 3000, beforeReboot: 3000,
   idleCheck: 8000, idleWrite: 180_000, waitLoader: 30_000, waitReboot: 40_000, poll: 1000, handshake: 1000 };
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class Updater {
   probeAllPorts = false;

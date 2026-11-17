@@ -62,6 +62,9 @@ public struct StockFirmware: Sendable, Equatable {
     public let sha256: String
     public let product: String
 
+    /// Official V15, the version the app installs as a clean base.
+    public static var v15: StockFirmware { all.first { $0.version == "V15" }! }
+
     public static let all: [StockFirmware] = [
         .init(version: "V15", size: 699_956, sha256: "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a", product: "FM-1_015"),
         .init(version: "V16", size: 718_196, sha256: "d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5", product: "FM-1_016"),
