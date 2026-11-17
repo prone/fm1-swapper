@@ -49,6 +49,7 @@ Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.res
 | V15 → SLOOP 2.8.5 | OK |
 | SLOOP → Melodee v1.6.1 **via V15** (two installs in one run) | OK, `FM-1_91061` |
 | Melodee → Felucca v1.8.2 with "restore after install" (the earlier Felucca backup) | OK, restored |
+| SLOOP 2.8.5: "Clear the song on the FM-1…" on an unsaved song → "Save, then clear" (2026-11-17) | OK: saved as a song, then cleared |
 
 Found: Melodee answers `FM-1_91061` and fm1-amb `FM-1_7010302`, outside the number ranges `DeviceIdentity.family`
 knows, so the app calls them unknown. Melodee is Felucca-family (m-bootloader SPEC §11.7), so it isn't offered
