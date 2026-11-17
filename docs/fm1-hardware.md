@@ -36,6 +36,11 @@ Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.res
   starts with the expected flash header (`0.01` at +4, `AC791N_STORY` at +16).
 - `F0 22 24 35 7E F7` restarted it into V15 (`FM-1_015` again within 6 s).
 
+## First real swap (iPad app)
+
+2026-11-16, iPadOS 26.1, FM-1 on the iPad's USB-C: V15 → **Felucca v1.8.2** (`FM-1_918`) through the app's swap sheet,
+already on V15 so no V15 step. Installed and recorded as a successful install; the app saw `FM-1_918` afterwards.
+
 ## What this means for the roadmap
 
 - The USB audio recorder (feature 2) works with stock firmware: stereo at 44.1 kHz.
