@@ -25,7 +25,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("Library");
   const [openId, setOpenId] = useState<string | null>(null);
   const [swapNow, setSwapNow] = useState(false);
-  const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial } | null>(null);
+  const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial; start?: { save: string; hint: string }; title?: string } | null>(null);
   useEffect(() => { if (lib.loaded && !lib.firmwares.length && tab === "Library") setTab("Get firmware"); }, [lib.loaded]);
   const open = (id: string, swap = false) => { setOpenId(id); setSwapNow(swap); setTab("Library"); scrollTo(0, 0); };
 
@@ -48,7 +48,7 @@ function App() {
         {tab === "Device" && <DeviceView lib={lib} open={open} />}
         {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={(id) => { setOpenId(id); setSwapNow(false); }} swapNow={swapNow} swapped={() => setSwapNow(false)} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
         {tab === "Get firmware" && <GetFirmware lib={lib} opened={open} />}
-        {tab === "Firmware Editor" && <FirmwareEditor lib={lib} />}
+        {tab === "Firmware Editor" && <FirmwareEditor lib={lib} play={(f, save, title) => setEmu({ f, title, start: { save, hint: "Song loaded. Press Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY." } })} />}
         {tab === "History" && <HistoryView lib={lib} open={open} />}
         <footer class="small faint" style={{ marginTop: 40 }}>
           Beta. Not affiliated with M-VAVE. Firmware is written at your own risk; the FM-1's update loader lets an interrupted install be finished.
@@ -56,7 +56,7 @@ function App() {
           {" · "}Emulator: <a href="https://github.com/joakimeriksson/fm1-emu" target="_blank" rel="noopener noreferrer">fm1-emu</a> (MIT)
         </footer>
       </main>
-      {emu && <Emulator f={emu.f} tutorial={emu.t} close={() => setEmu(null)} />}
+      {emu && <Emulator f={emu.f} tutorial={emu.t} start={emu.start} title={emu.title} close={() => setEmu(null)} />}
     </>
   );
 }

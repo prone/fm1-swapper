@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 FM-1 Swapper contributors
+import CryptoKit
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -30,6 +31,10 @@ struct SLOOPSongEditor: View {
     @State private var copyName = ""
     @State private var namingCopy = false
     @State private var sharing: ShareItems?
+    @State private var playing: EmulatorStart?
+    @State private var problem: String?
+    @Query private var firmwares: [Firmware]
+    @Query(sort: \EmulatorSave.date, order: .reverse) private var emulatorSaves: [EmulatorSave]
 
     private var dirty: Bool { doc != saved }
 
@@ -45,6 +50,8 @@ struct SLOOPSongEditor: View {
                     Button("Close") { if dirty { closing = true } else { dismiss() } }
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    Button { play() } label: { Label("Play in the emulator", systemImage: "play.rectangle") }
+                        .disabled(doc == nil)
                     Button { if let last = undo.popLast() { doc = last } } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                         .disabled(undo.isEmpty)
                     Menu {
@@ -79,6 +86,14 @@ struct SLOOPSongEditor: View {
                 Button("Cancel", role: .cancel) {}
             }
             .shareSheet($sharing)
+            .fullScreenCover(item: $playing) { p in
+                EmulatorScreen(title: "\(song.label) · \(p.firmware.name)", package: p.package, fileName: p.firmware.emulatorFileName,
+                               firmware: p.firmware, startSave: p.save,
+                               startHint: "Song loaded. Tap Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY.")
+            }
+            .alert("Play in the emulator", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+                Button("OK") { problem = nil }
+            } message: { Text(problem ?? "") }
             .task { open() }
         }
     }
@@ -373,6 +388,29 @@ struct SLOOPSongEditor: View {
         }
     }
 
+    /// Opens SLOOP in the emulator with this song as it is now (edits included, saved or not): the song goes into
+    /// the emulator's saved flash for SLOOP, over the emulator's own settings for it.
+    private func play() {
+        guard let d = doc else { return }
+        let sloop = firmwares.filter { $0.hasPackage && $0.name.localizedCaseInsensitiveContains("sloop") }
+        guard let fw = (song.firmware?.hasPackage == true && song.firmware!.name.localizedCaseInsensitiveContains("sloop") ? song.firmware : nil)
+                ?? sloop.max(by: { $0.version.compare($1.version, options: .numeric) == .orderedAscending }),
+              let pkg = fw.packageData else {
+            problem = "The emulator needs SLOOP in your library. Add it from Library → Get firmware (SLOOP 2.6 or later), then try again."
+            return
+        }
+        let sha = fw.sha256.isEmpty ? SHA256.hash(data: pkg).map { String(format: "%02x", $0) }.joined() : fw.sha256
+        let base = emulatorSaves.first { $0.packageSHA == sha }?.payload.flatMap { String(data: $0, encoding: .utf8) }
+        do {
+            let text: String
+            do { text = try SLOOPFlash.emulatorSave(song: d.archive(), package: pkg, sha256: sha, name: fw.name, base: base) }
+            catch where base != nil { text = try SLOOPFlash.emulatorSave(song: d.archive(), package: pkg, sha256: sha, name: fw.name, base: nil) }
+            playing = EmulatorStart(firmware: fw, package: pkg, save: text)
+        } catch {
+            problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private func save() {
         guard let d = doc, dirty else { return }
         do {
@@ -390,6 +428,13 @@ struct SLOOPSongEditor: View {
         context.insert(b)
         try? context.save()
     }
+}
+
+struct EmulatorStart: Identifiable {
+    let id = UUID()
+    let firmware: Firmware
+    let package: Data
+    let save: String
 }
 
 private extension SLOOPTrack {

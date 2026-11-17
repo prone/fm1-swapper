@@ -3,16 +3,19 @@
 // Editors for work saved from each firmware, used without the FM-1 (mirrors FirmwareEditorView.swift and
 // SLOOPSongEditor.swift): one entry per firmware, SLOOP first. Saving from the FM-1 stays on the Device tab.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Backup, store, uid } from "../store";
+import { Backup, Firmware, store, uid } from "../store";
+import { emulatorSaveText, emulatorSectors, putSong } from "../fm1kit/sloopflash";
 import { device } from "../device";
 import { totalBytes } from "../fm1kit/archive";
 import { Clip, SONG_EXT, readSongFile, sameSong, songFile, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
 import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 
-export function FirmwareEditor({ lib }: { lib: Library }) {
+type Play = (f: Firmware, save: string, title: string) => void;
+
+export function FirmwareEditor({ lib, play }: { lib: Library; play: Play }) {
   const [view, setView] = useState<"home" | "sloop">("home");
   const songs = lib.backups.filter((b) => b.kind === "song");
-  if (view === "sloop") return <SloopSongs lib={lib} back={() => setView("home")} />;
+  if (view === "sloop") return <SloopSongs lib={lib} play={play} back={() => setView("home")} />;
   return (
     <>
       <h1>Firmware Editor</h1>
@@ -32,7 +35,7 @@ const sectionsOf = (b: Backup) => {
   return used.length ? "sections " + used.join(" ") : "no sections";
 };
 
-function SloopSongs({ lib, back }: { lib: Library; back: () => void }) {
+function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () => void }) {
   const s = useDevice();
   const busy = !!s.busy;
   const [q, setQ] = useState("");
@@ -44,7 +47,7 @@ function SloopSongs({ lib, back }: { lib: Library; back: () => void }) {
   const songs = lib.backups.filter((b) => b.kind === "song").sort((a, b) => b.date - a.date);
   const shown = q ? songs.filter((b) => b.label.toLowerCase().includes(q.toLowerCase())) : songs;
   const open = songs.find((b) => b.id === editing);
-  if (open) return <SongEditor song={open} close={() => setEditing(null)} />;
+  if (open) return <SongEditor song={open} lib={lib} play={play} close={() => setEditing(null)} />;
   const fwName = (b: Backup) => lib.firmwares.find((f) => f.id === b.firmwareId)?.name;
   return (
     <>
@@ -113,7 +116,7 @@ const NOTE = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A�
 const noteName = (p: number) => `${NOTE[p % 12]}${Math.floor(p / 12) - 1}`;
 const fmtBars = (b: number) => Number.isInteger(b) ? String(b) : b.toFixed(2).replace(/0+$/, "");
 
-function SongEditor({ song, close }: { song: Backup; close: () => void }) {
+function SongEditor({ song, lib, play, close }: { song: Backup; lib: Library; play: Play; close: () => void }) {
   const s = useDevice();
   const [doc, setDoc] = useState<SongDoc | null>(null);
   const [saved, setSaved] = useState<SongDoc | null>(null);
@@ -128,6 +131,7 @@ function SongEditor({ song, close }: { song: Backup; close: () => void }) {
   const [noteLen, setNoteLen] = useState(0);
   const [low, setLow] = useState<Record<string, number>>({});
   const [sending, setSending] = useState(false);
+  const [playErr, setPlayErr] = useState("");
 
   useEffect(() => {
     try { if (!song.archive) throw new Error("The saved song can't be read."); const d = SongDoc.open(song.archive); setDoc(d); setSaved(d.clone()); }
@@ -157,6 +161,19 @@ function SongEditor({ song, close }: { song: Backup; close: () => void }) {
     if (name == null) return;
     const a = doc.archive();
     await store.saveBackup({ ...song, id: uid(), label: name.trim() || `${song.label} (edit)`, archive: a, date: Date.now(), sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts` });
+  };
+  /** SLOOP in the emulator with the song as it is now (edits included): written into the emulator's saved flash. */
+  const playIt = async () => {
+    setPlayErr("");
+    const sloop = lib.firmwares.filter((f) => f.sha256 && /sloop/i.test(f.name));
+    const fw = sloop.find((f) => f.id === song.firmwareId) ?? sloop.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
+    const pkg = fw && await store.packageBytes(fw.sha256);
+    if (!fw || !pkg) { setPlayErr("The emulator needs SLOOP in your library. Add it from Get firmware (SLOOP 2.6 or later), then try again."); return; }
+    try {
+      const sectors = await emulatorSectors(fw.sha256);
+      putSong(doc.archive(), sectors);
+      play(fw, emulatorSaveText(pkg, fw.sha256, fw.name, sectors), `${song.label} · ${fw.name}`);
+    } catch (e) { setPlayErr((e as Error).message); }
   };
   const leave = () => { if (!dirty || window.confirm("Close without saving your changes?")) close(); };
 
@@ -206,10 +223,12 @@ function SongEditor({ song, close }: { song: Backup; close: () => void }) {
         <button class="btn small" disabled={!dirty} onClick={() => void save()}>Save changes</button>
         <button class="btn small" onClick={() => void saveCopy()}>Save as new…</button>
         <button class="btn small" onClick={() => { const f = songFile(doc.archive(), song.label); saveFile(f.name, f.text, "application/json"); }}>Download</button>
+        <button class="btn small" onClick={() => void playIt()}>▶ Play in the emulator</button>
         <button class="btn small primary" disabled={!!s.busy} onClick={() => setSending(true)}>Send to FM-1…</button>
       </div>
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
       <DeviceBusy s={s} />
+      {playErr && <div class="banner warn">{playErr}</div>}
       {sending && (
         <div class="banner warn">
           <b>Send “{song.label}” to the FM-1?</b>

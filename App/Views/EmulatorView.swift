@@ -75,6 +75,9 @@ struct EmulatorScreen: View {
     var firmware: Firmware?
     /// Opens with this tutorial running.
     var tutorial: Tutorial?
+    /// An emulator save to import once the page is ready (a SLOOP song from the song editor), and what to say then.
+    var startSave: String? = nil
+    var startHint: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -99,6 +102,7 @@ struct EmulatorScreen: View {
         }
     }
     @State private var startedTutorial = false
+    @State private var importedStart = false
 
     private var availableTutorial: Tutorial? { tutorial ?? firmware.flatMap(TutorialLibrary.tutorial(for:)) }
 
@@ -137,6 +141,13 @@ struct EmulatorScreen: View {
                 .safeAreaInset(edge: .leading, spacing: 0) { if dock == .left { tutorialCard } }
                 .safeAreaInset(edge: .trailing, spacing: 0) { if dock == .right { tutorialCard } }
                 .onChange(of: emu.ready) {
+                    if emu.ready, let save = startSave, !importedStart {
+                        importedStart = true
+                        Task {
+                            let r = await emu.action("import", save)
+                            emu.status = r.ok ? (startHint ?? "Tap Start") : "Couldn't load the song: \(r.message)"
+                        }
+                    }
                     if emu.ready, tutorial != nil, !startedTutorial, let t = tutorial { startedTutorial = true; Task { await toggleTutorial(t) } }
                 }
                 .safeAreaInset(edge: .bottom) {

@@ -11,6 +11,7 @@ interface EmuWindow extends Window {
   __fm1load?: (b64: string, name: string) => Promise<string | undefined>;
   __fm1spot?: (names: string[]) => string[];
   __fm1do?: (actions: Action[]) => Promise<string>;
+  __fm1action?: (kind: string, arg: string) => Promise<{ ok: boolean; message: string }>;
 }
 declare global { interface Window { __fm1onEvent?: (name: string, down: boolean) => void } }
 
@@ -18,7 +19,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const DOCKS: Dock[] = ["bottom", "top", "left", "right"];
 function savedDock(): Dock { try { const d = localStorage.getItem("tutorialDock") as Dock; return DOCKS.includes(d) ? d : "bottom"; } catch { return "bottom"; } }
 
-export function Emulator({ f, tutorial, close }: { f: Firmware; tutorial?: Tutorial; close: () => void }) {
+/** `start`: an emulator save to import once the firmware is loaded (a SLOOP song from the song editor), and what to say. */
+export function Emulator({ f, tutorial, start, title, close }: { f: Firmware; tutorial?: Tutorial; start?: { save: string; hint: string }; title?: string; close: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState("Loading the emulator…");
   const [dock, setDock] = useState<Dock>(savedDock);
@@ -30,7 +32,13 @@ export function Emulator({ f, tutorial, close }: { f: Firmware; tutorial?: Tutor
     const bytes = await store.packageBytes(f.sha256);
     if (!w?.__fm1load || !bytes) { setStatus("The emulator didn't load."); return; }
     const err = await w.__fm1load(toB64(bytes), f.fileName || `${f.product}.fwsc`);
-    setStatus(err && err !== "ok" ? err : "Press Start, then play the panel (or your computer keyboard / a MIDI keyboard).");
+    if (err && err !== "ok") { setStatus(err); return; }
+    if (start) {
+      const r = await w.__fm1action?.("import", start.save);
+      setStatus(r?.ok ? start.hint : `Couldn't load the song: ${r?.message ?? "the emulator has no import"}`);
+      return;
+    }
+    setStatus("Press Start, then play the panel (or your computer keyboard / a MIDI keyboard).");
   };
 
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !frame.current?.contains(document.activeElement)) close(); }; addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, []);
@@ -39,7 +47,7 @@ export function Emulator({ f, tutorial, close }: { f: Firmware; tutorial?: Tutor
     <div class="emu" role="dialog" aria-label={`${f.name} in the emulator`}>
       <div class="emu-top">
         <button class="btn" onClick={close}>Close</button>
-        <b class="ellipsis" style={{ flex: 1 }}>{tutorial?.title ?? f.name}</b>
+        <b class="ellipsis" style={{ flex: 1 }}>{tutorial?.title ?? title ?? f.name}</b>
         <span class="small dim ellipsis" style={{ maxWidth: "45%" }}>{status}</span>
       </div>
       <div class={"emu-body " + dock}>
