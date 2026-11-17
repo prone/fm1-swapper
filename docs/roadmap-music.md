@@ -209,15 +209,38 @@ benchmark (Chrome, WebKit/iPad web view, native) with 1, 3 and 5 instances of Fe
 
 ## Safety track (alongside the music features)
 
-**m-bootloader support** (S–M, both apps), from docs/flash-chips.md:
-1. Recognise m-bootloader's MIDI mode (`ota-FM-1_900` + a `0x12` "MBOOT" answer) and say "m-bootloader recovery"
-   instead of "an install was interrupted"; install or reinstall firmware through it from the Device tab.
-2. Read the flash chip with `0x12` and fill in the flash chip setting automatically.
-3. **Full flash backup over MIDI** (`0x23` reads, `0x24` CRC-32 check) from iPhone, iPad or browser, kept per unit,
-   which today needs M-Flasher on a computer.
-4. Later, after hardware testing and only for older-chip units at first: offer to install m-bootloader itself
-   (its `.fwsc` through our updater, after a full backup), opt-in, with its known issues spelled out.
-We don't write our own bootloader: m-bootloader is MIT, specified and tested, and boot-area code is where bricks happen.
+**m-bootloader integration** (both apps), from docs/flash-chips.md and m-bootloader's spec (§11.6–11.7). We bundle its
+FM-1 release files (MIT, credited in THIRD_PARTY.md), pinned by the SHA-256s in its release's `SHA256SUMS`, and
+send them with our existing updater. We don't write our own bootloader.
+
+*Level 0 — recognise it (S).* A unit answering `ota-FM-1_900` that also answers command `0x12` with `MBOOT` is
+m-bootloader's (or its helper's) MIDI mode, not an interrupted install: say so, read its version, and offer
+"install firmware" through it. Never send `0x23`/`0x24` before that `MBOOT` answer (stock's `0x21` erases flash).
+
+*Level 1 — the helper, nothing installed permanently (M).* "Check this FM-1" sends m-bootloader's **RAM stage**
+(`fm1-stage.fwsc` through M-VAVE's firmware or Baud Girl; `fm1-stage-listed.fwsc` through Felucca-family firmware
+such as Felucca, SLOOP, Melodee, ChoralRoot) as a normal update. The unit then runs MIDI mode from RAM, and the app:
+1. reads the **flash chip** (JEDEC), capacity, chip key and the unit's unique ID (`0x12`), and fills in the flash
+   chip setting for that unit;
+2. offers a **full 1 MB flash backup** (`0x23` reads of 512 bytes, checked with the chip's CRC-32 `0x24`), stored per
+   unit ID; the one area it can't show as it was is the ~20 KB the firmware erased to store the helper;
+3. can install firmware through the helper's own installer (app area only, chip key checked, unchanged sectors
+   skipped, the first sector written last);
+4. restarts the unit (`F0 22 24 35 7E F7`); the next start runs the firmware as before.
+Only for firmware known to accept it (stock, Baud Girl, Felucca family). FM1 Open and other firmware are not sent the
+message until tested; some start their own updater instead. The updater needs a separate "start helper" path: after
+step 1 of the update protocol it waits for `ota-FM-1_900` + `MBOOT` instead of installing.
+
+*Level 2 — install m-bootloader (M, opt-in).* `fm1-uboot.fwsc` through the same update route (M-UPGRADE-compatible;
+it ends with a timeout, which is expected). Gives the recovery menu (hold PLAY), download mode (hold REC), MIDI mode
+whenever firmware is damaged, and firmware checks before every start. Requires a full flash backup first (level 1);
+older-chip units only until m-bootloader confirms the UC25HQ80; official M-VAVE updates put the stock bootloader back,
+so the app reminds the user to reinstall it afterwards.
+
+Gates: m-bootloader 2.4's own notes list the M-UPGRADE packages and the helper as untested with its newer compiler
+(tested in 2.3), and nothing as tested on the UC25HQ80. So each level is tested on the maintainer's FM-1 first (after a full
+backup with M-Flasher on a computer), and we coordinate with m-bootloader's author (report results, ask about the
+newer chip) before shipping levels 1–2 to everyone.
 
 ## Order
 
