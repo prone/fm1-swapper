@@ -36,10 +36,18 @@ Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.res
   starts with the expected flash header (`0.01` at +4, `AC791N_STORY` at +16).
 - `F0 22 24 35 7E F7` restarted it into V15 (`FM-1_015` again within 6 s).
 
-## First real swap (iPad app)
+## iPad app on real hardware
 
-2026-11-16, iPadOS 26.1, FM-1 on the iPad's USB-C: V15 → **Felucca v1.8.2** (`FM-1_918`) through the app's swap sheet,
-already on V15 so no V15 step. Installed and recorded as a successful install; the app saw `FM-1_918` afterwards.
+2026-11-16, iPadOS 26.1, FM-1 on the iPad's USB-C. Each result confirmed from the app's check-in report:
+
+| Test | Result |
+|---|---|
+| Install V15 → Felucca v1.8.2 (`FM-1_918`) | OK |
+| Felucca archive backup ("Back up now", no samples) | OK, saved |
+| "Check this FM-1" on Felucca (the `listed` helper) | OK: showed 0x856014, older unit; restart back to Felucca |
+| "Back to official firmware…" (downloaded V15, sha db1642…) | OK, `FM-1_015` |
+| V15 → SLOOP 2.8.5 | OK |
+| SLOOP → Melodee v1.6.1 **via V15** (two installs in one run) | OK, `FM-1_91061` |
 
 ## What this means for the roadmap
 
