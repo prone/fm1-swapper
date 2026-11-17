@@ -1,7 +1,8 @@
 # FM-1 hardware facts (measured)
 
 Phase 0 of docs/roadmap-music.md (F3). Measured on a real FM-1 on 2026-11-16, connected to a Mac (macOS) over
-USB-C. Firmware: official V15 (identifies as `FM-1_015`). Flash chip: not yet read (see docs/flash-chips.md).
+USB-C. Firmware: official V15 (identifies as `FM-1_015`). Flash chip: **Puya P25Q80H, JEDEC 0x856014 (the older chip)**,
+1 MiB, read through m-bootloader's helper (see below and docs/flash-chips.md).
 
 ## USB
 
@@ -22,6 +23,18 @@ USB-C. Firmware: official V15 (identifies as `FM-1_015`). Flash chip: not yet re
 
 Still to check: Bluetooth MIDI latency/jitter, the TRS MIDI input, M-VAVE's CC map, and the same table for Felucca
 1.8.2 and SLOOP 2.8.5.
+
+## m-bootloader helper on V15 ("Check this FM-1", levels 0–1)
+
+Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.restart`), the same calls the app makes:
+
+- V15 accepted `fm1-stage.fwsc` (sha e861ad2e…): 19 read requests in step 1, then the unit came back as
+  `ota-FM-1_900` on a port named **FM-1 Update**. Our filter found it and the `MBOOT` probe answered within 6 s.
+- `MBOOT` answer: version 2.4, protocol 1, stage, flags 1, chip key 38927, capacity 1,048,576, JEDEC 0x856014.
+  The 8-byte flash unique ID ([serial removed]) is the same as the USB serial number.
+- The whole 1 MB flash read in about 19 s, every 64 KB block matching the chip's CRC-32 on the first pass. The image
+  starts with the expected flash header (`0.01` at +4, `AC791N_STORY` at +16).
+- `F0 22 24 35 7E F7` restarted it into V15 (`FM-1_015` again within 6 s).
 
 ## What this means for the roadmap
 
