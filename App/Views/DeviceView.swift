@@ -62,7 +62,9 @@ struct DeviceView: View {
                     }
                 }
 
-                if case let .loader(id, _) = device.connection {
+                if case .loader = device.connection, let m = device.mboot {
+                    MBootSection(info: m, firmwares: firmwares)
+                } else if case let .loader(id, _) = device.connection {
                     Section {
                         Text("The FM-1 is waiting in update mode (\(id.text)). An install was interrupted. Pick the firmware you were installing to finish writing it.")
                         Picker("Firmware", selection: $resumeTarget) {
@@ -74,6 +76,17 @@ struct DeviceView: View {
                         }.disabled(resumeTarget == nil || device.busy)
                     } header: { Label("Update mode", systemImage: "exclamationmark.triangle") }
                 }
+
+                if case let .connected(id, _) = device.connection, MBootProtocol.helper(for: id.family) != nil {
+                    Section {
+                        Button { Task { await device.startHelper() } } label: { Label("Check this FM-1", systemImage: "stethoscope") }
+                            .disabled(device.busy)
+                    } header: { Text("Flash chip and whole-flash backup") } footer: {
+                        Text("Reads which flash chip this FM-1 has, and can back up its whole flash (1 MB), using m-bootloader's helper. The helper is sent like a firmware update but only runs from memory: nothing is installed. The firmware uses about 20 KB of free space to hold it. Afterwards the FM-1 restarts into its firmware as before.")
+                    }
+                }
+
+                FlashImagesSection()
 
                 if case let .connected(id, _) = device.connection, id.family != .official {
                     Section {
@@ -362,6 +375,66 @@ struct CheckInSettings: View {
                     if server != CheckInService.shared.manualServer { CheckInService.shared.manualServer = server }
                     dismiss()
                 }
+            }
+        }
+    }
+}
+
+/// m-bootloader (or its helper) in MIDI mode: the flash chip, a whole-flash backup, installs through it, restart.
+struct MBootSection: View {
+    @Environment(DeviceController.self) private var device
+    @Environment(\.modelContext) private var context
+    let info: MBootInfo
+    let firmwares: [Firmware]
+    @State private var target: Firmware?
+
+    var body: some View {
+        Section {
+            Text("The FM-1 is in m-bootloader's MIDI mode (\(info.isStage ? "its helper, running from memory" : "the installed bootloader"), \(info.version)).")
+            LabeledContent("Flash chip", value: "\(info.jedecHex) · \(MBootProtocol.chip(info.jedec)) · \(ByteCountFormatter.string(fromByteCount: Int64(info.capacity), countStyle: .memory))")
+            LabeledContent("Unit ID") { Text(info.unitID).font(.caption.monospaced()).textSelection(.enabled) }
+            Button { Task { await device.backupFlash(context: context, firmwareName: "") } } label: {
+                Label("Back up the whole flash", systemImage: "externaldrive.badge.plus")
+            }.disabled(device.busy)
+            Picker("Install firmware through it", selection: $target) {
+                Text("Choose…").tag(Firmware?.none)
+                ForEach(firmwares.filter { $0.hasPackage && $0.packageModel == "FM-1" }) { Text($0.name).tag(Optional($0)) }
+            }
+            if let t = target {
+                Button("Install \(t.name)") { Task { await device.resume(t, context: context) } }.disabled(device.busy)
+            }
+            Button { Task { await device.restartFromMBoot() } } label: { Label("Restart the FM-1", systemImage: "arrow.clockwise.circle") }
+                .disabled(device.busy)
+        } header: { Label("m-bootloader", systemImage: "cpu") } footer: {
+            Text((info.isNewerChip.map { "The app's flash chip setting now says \($0 ? "newer" : "older") unit. " } ?? "")
+                 + "Its installer writes only the firmware area, checks the package against this unit, skips unchanged parts and writes the first part last.")
+        }
+    }
+}
+
+/// Whole-flash images read through m-bootloader, newest first.
+struct FlashImagesSection: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \FlashImage.date, order: .reverse) private var images: [FlashImage]
+
+    var body: some View {
+        if !images.isEmpty {
+            Section {
+                ForEach(images) { f in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(f.date.formatted(date: .abbreviated, time: .shortened)).font(.subheadline.weight(.medium))
+                        Text("unit \(f.unitID.prefix(8))… · chip \(String(format: "0x%06X", f.jedec)) · \(ByteCountFormatter.string(fromByteCount: Int64(f.size), countStyle: .memory))")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ShareFilesButton(files: { f.data.map { [(f.fileName, $0)] } ?? [] }) { Label("Share .bin", systemImage: "square.and.arrow.up") }
+                            .font(.caption)
+                    }
+                }
+                .onDelete { idx in
+                    for i in idx { context.delete(images[i]) }
+                    try? context.save()
+                }
+            } header: { Text("Whole-flash backups") } footer: {
+                Text("Raw images read through m-bootloader and checked against the chip's own CRC-32. M-Flasher can restore them from a computer.")
             }
         }
     }

@@ -13,7 +13,7 @@ struct FM1SwapperApp: App {
     @State private var importMessage: String?
 
     init() {
-        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self, ControllerProfile.self, SampleKit.self])
+        let schema = Schema([Firmware.self, InstallEvent.self, Backup.self, EmulatorSave.self, ControllerProfile.self, SampleKit.self, FlashImage.self])
         // iCloud (CloudKit private database) keeps the iPhone and iPad in sync. If iCloud is
         // unavailable (signed out, simulator without an account), fall back to a local store.
         // Unsigned builds have no iCloud entitlement (CloudKit would trap): build them with FM1_CLOUD_SYNC=NO.

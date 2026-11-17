@@ -401,3 +401,61 @@ final class ValidationTests: XCTestCase {
         XCTAssertFalse(SMCPadBLEChannel.isSMCPadName(nil))
     }
 }
+
+final class MBootTests: XCTestCase {
+    let accept: (DeviceIdentity) -> Bool = { MBootProtocol.helper(for: $0.family) != nil }
+
+    func testHelperFromOfficialReadsChipAndVerifiedBackupThenRestarts() async throws {
+        let dev = VirtualFM1(identity: "FM-1_015")
+        dev.nextIsHelper = true
+        dev.corruptOnce = 0x20000
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        let m = try await up.startHelper(try FirmwarePackage(data: makePackage(product: "FM-1_099", size: 9000)), accept: accept)
+        XCTAssertTrue(m.info.isStage)
+        XCTAssertEqual(m.info.jedec, 0xB36014)
+        XCTAssertEqual(m.info.isNewerChip, true)
+        XCTAssertEqual(m.info.chipKey, 0x980F)
+        XCTAssertEqual(m.info.unitID, "0102030405060708")
+        XCTAssertEqual(m.info.version, "2.4-395e6cc")
+        let image = try await m.backup()
+        XCTAssertEqual(Array(image), dev.flash)
+        m.restart()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(dev.mboot)
+        let id = await up.identify()
+        XCTAssertEqual(id?.identity.text, "FM-1_015")
+    }
+
+    func testInstallThroughHelper() async throws {
+        let pkg = try FirmwarePackage(data: makePackage(product: "FM-1_918"))
+        let dev = VirtualFM1(identity: "FM-1_918")
+        dev.nextIsHelper = true
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        let m = try await up.startHelper(try FirmwarePackage(data: makePackage(product: "FM-1_099", size: 9000)), accept: accept)
+        m.link.close()
+        dev.expectedSize = pkg.logicalImage.count
+        dev.newIdentity = "FM-1_918"
+        let id = try await up.resume(pkg)
+        XCTAssertEqual(id?.text, "FM-1_918")
+        XCTAssertEqual(dev.installed, pkg.logicalImage)
+    }
+
+    func testHelperNotSentToUntestedFirmware() async throws {
+        let dev = VirtualFM1(identity: "FM-1_8000014")
+        dev.nextIsHelper = true
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        do { _ = try await up.startHelper(try FirmwarePackage(data: makePackage(product: "FM-1_099", size: 9000)), accept: accept); XCTFail("should refuse") }
+        catch let e as FM1Error { if case .unsupported = e {} else { XCTFail("\(e)") } }
+        XCTAssertFalse(dev.loader)
+    }
+
+    func testNeverReadsFromAnUpdaterThatIsNotMBoot() async throws {
+        let dev = VirtualFM1(identity: "FM-1_015")
+        dev.loader = true
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        let m = await up.findMBoot()
+        XCTAssertNil(m)
+        XCTAssertEqual(dev.loaderSaw, [0x12])
+        XCTAssertFalse(dev.loaderSaw.contains(0x23) || dev.loaderSaw.contains(0x24))
+    }
+}

@@ -23,8 +23,14 @@ export interface InstallEvent {
   duration: number; backupTaken: boolean; restored: boolean;
 }
 
-const DB = "fm1-swapper", VERSION = 1;
-const STORES = ["firmwares", "packages", "backups", "installs"] as const;
+/** A whole-flash image read through m-bootloader's MIDI mode (1 MB on the FM-1). */
+export interface FlashImage {
+  id: string; date: number; unit: string; jedec: number; chipKey: number; firmware: string; mboot: string;
+  size: number; crc: number; data: Uint8Array;
+}
+
+const DB = "fm1-swapper", VERSION = 2;
+const STORES = ["firmwares", "packages", "backups", "installs", "flash"] as const;
 type StoreName = (typeof STORES)[number];
 
 let dbp: Promise<IDBDatabase> | null = null;
@@ -79,6 +85,9 @@ export const store = {
   async saveBackup(b: Backup) { await put("backups", b.id, b); changed(); },
   async deleteBackup(b: Backup) { await del("backups", b.id); changed(); },
   async saveInstall(e: InstallEvent) { await put("installs", e.id, e); changed(); },
+  flashImages: () => all<FlashImage>("flash"),
+  async saveFlash(f: FlashImage) { await put("flash", f.id, f); changed(); },
+  async deleteFlash(f: FlashImage) { await del("flash", f.id); changed(); },
 
   /** Everything, packages included, as one JSON file (to move to another browser or keep as a backup). */
   async exportLibrary(): Promise<string> {

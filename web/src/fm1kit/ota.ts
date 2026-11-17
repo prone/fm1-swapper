@@ -7,6 +7,7 @@
 import { FirmwarePackage, Identity, isLoader, logicalImage, parseIdentity } from "./package";
 import { PortProvider, SysExLink, looksLikeFM1 } from "./midi";
 import { le32, le32Bytes, pack7, unpack7 } from "./sysex";
+import { MBoot } from "./mboot";
 
 export const HANDSHAKE = [0xf0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7f, 0xf7];
 export const UPGRADE = [0xf0, 0x22, 0x24, 0x35, 0x7f, 0xf7];
@@ -152,14 +153,17 @@ export class Updater {
     }
   }
 
-  /** Full install: running firmware -> update loader -> new firmware. Returns the identity reported afterwards. */
-  async install(pkg: FirmwarePackage, onStep: (s: Step) => void = () => {}): Promise<Identity> {
-    const image = logicalImage(pkg.bytes);
+  /** Step 1: the running firmware reads the package and stores its updater, then restarts into it. */
+  private async stageOne(pkg: FirmwarePackage, image: Uint8Array, onStep: (s: Step) => void, accept: (id: Identity) => boolean = () => true) {
     const dev = await this.find((id) => !isLoader(id));
     if (!dev) throw new FM1Error("notfound", "FM-1 not found. Check the USB cable, and close any other app using the FM-1.");
     if (dev.identity.model !== pkg.model) {
       dev.link.close();
       throw new FM1Error("model", `The FM-1 is ${dev.identity.text}, but the package is for ${pkg.product}.`);
+    }
+    if (!accept(dev.identity)) {
+      dev.link.close();
+      throw new FM1Error("unsupported", `${dev.identity.text} isn't known to accept this package.`);
     }
     onStep({ kind: "start", from: dev.identity.text });
     dev.link.send(UPGRADE);
@@ -174,11 +178,46 @@ export class Updater {
     if (!s1.finished) {
       throw new FM1Error(s1.lost ? "lost" : "stopped", `The FM-1 ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests. Nothing was written.`);
     }
+  }
+
+  /** Full install: running firmware -> update loader -> new firmware. Returns the identity reported afterwards. */
+  async install(pkg: FirmwarePackage, onStep: (s: Step) => void = () => {}): Promise<Identity> {
+    const image = logicalImage(pkg.bytes);
+    await this.stageOne(pkg, image, onStep);
     onStep({ kind: "loader" });
     await sleep(this.timing.beforeLoader);
     const ota = await this.waitFor((id) => id.model === "ota-" + pkg.model, this.timing.waitLoader);
     if (!ota) throw new FM1Error("noloader", "The update loader did not appear. Replug the USB cable and press Install again: the FM-1 stays in update mode until the write finishes.");
     return this.finishWrite(ota, pkg, image, onStep);
+  }
+
+  /** Sends m-bootloader's helper (a RAM stage) as an update and connects to it once it runs. The FM-1 then answers
+   *  `MBOOT`: flash chip, full flash reads, installs. `accept` guards which running firmware may receive it. */
+  async startHelper(pkg: FirmwarePackage, accept: (id: Identity) => boolean, onStep: (s: Step) => void = () => {}): Promise<{ link: SysExLink; mboot: MBoot }> {
+    await this.stageOne(pkg, logicalImage(pkg.bytes), onStep, accept);
+    onStep({ kind: "loader" });
+    await sleep(this.timing.beforeLoader);
+    const end = Date.now() + this.timing.waitLoader;
+    while (Date.now() < end) {
+      const d = await this.find((id) => isLoader(id));
+      if (d) {
+        const mboot = await MBoot.probe(d.link);
+        if (mboot) return { link: d.link, mboot };
+        d.link.close();
+        throw new FM1Error("nohelper", "The FM-1 started an updater that isn't m-bootloader's helper, so nothing was read. It's in update mode: power it off and on, or finish with an install.");
+      }
+      await sleep(this.timing.poll);
+    }
+    throw new FM1Error("nohelper", "The helper didn't appear. Power the FM-1 off and on; nothing was written, and it starts its firmware as before.");
+  }
+
+  /** m-bootloader (or its helper) in MIDI mode, if that's what is connected; the link stays open. */
+  async findMBoot(): Promise<{ link: SysExLink; mboot: MBoot; portName: string } | null> {
+    const d = await this.find((id) => isLoader(id));
+    if (!d) return null;
+    const mboot = await MBoot.probe(d.link);
+    if (!mboot) { d.link.close(); return null; }
+    return { link: d.link, mboot, portName: d.portName };
   }
 
   /** The device is in update mode (an earlier install was cut off): finish the write. Null when no loader is connected. */

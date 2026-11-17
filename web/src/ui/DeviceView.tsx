@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 FM-1 Swapper contributors
-import { useState } from "preact/hooks";
-import { device } from "../device";
+import { useEffect, useState } from "preact/hooks";
+import { backupRecord, device, mboot } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { readArchiveFile } from "../fm1kit/archive";
-import { backupRecord } from "../device";
-import { store } from "../store";
-import { DeviceBusy, FileDrop, Library, fmtDateTime, useDevice } from "./common";
+import { FlashImage, Firmware, store } from "../store";
+import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
 import { MyChip, RESCUE_URL, myChip, setMyChip } from "../hub";
+import { chipOfJedec, helperFor, hex } from "../fm1kit/mboot";
 
 export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swap?: boolean) => void }) {
   const s = useDevice();
@@ -56,7 +56,8 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
             {installed && <button class="linkbtn small" onClick={() => open(installed.id)}>Open in library</button>}
             {!installed && !loader && <p class="small dim">This firmware isn't in your library. Add its .fwsc file to keep notes and backups for it.</p>}
           </div>
-          {loader && (
+          {loader && s.mboot && <MBootCard lib={lib} />}
+          {loader && !s.mboot && (
             <div class="banner warn">
               The FM-1 is in <b>update mode</b>: an install didn't finish. Open the firmware you were installing in the library and choose
               <b> Finish install</b>. The FM-1 stays in this mode until the write completes, so unplugging it is safe.
@@ -111,6 +112,18 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
           </div>
         </>
       )}
+      {id && !loader && helperFor(fam!) && (
+        <>
+          <h2>Check this FM-1</h2>
+          <div class="card">
+            <div>Reads which flash chip this FM-1 has and can back up its <b>whole flash</b> (1 MB), using m-bootloader's helper.</div>
+            <p class="small dim">The helper is sent like a firmware update but only runs from memory: nothing is installed. The firmware uses about 20 KB
+              of free space to hold it. When you're done, the FM-1 restarts into {installed?.name ?? id.text} as before.</p>
+            <div class="btnrow"><button class="btn" disabled={!!s.busy} onClick={() => mboot.startHelper()}>Start the helper</button></div>
+          </div>
+        </>
+      )}
+      <FlashImages />
       {s.midi === "ready" && (
         <>
           <h2>Flash chip</h2>
@@ -128,6 +141,63 @@ export function DeviceView({ lib, open }: { lib: Library; open: (id: string, swa
         </>
       )}
       {s.log.length > 0 && (<><h2>Activity</h2><div class="card mono log">{s.log.join("\n")}</div></>)}
+    </>
+  );
+}
+
+function MBootCard({ lib }: { lib: Library }) {
+  const s = useDevice();
+  const m = s.mboot!;
+  const [pick, setPick] = useState("");
+  const chip = chipOfJedec(m.jedec);
+  const choices = lib.firmwares.filter((f: Firmware) => f.sha256 && f.product.startsWith("FM-1_"));
+  return (
+    <>
+      <h2>m-bootloader {m.kind === "stage" ? "helper" : ""}</h2>
+      <div class="card">
+        <div>The FM-1 is in <b>m-bootloader's MIDI mode</b> ({m.kind === "stage" ? "its helper, running from memory" : "the installed bootloader"}, {m.version}).</div>
+        <div class="rows" style={{ marginTop: 10 }}>
+          <div><span class="row-main">Flash chip</span><span class="dim">{hex(m.jedec)} · {chip === "new" ? "newer unit" : chip === "old" ? "older unit" : "unknown kind"} · {fmtBytes(m.capacity)}</span></div>
+          <div><span class="row-main">Unit ID</span><span class="mono dim">{m.uid}</span></div>
+        </div>
+        {chip !== "unknown" && <p class="small dim">The app's flash chip setting now says {chip === "new" ? "newer unit (0xB36014)" : "older unit (0x856014)"}.</p>}
+        <div class="btnrow">
+          <button class="btn primary" disabled={!!s.busy} onClick={() => mboot.backupFlash(s.identity?.text ?? "")}>Back up the whole flash</button>
+          <button class="btn" disabled={!!s.busy} onClick={() => mboot.restart()}>Restart the FM-1</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <span class="small">Install firmware through it:</span>
+          <select value={pick} onChange={(e) => setPick((e.target as HTMLSelectElement).value)}>
+            <option value="">Choose…</option>
+            {choices.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <button class="btn" disabled={!pick || !!s.busy} onClick={() => { const f = choices.find((x) => x.id === pick); if (f) void device.install(f, { backupFirst: false, restoreAfter: true, resume: true }); }}>Install</button>
+        </div>
+        <p class="small faint" style={{ marginBottom: 0 }}>Its installer writes only the firmware area, checks the package against this unit, skips unchanged parts and writes the first part last.</p>
+      </div>
+    </>
+  );
+}
+
+function FlashImages() {
+  const [list, setList] = useState<FlashImage[]>([]);
+  const lib = useLibrary();
+  useEffect(() => { void store.flashImages().then((l) => setList(l.sort((a, b) => b.date - a.date))); }, [lib]);
+  if (!list.length) return null;
+  return (
+    <>
+      <h2>Whole-flash backups</h2>
+      <div class="rows">
+        {list.map((f) => (
+          <div key={f.id}>
+            <span class="row-main">{fmtDateTime(f.date)} · {f.firmware || "FM-1"}
+              <div class="small dim">unit {f.unit.slice(0, 8)}… · chip {hex(f.jedec)} · {fmtBytes(f.size)} · CRC-32 {hex(f.crc, 8)}</div></span>
+            <button class="linkbtn small" onClick={() => saveFile(`fm1-flash-${f.unit.slice(0, 8)}-${new Date(f.date).toISOString().slice(0, 10)}.bin`, f.data)}>Download .bin</button>
+            <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => confirm("Delete this whole-flash backup?") && store.deleteFlash(f)}>Delete</button>
+          </div>
+        ))}
+      </div>
+      <p class="small faint">Raw 1 MB images, read through m-bootloader and checked against the chip's own CRC-32. M-Flasher can restore them from a computer.</p>
     </>
   );
 }

@@ -22,6 +22,8 @@ final class DeviceController {
     }
 
     private(set) var connection: Connection = .none
+    /// m-bootloader (or its helper) answering in MIDI mode, when the connection is a loader.
+    private(set) var mboot: MBootInfo?
     private(set) var phase: Phase = .idle { didSet { if busy != wasBusy { wasBusy = busy; onBusyChange?(busy) } } }
     private var wasBusy = false
     /// Tells the pad router to stop sending to the FM-1 while it is being written.
@@ -67,8 +69,16 @@ final class DeviceController {
         guard !busy else { return }
         connection = .searching
         if let found = await updater.identify() {
+            var info: MBootInfo?
+            if found.identity.isLoader, let m = await updater.findMBoot() {
+                info = m.info
+                m.link.close()
+                remember(m.info)
+            }
+            mboot = info
             connection = found.identity.isLoader ? .loader(found.identity, port: found.port) : .connected(found.identity, port: found.port)
         } else {
+            mboot = nil
             connection = .none
         }
     }
@@ -304,6 +314,72 @@ final class DeviceController {
     }
 
     /// Finish an install that was cut off (the device is waiting in update mode).
+    // MARK: m-bootloader (docs/flash-chips.md; roadmap safety track levels 0–1)
+
+    /// The chip m-bootloader reports becomes the flash chip setting (it can't be read any other way over USB).
+    private func remember(_ info: MBootInfo) {
+        if let newer = info.isNewerChip { UserDefaults.standard.set(newer ? MyFlashChip.newer.rawValue : MyFlashChip.older.rawValue, forKey: "myFlashChip") }
+        var all = UserDefaults.standard.dictionary(forKey: "chipByUnit") ?? [:]
+        all[info.unitID] = Int(info.jedec)
+        UserDefaults.standard.set(all, forKey: "chipByUnit")
+    }
+
+    /// The helper package bundled with the app, checked against m-bootloader's published SHA-256.
+    private func helperPackage(_ h: MBootProtocol.Helper) throws -> FirmwarePackage {
+        guard let u = Bundle.main.url(forResource: h.rawValue, withExtension: "fwsc"), let d = try? Data(contentsOf: u) else {
+            throw FM1Error.badPackage("m-bootloader's helper is missing from this app.")
+        }
+        let p = try FirmwarePackage(data: d)
+        guard p.sha256 == h.sha256 else { throw FM1Error.badPackage("m-bootloader's helper doesn't match its published checksum.") }
+        return p
+    }
+
+    /// Sends m-bootloader's helper as an update; the FM-1 then runs MIDI mode from RAM. Nothing is installed permanently.
+    func startHelper() async {
+        let title = "Check this FM-1"
+        await run(title) {
+            guard let now = await updater.identify(), !now.identity.isLoader else { throw FM1Error.notFound }
+            guard let kind = MBootProtocol.helper(for: now.identity.family) else {
+                throw FM1Error.unsupported("\(now.identity.text) isn't known to accept m-bootloader's helper. Install official V15 or a Felucca-family firmware first.")
+            }
+            let pkg = try helperPackage(kind)
+            let m = try await updater.startHelper(pkg, accept: { MBootProtocol.helper(for: $0.family) == kind }) { [weak self] step in
+                Task { @MainActor in self?.progress(title, step == .loader ? "Waiting for the helper…" : "Sending the helper…", nil) }
+            }
+            m.link.close()
+            remember(m.info)
+            mboot = m.info
+            return "m-bootloader's helper is running. Flash chip \(m.info.jedecHex) (\(MBootProtocol.chip(m.info.jedec)))."
+        }
+    }
+
+    /// Reads the whole flash through m-bootloader, checked block by block against the chip's CRC-32.
+    func backupFlash(context: ModelContext, firmwareName: String) async {
+        let title = "Back up the whole flash"
+        await run(title) {
+            guard let m = await updater.findMBoot() else { throw FM1Error.notFound }
+            defer { m.link.close() }
+            let data = try await m.backup { [weak self] done, total in
+                Task { @MainActor in self?.progress(title, "Reading \(done >> 10) of \(total >> 10) KB…", Double(done) / Double(total)) }
+            }
+            context.insert(FlashImage(info: m.info, firmware: firmwareName, data: data))
+            try context.save()
+            return "Saved the whole flash (\(data.count >> 10) KB, checked against the chip)."
+        }
+    }
+
+    /// Leaves m-bootloader's MIDI mode; the FM-1 restarts into its firmware.
+    func restartFromMBoot() async {
+        await run("Restart the FM-1") {
+            guard let m = await updater.findMBoot() else { throw FM1Error.notFound }
+            m.restart()
+            m.link.close()
+            mboot = nil
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            return "The FM-1 restarted."
+        }
+    }
+
     func resume(_ target: Firmware, context: ModelContext) async {
         await run("Resume install") {
             guard let data = target.packageData else { throw FM1Error.badPackage("No firmware file for \(target.name).") }

@@ -203,10 +203,51 @@ public final class OTAUpdater: @unchecked Sendable {
     /// Full install: running firmware -> update loader -> new firmware. Returns the identity the device reports afterwards.
     public func install(_ package: FirmwarePackage, onStep: @escaping @Sendable (UpdateStep) -> Void = { _ in }) async throws -> DeviceIdentity {
         let image = package.logicalImage
+        try await stageOne(package, image: image, onStep: onStep)
+        onStep(.loader)
+        await sleep(timing.beforeLoader)
+        guard let ota = await waitFor({ $0.model == "ota-" + package.model }, seconds: timing.waitLoader) else { throw FM1Error.noLoader }
+        return try await finishWrite(ota, package: package, image: image, onStep: onStep)
+    }
+
+    /// Sends m-bootloader's helper (a RAM stage) as an update and connects to it once it runs; the FM-1 then answers
+    /// `MBOOT` (flash chip, full flash reads, installs). `accept` guards which running firmware may receive it.
+    public func startHelper(_ package: FirmwarePackage, accept: (DeviceIdentity) -> Bool,
+                            onStep: @escaping @Sendable (UpdateStep) -> Void = { _ in }) async throws -> MBoot {
+        try await stageOne(package, image: package.logicalImage, onStep: onStep, accept: accept)
+        onStep(.loader)
+        await sleep(timing.beforeLoader)
+        let end = Date().addingTimeInterval(timing.waitLoader)
+        while Date() < end {
+            if let d = await find(where: { $0.isLoader }) {
+                if let m = await MBoot.probe(d.link) { return m }
+                d.link.close()
+                throw FM1Error.unsupported("The FM-1 started an updater that isn't m-bootloader's helper, so nothing was read. It's in update mode: power it off and on, or finish with an install.")
+            }
+            await sleep(timing.poll)
+        }
+        throw FM1Error.unsupported("The helper didn't appear. Power the FM-1 off and on; nothing was written, and it starts its firmware as before.")
+    }
+
+    /// m-bootloader (or its helper) in MIDI mode, if that's what is connected; its link stays open.
+    public func findMBoot() async -> MBoot? {
+        guard let d = await find(where: { $0.isLoader }) else { return nil }
+        if let m = await MBoot.probe(d.link) { return m }
+        d.link.close()
+        return nil
+    }
+
+    /// Step 1: the running firmware reads the package and stores its updater, then restarts into it.
+    func stageOne(_ package: FirmwarePackage, image: [UInt8], onStep: @escaping @Sendable (UpdateStep) -> Void,
+                  accept: (DeviceIdentity) -> Bool = { _ in true }) async throws {
         guard let dev = await find(where: { !$0.isLoader }) else { throw FM1Error.notFound }
         guard dev.identity.model == package.model else {
             dev.link.close()
             throw FM1Error.wrongModel(device: dev.identity.text, package: package.product)
+        }
+        guard accept(dev.identity) else {
+            dev.link.close()
+            throw FM1Error.unsupported("\(dev.identity.text) isn't known to accept this package.")
         }
         onStep(.start(dev.identity.text))
         dev.link.send(OTAProtocol.upgrade)
@@ -219,10 +260,6 @@ public final class OTAUpdater: @unchecked Sendable {
             throw s1.lost ? FM1Error.lost("The FM-1 \(why) after \(s1.served) requests. Nothing was written.")
                 : FM1Error.stopped("The FM-1 \(why) after \(s1.served) requests. Nothing was written.")
         }
-        onStep(.loader)
-        await sleep(timing.beforeLoader)
-        guard let ota = await waitFor({ $0.model == "ota-" + package.model }, seconds: timing.waitLoader) else { throw FM1Error.noLoader }
-        return try await finishWrite(ota, package: package, image: image, onStep: onStep)
     }
 
     /// The device is already in update mode (an earlier install was cut off): finish the write.

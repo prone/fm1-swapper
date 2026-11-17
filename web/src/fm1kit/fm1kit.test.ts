@@ -6,6 +6,7 @@ import { crc32, le32Bytes, maskPack, maskUnpack, pack7, u32From7, u32To7, unpack
 import { familyOf, logicalImage, parseIdentity, readPackage } from "./package";
 import { DEFAULT_TIMING, FM1Error, HANDSHAKE, Timing, UPGRADE, Updater, identityReply, parseIdentityReply, parseRequest, request } from "./ota";
 import { Inbox, PortCandidate, PortProvider, SysExLink } from "./midi";
+import { MBoot, chipOfJedec, frame, helperFor, parseFrame } from "./mboot";
 import { DeviceArchive, FELUCCA_IDS, FM1OpenArchive, FeluccaArchive, captureArchive, part, partBytes, readArchiveFile, restoreArchive } from "./archive";
 
 const FAST: Timing = { ...DEFAULT_TIMING, replyDelay: 0, afterUpgrade: 5, beforeLoader: 5, beforeReboot: 5, idleCheck: 800, idleWrite: 1500, waitLoader: 1500, waitReboot: 1500, poll: 20, handshake: 150 };
@@ -23,6 +24,10 @@ class VirtualFM1 {
   loader = false; attached = true; installed: Uint8Array | null = null;
   expectedSize = 0; newIdentity = ""; dropAfter = -1;
   refuse: "" | "app" | "loader" = "";   // a firmware/loader that doesn't know the flash chip answers nothing
+  // m-bootloader's helper: the next update starts it instead of a loader
+  nextIsHelper = false; mboot = false; jedec = 0xb36014; corruptOnce = -1;
+  flash = new Uint8Array(1 << 20).map((_, i) => (i * 2654435761) >>> 24);
+  loaderSaw: number[] = [];              // commands that reached a loader which isn't m-bootloader
   fromHost = new Inbox();
   link: SimLink | null = null;
   felucca = new Map<number, Uint8Array>();
@@ -32,12 +37,31 @@ class VirtualFM1 {
   private transfer: { kind: number; target: number; buf: number[] } | null = null;
   private sampleIn: number[] = [];
   constructor(public identity: string) {}
-  get current() { return this.loader ? "ota-" + this.identity.split("_")[0] + "_001" : this.identity; }
+  get current() { return this.mboot ? "ota-FM-1_900" : this.loader ? "ota-" + this.identity.split("_")[0] + "_001" : this.identity; }
   reply(m: number[]) { this.link?.toHost.push(m); }
 
   handle(m: number[]) {
     if (m.join() === HANDSHAKE.join()) return this.reply(identityReply(this.current));
     if (m.join() === UPGRADE.join()) { void this.runUpdate(); return; }
+    if (m.join() === [0xf0, 0x22, 0x24, 0x35, 0x7e, 0xf7].join()) { if (this.mboot) { this.mboot = false; this.loader = false; void this.reattach(); } return; }
+    const f = parseFrame(m);
+    if (f && f.cmd !== 0x30 && this.loader) {
+      if (!this.mboot) { this.loaderSaw.push(f.cmd); return; }
+      if (f.cmd === 0x12) {
+        const info = [..."MBOOT"].map((c) => c.charCodeAt(0));
+        info.push(1, 2, 1, 0x0f, 0x98, ...le32Bytes(this.flash.length), ...le32Bytes(this.jedec), 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, ...[..."2.4-395e6cc"].map((c) => c.charCodeAt(0)), 0);
+        return this.reply(frame(0x12, info));
+      }
+      if (f.cmd === 0x23 || f.cmd === 0x24) {
+        const b = f.body, addr = b[1] | (b[2] << 8) | (b[3] << 16) | (b[4] << 24), n = b[5] | (b[6] << 8) | (b[7] << 16);
+        if (b.length !== 8 || addr + n > this.flash.length || (f.cmd === 0x23 && n > 512)) return this.reply(frame(0, [1]));
+        if (f.cmd === 0x24) return this.reply(frame(0x24, [...b, ...le32Bytes(crc32(this.flash.subarray(addr, addr + n)))]));
+        const data = [...this.flash.subarray(addr, addr + n)];
+        if (addr === this.corruptOnce) { data[0] ^= 0xff; this.corruptOnce = -1; }
+        return this.reply(frame(0x23, [...b, ...data]));
+      }
+      return this.reply(frame(0, [1]));
+    }
     if (m[1] === 0x7d && m[2] === 0x46 && m[3] === 0x4c) return this.feluccaCmd(m[4], m.slice(5, -1));
     if (m[1] === 0x7d && m[2] === 0x46 && m[3] === 0x4d) return this.openCmd(m);
     if (!parseRequest(m)) this.fromHost.push(m);
@@ -54,6 +78,12 @@ class VirtualFM1 {
   async runUpdate() {
     if (this.refuse === "app" && !this.loader) return;
     if (this.refuse === "loader" && this.loader) return;
+    if (this.nextIsHelper && !this.loader) {
+      for (let a = 0; a < 4096; a += 512) if (!(await this.fetch(a, 512))) return;
+      await this.fetch(0xe0000000, 8);
+      this.nextIsHelper = false; this.loader = true; this.mboot = true; await this.reattach();
+      return;
+    }
     if (!this.loader) {
       for (let a = 0; a < 4096; a += 512) if (!(await this.fetch(a, 512))) return;
       await this.fetch(0xe0000000, 8);
@@ -68,7 +98,7 @@ class VirtualFM1 {
         img.push(...c); n++;
       }
       await this.fetch(0xf0000000, 8);
-      this.installed = Uint8Array.from(img); this.loader = false; this.identity = this.newIdentity || this.identity;
+      this.installed = Uint8Array.from(img); this.loader = false; this.mboot = false; this.identity = this.newIdentity || this.identity;
       await this.reattach();
     }
   }
@@ -231,6 +261,50 @@ describe("flash chip refusals", () => {
     expect(e).toMatchObject({ code: "refused" });
     expect(dev.loader).toBe(true);
   }, 20_000);
+});
+
+describe("m-bootloader helper", () => {
+  const helperPkg = () => readPackage(makePackage("FM-1_099", 9000));
+  const accept = (id: { text: string }) => helperFor(familyOf(parseIdentity(id.text)!)) !== null;
+
+  it("starts from official firmware, reads the chip and a verified full backup, then restarts", async () => {
+    const dev = new VirtualFM1("FM-1_015"); dev.nextIsHelper = true; dev.corruptOnce = 0x20000;
+    const up = new Updater(new SimProvider(dev), FAST);
+    const { mboot } = await up.startHelper(await helperPkg(), accept);
+    expect(mboot.info).toMatchObject({ kind: "stage", jedec: 0xb36014, capacity: 1 << 20, chipKey: 0x980f, uid: "0102030405060708", version: "2.4-395e6cc" });
+    expect(chipOfJedec(mboot.info.jedec)).toBe("new");
+    expect(await mboot.backup()).toEqual(dev.flash);
+    mboot.restart(); await sleep(60);
+    expect(dev.mboot).toBe(false);
+    expect((await up.identify())?.identity.text).toBe("FM-1_015");
+  }, 30_000);
+
+  it("installs firmware through the helper", async () => {
+    const pkg = await readPackage(makePackage("FM-1_918"));
+    const dev = new VirtualFM1("FM-1_918"); dev.nextIsHelper = true;
+    const up = new Updater(new SimProvider(dev), FAST);
+    const { link } = await up.startHelper(await helperPkg(), accept);
+    link.close();
+    dev.expectedSize = pkg.bytes.length - 20; dev.newIdentity = "FM-1_918";
+    expect((await up.resume(pkg))?.text).toBe("FM-1_918");
+    expect(dev.installed).toEqual(logicalImage(pkg.bytes));
+  }, 20_000);
+
+  it("isn't sent to firmware not known to accept it", async () => {
+    const dev = new VirtualFM1("FM-1_8000014"); dev.nextIsHelper = true;
+    await expect(new Updater(new SimProvider(dev), FAST).startHelper(await helperPkg(), accept)).rejects.toMatchObject({ code: "unsupported" });
+    expect(dev.loader).toBe(false);
+  });
+
+  it("never sends a read to an updater that doesn't answer MBOOT", async () => {
+    const dev = new VirtualFM1("FM-1_015"); dev.loader = true;           // a stock update loader waiting
+    const up = new Updater(new SimProvider(dev), FAST);
+    expect(await up.findMBoot()).toBeNull();
+    expect(dev.loaderSaw).toEqual([0x12]);
+    const link = await new SimProvider(dev).open({ id: "fm1", name: "FM-1" });
+    expect(await MBoot.probe(link, 200)).toBeNull();
+    expect(dev.loaderSaw.filter((c) => c === 0x23 || c === 0x24)).toEqual([]);
+  });
 });
 
 describe("archives", () => {

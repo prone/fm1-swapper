@@ -237,3 +237,26 @@ extension ModelContext {
         return f
     }
 }
+
+/// A whole-flash image (1 MB on the FM-1) read through m-bootloader's MIDI mode, checked against the chip's CRC-32.
+/// M-Flasher can restore it from a computer. CloudKit-compatible: every property has a default.
+@Model
+final class FlashImage {
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var unitID: String = ""
+    var jedec: Int = 0
+    var chipKey: Int = 0
+    var firmware: String = ""
+    var mbootVersion: String = ""
+    var size: Int = 0
+    var crc: Int = 0
+    @Attribute(.externalStorage) var data: Data?
+
+    init(info: MBootInfo, firmware: String, data: Data) {
+        unitID = info.unitID; jedec = Int(info.jedec); chipKey = Int(info.chipKey); mbootVersion = info.version
+        self.firmware = firmware; self.data = data; size = data.count; crc = Int(SysExCoding.crc32(data))
+    }
+
+    var fileName: String { "fm1-flash-\(unitID.prefix(8))-\(date.formatted(.iso8601.year().month().day())).bin" }
+}

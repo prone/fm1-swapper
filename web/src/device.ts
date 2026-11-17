@@ -5,17 +5,22 @@ import { WebMIDIProvider } from "./fm1kit/midi";
 import { FM1Error, Step, Updater } from "./fm1kit/ota";
 import { FirmwarePackage, Identity, STOCK, familyOf, isLoader, readPackage, supportsArchive } from "./fm1kit/package";
 import { DeviceArchive, captureArchive, restoreArchive, totalBytes } from "./fm1kit/archive";
+import { HELPERS, MbootInfo, chipOfJedec, helperFor } from "./fm1kit/mboot";
+import { crc32, sha256Hex } from "./fm1kit/sysex";
+import { setMyChip } from "./hub";
 import { Backup, Firmware, store, uid } from "./store";
 
 export interface DeviceState {
   midi: "none" | "unsupported" | "ready";
   identity: Identity | null; port: string;
+  /** m-bootloader (or its helper) answering in MIDI mode. */
+  mboot: MbootInfo | null;
   busy: string | null;                      // what is running, for the UI
   progress: number | null;                  // 0…1
   log: string[]; error: string | null;
 }
 
-let state: DeviceState = { midi: WebMIDIProvider.supported() ? "none" : "unsupported", identity: null, port: "", busy: null, progress: null, log: [], error: null };
+let state: DeviceState = { midi: WebMIDIProvider.supported() ? "none" : "unsupported", identity: null, port: "", mboot: null, busy: null, progress: null, log: [], error: null };
 let provider: WebMIDIProvider | null = null;
 const listeners = new Set<(s: DeviceState) => void>();
 const set = (p: Partial<DeviceState>) => { state = { ...state, ...p }; listeners.forEach((f) => f(state)); };
@@ -59,7 +64,14 @@ export const device = {
   async identify() {
     if (!provider) return null;
     const d = await new Updater(provider).identify();
-    set({ identity: d?.identity ?? null, port: d?.portName ?? "" });
+    let mboot: MbootInfo | null = null;
+    if (d && isLoader(d.identity)) {
+      const m = await new Updater(provider).findMBoot();
+      mboot = m?.mboot.info ?? null;
+      m?.link.close();
+      if (mboot) rememberChip(mboot);
+    }
+    set({ identity: d?.identity ?? null, port: d?.portName ?? "", mboot });
     return d?.identity ?? null;
   },
 
@@ -171,6 +183,77 @@ export const device = {
         return id;
       } catch (e) { event.message = (e as Error).message; throw e; }
       finally { event.duration = (Date.now() - started) / 1000; await store.saveInstall(event); }
+    });
+  },
+};
+
+/** The flash chip m-bootloader reported becomes the app's chip setting (it can't be read any other way over USB). */
+function rememberChip(info: MbootInfo) {
+  const c = chipOfJedec(info.jedec);
+  if (c !== "unknown") setMyChip(c);
+  try {
+    const all = JSON.parse(localStorage.getItem("chipByUnit") ?? "{}");
+    all[info.uid] = info.jedec;
+    localStorage.setItem("chipByUnit", JSON.stringify(all));
+  } catch { /* private window */ }
+}
+
+async function helperPackage(kind: keyof typeof HELPERS): Promise<FirmwarePackage> {
+  const h = HELPERS[kind];
+  const r = await fetch(`mboot/${h.file}`);
+  if (!r.ok) throw new FM1Error("badpkg", "m-bootloader's helper is missing from this app.");
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (await sha256Hex(bytes) !== h.sha256) throw new FM1Error("badpkg", "m-bootloader's helper doesn't match its published checksum.");
+  return readPackage(bytes);
+}
+
+/** m-bootloader operations (docs/flash-chips.md, levels 0–1 of the roadmap's safety track). */
+export const mboot = {
+  /** Sends m-bootloader's helper as an update; the FM-1 then runs MIDI mode from RAM (nothing installed permanently). */
+  startHelper() {
+    return device.run("Starting m-bootloader's helper", async (u) => {
+      const now = await u.identify();
+      if (!now) throw new FM1Error("notfound", "FM-1 not found.");
+      const kind = helperFor(familyOf(now.identity));
+      if (!kind) throw new FM1Error("unsupported", `${now.identity.text} isn't known to accept m-bootloader's helper. Install official V15 or a Felucca-family firmware first.`);
+      const pkg = await helperPackage(kind);
+      const { link, mboot: m } = await u.startHelper(pkg, (id) => helperFor(familyOf(id)) === kind, (s) => {
+        if (s.kind === "verify") set({ busy: "Sending the helper", progress: null });
+        if (s.kind === "loader") set({ busy: "Waiting for the helper", progress: null });
+      });
+      link.close();
+      rememberChip(m.info);
+      set({ mboot: m.info });
+      note(`✓ m-bootloader ${m.info.kind === "stage" ? "helper" : ""} ${m.info.version}, flash ${m.info.jedec.toString(16)}`);
+      return m.info;
+    });
+  },
+
+  /** Reads the whole flash (checked against the chip's CRC-32) and keeps it in this browser. */
+  backupFlash(firmwareName: string) {
+    return device.run("Reading the whole flash", async (u) => {
+      const d = await u.findMBoot();
+      if (!d) throw new FM1Error("notfound", "m-bootloader isn't answering. Start the helper again.");
+      try {
+        const data = await d.mboot.backup((n, t) => set({ progress: n / t }));
+        const i = d.mboot.info;
+        await store.saveFlash({ id: uid(), date: Date.now(), unit: i.uid, jedec: i.jedec, chipKey: i.chipKey, firmware: firmwareName,
+          mboot: i.version, size: data.length, crc: crc32(data), data });
+        note(`✓ saved the whole flash (${data.length >> 10} KB)`);
+        return true;
+      } finally { d.link.close(); }
+    });
+  },
+
+  /** Leaves MIDI mode; the FM-1 restarts into its firmware. */
+  restart() {
+    return device.run("Restarting the FM-1", async (u) => {
+      const d = await u.findMBoot();
+      if (!d) throw new FM1Error("notfound", "m-bootloader isn't answering.");
+      d.mboot.restart(); d.link.close();
+      set({ mboot: null });
+      await new Promise((r) => setTimeout(r, 3000));
+      return true;
     });
   },
 };

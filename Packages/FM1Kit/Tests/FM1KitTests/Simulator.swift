@@ -18,6 +18,11 @@ final class VirtualFM1: @unchecked Sendable {
     var dropAfter: Int?
     /// A firmware ("app") or update loader ("loader") that doesn't know the flash chip: it answers nothing.
     var refuse: String?
+    // m-bootloader's helper: the next update starts it instead of a loader
+    var nextIsHelper = false, mboot = false, jedec: UInt32 = 0xB36014, corruptOnce = -1
+    var flash: [UInt8] = (0..<(1 << 20)).map { UInt8(truncatingIfNeeded: ($0 &* 2654435761) >> 24) }
+    /// Commands that reached a loader which isn't m-bootloader (must never include 0x23/0x24).
+    var loaderSaw: [UInt8] = []
 
     // Felucca storage
     var feluccaObjects: [UInt8: [UInt8]] = [:]
@@ -36,7 +41,7 @@ final class VirtualFM1: @unchecked Sendable {
 
     init(identity: String) { self.identity = identity }
 
-    var currentIdentity: String { loader ? "ota-" + identity.split(separator: "_")[0] + "_001" : identity }
+    var currentIdentity: String { mboot ? "ota-FM-1_900" : loader ? "ota-" + identity.split(separator: "_")[0] + "_001" : identity }
 
     func reply(_ m: [UInt8]) { link?.toHost.push(m) }
 
@@ -44,6 +49,11 @@ final class VirtualFM1: @unchecked Sendable {
     func handle(_ m: [UInt8]) {
         if m == OTAProtocol.handshakeQuery { reply(OTAProtocol.identityReply(currentIdentity)); return }
         if m == OTAProtocol.upgrade { Task { await self.runUpdate() }; return }
+        if m == MBootProtocol.restart {
+            if mboot { mboot = false; loader = false; Task { await self.reattach() } }
+            return
+        }
+        if loader, let f = MBootProtocol.parseFrame(m), f.cmd != 0x30 { mbootMessage(f.cmd, f.body); return }
         if m.count >= 6, m[1] == 0x7D, m[2] == 0x46, m[3] == 0x4C { felucca(m[4], Array(m[5..<(m.count - 1)])); return }
         if m.count >= 10, m[1] == 0x7D, m[2] == 0x46, m[3] == 0x4D, m[4] == 2 { open(m); return }
         if OTAProtocol.parseRequest(m) == nil { fromHost.push(m) } // OTA responses
@@ -59,9 +69,35 @@ final class VirtualFM1: @unchecked Sendable {
         return Array(u[14..<(14 + len)])
     }
 
+    func mbootMessage(_ cmd: UInt8, _ b: [UInt8]) {
+        guard mboot else { loaderSaw.append(cmd); return }
+        switch cmd {
+        case 0x12:
+            var info = Array("MBOOT".utf8) + [1, 2, 1, 0x0F, 0x98]
+            info += SysExCoding.le32Bytes(UInt32(flash.count)) + SysExCoding.le32Bytes(jedec) + [1, 2, 3, 4, 5, 6, 7, 8, 0, 0]
+            info += Array("2.4-395e6cc".utf8) + [0]
+            reply(MBootProtocol.frame(0x12, info))
+        case 0x23, 0x24:
+            let addr = Int(SysExCoding.le32(b, 1)), n = Int(b[5]) | Int(b[6]) << 8 | Int(b[7]) << 16
+            guard b.count == 8, addr + n <= flash.count, cmd == 0x24 || n <= 512 else { reply(MBootProtocol.frame(0, [1])); return }
+            if cmd == 0x24 { reply(MBootProtocol.frame(0x24, b + SysExCoding.le32Bytes(SysExCoding.crc32(flash[addr..<(addr + n)])))); return }
+            var data = Array(flash[addr..<(addr + n)])
+            if addr == corruptOnce { data[0] ^= 0xFF; corruptOnce = -1 }
+            reply(MBootProtocol.frame(0x23, b + data))
+        default: reply(MBootProtocol.frame(0, [1]))
+        }
+    }
+
     func runUpdate() async {
         if refuse == "app" && !loader { return }
         if refuse == "loader" && loader { return }
+        if nextIsHelper && !loader {
+            for a in stride(from: 0, to: 4096, by: 512) { guard await fetch(UInt32(a), 512) != nil else { return } }
+            _ = await fetch(OTAProtocol.finishCheck, 8)
+            nextIsHelper = false; loader = true; mboot = true
+            await reattach()
+            return
+        }
         if !loader {
             // Step 1: read the header and a few blocks, then stage the loader.
             for a in stride(from: 0, to: 4096, by: 512) { guard await fetch(UInt32(a), 512) != nil else { return } }
@@ -82,6 +118,7 @@ final class VirtualFM1: @unchecked Sendable {
             _ = await fetch(OTAProtocol.finishWrite, 8)
             installed = image
             loader = false
+            mboot = false
             identity = newIdentity ?? identity
             await reattach()
         }

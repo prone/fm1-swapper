@@ -1,0 +1,2 @@
+m-bootloader 2.4-395e6cc by jvitkauskas (MIT, see LICENSE): the RAM stage helper packages for the FM-1.
+Source: https://github.com/jvitkauskas/m-bootloader/releases/tag/v2.4
