@@ -173,6 +173,7 @@ struct RootView: View {
             Tab("Library", systemImage: "square.stack.3d.up", value: 1) { LibraryView() }
             Tab("Pads", systemImage: "square.grid.4x3.fill", value: 2) { PadsView() }
             Tab("Sampler", systemImage: "waveform", value: 4) { SamplerView() }
+            Tab("Firmware Editor", systemImage: "slider.horizontal.below.square.and.square.filled", value: 5) { FirmwareEditorView() }
             Tab("History", systemImage: "clock.arrow.circlepath", value: 3) { HistoryView() }
         }
         .tabViewStyle(.sidebarAdaptable)

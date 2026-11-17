@@ -392,12 +392,8 @@ struct SLOOPSongsSection: View {
     let firmware: Firmware?
     @State private var naming = false
     @State private var name = ""
-    @State private var loading: Backup?
-    @State private var renaming: Backup?
-    @State private var newName = ""
     @State private var checking = false
     @State private var clearCheck: DeviceController.SongCheck?
-    @State private var editing: Backup?
 
     var body: some View {
         Section {
@@ -413,40 +409,16 @@ struct SLOOPSongsSection: View {
                 HStack { Label("Clear the song on the FM-1…", systemImage: "eraser"); if checking { Spacer(); ProgressView() } }
             }
             .disabled(device.busy || checking)
-            ForEach(firmware?.songs ?? []) { s in
-                Button { editing = s } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(s.label).foregroundStyle(.primary)
-                        Text("\(s.date.formatted(date: .abbreviated, time: .shortened)) · \(s.partsSummary.contains("Section") ? sections(s) : "no sections")")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .swipeActions {
-                    Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
-                    Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
-                    Button { loading = s } label: { Label("Load", systemImage: "arrow.up.to.line") }.tint(.blue).disabled(device.busy)
-                }
-                .contextMenu {
-                    Button { editing = s } label: { Label("Open and edit", systemImage: "pianokeys") }
-                    Button { loading = s } label: { Label("Load onto the FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
-                    Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
-                    Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
-                }
-            }
+            let saved = firmware?.songs.count ?? 0
+            LabeledContent("Saved songs", value: saved == 0 ? "none yet" : "\(saved), in Firmware Editor")
         } header: { Text("SLOOP songs") } footer: {
-            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name. Tap a song to review and edit it: its song order, sections and notes, bars copied from one section to another. Send it to the FM-1 from there, or swipe it to Load (stop playback first). Clear empties the FM-1 for a new song and offers to save first; it needs SLOOP 2.7 or later. Saving and loading work with SLOOP 2.3 or later and firmware built on it.")
+            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name; review, edit and load saved songs in the Firmware Editor tab (no FM-1 needed to edit). Clear empties the FM-1 for a new song and offers to save first; it needs SLOOP 2.7 or later. Saving and loading work with SLOOP 2.3 or later and firmware built on it.")
         }
-        .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
         .alert("Save the song", isPresented: $naming) {
             TextField("Name", text: $name)
             Button("Save") { let n = name.trimmingCharacters(in: .whitespaces); Task { await device.saveSong(n.isEmpty ? "Song" : n, context: context) } }
             Button("Cancel", role: .cancel) {}
         } message: { Text("Saves the loop, sections A–D and the song order from the FM-1.") }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Rename") { if let r = renaming, !newName.trimmingCharacters(in: .whitespaces).isEmpty { r.label = newName; try? context.save() } }
-            Button("Cancel", role: .cancel) {}
-        }
         .confirmationDialog(clearTitle, isPresented: Binding(get: { clearCheck != nil }, set: { if !$0 { clearCheck = nil } }),
                             titleVisibility: .visible, presenting: clearCheck) { check in
             if case .saved = check {
@@ -463,12 +435,6 @@ struct SLOOPSongsSection: View {
             case let .failed(m): Text("Couldn't check whether it's saved (\(m)). Save it first to be safe. Clearing erases every note in the loop and sections A–D.")
             }
         }
-        .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
-                            titleVisibility: .visible) {
-            Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
-        } message: {
-            Text("The loop, sections A–D and the song order on the FM-1 are replaced. Save the current song first if you want to keep it.")
-        }
     }
 
     private var clearTitle: String {
@@ -476,12 +442,6 @@ struct SLOOPSongsSection: View {
         return "The song on the FM-1 isn't saved"
     }
     private var autoName: String { "Song \((firmware?.songs.count ?? 0) + 1) · \(Date().formatted(date: .abbreviated, time: .shortened))" }
-
-    private func sections(_ s: Backup) -> String {
-        guard let a = s.archive else { return "" }
-        let used = ["2": "A", "3": "B", "4": "C", "5": "D"].filter { a.part($0.key).map { !$0.data.isEmpty } ?? false }.values.sorted()
-        return used.isEmpty ? "no sections" : "sections " + used.joined(separator: " ")
-    }
 }
 
 struct MBootSection: View {

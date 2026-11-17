@@ -16,6 +16,7 @@
 		392D0E1E4C844B0657015543 /* FirmwareHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 271621E80E8284852D3846F5 /* FirmwareHub.swift */; };
 		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
 		44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90470C94E4420DF4C64A1C8 /* Catalog.swift */; };
+		475A74E975044B9EBFF66CBF /* FirmwareEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DC3F267FFFB444E366B274 /* FirmwareEditorView.swift */; };
 		5DAE0B01A2CE8813F4BE56AD /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A5E1C71BA0DFE8A5B00E28 /* Sampler.swift */; };
 		5DE1664F8208568C4A4F9068 /* emu-bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = F1FE4813BCBEBF76CE951EF7 /* emu-bridge.js */; };
 		72D3482FDC7FBB7ED207FD28 /* FM1Kit in Frameworks */ = {isa = PBXBuildFile; productRef = 4395B0B9B517C853FC6D07D3 /* FM1Kit */; };
@@ -62,6 +63,7 @@
 		A689C414052F8A2578ADFC59 /* SamplerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamplerView.swift; sourceTree = "<group>"; };
 		ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FM1SwapperApp.swift; sourceTree = "<group>"; };
+		B4DC3F267FFFB444E366B274 /* FirmwareEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareEditorView.swift; sourceTree = "<group>"; };
 		C6A8C4B5763FA56BB526B413 /* CheckIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckIn.swift; sourceTree = "<group>"; };
 		D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorView.swift; sourceTree = "<group>"; };
 		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */,
 				D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */,
 				7AB2FE9D3D6A2C95E61CEB08 /* FirmwareDetailView.swift */,
+				B4DC3F267FFFB444E366B274 /* FirmwareEditorView.swift */,
 				52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */,
 				ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */,
 				5C0B929FAAEB090069D5FBE0 /* PadsView.swift */,
@@ -273,6 +276,7 @@
 				8DDDE094A05F790E1A81E301 /* EmulatorView.swift in Sources */,
 				156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */,
 				D1FA7194AFCE043F0EA3D26D /* FirmwareDetailView.swift in Sources */,
+				475A74E975044B9EBFF66CBF /* FirmwareEditorView.swift in Sources */,
 				392D0E1E4C844B0657015543 /* FirmwareHub.swift in Sources */,
 				AAC6325968A95D84A2D5F3A2 /* HistoryView.swift in Sources */,
 				03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */,
