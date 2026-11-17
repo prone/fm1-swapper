@@ -7,7 +7,7 @@
 // The edits match SLOOP's web editor (its piano roll: a NOTE step holds a chord of up to 4 notes, the TIE steps after
 // it hold it, a REST is silence; the drum track is 16 lanes). A pattern is 64 steps at most; a longer song is the
 // sections chained in the song order (16 entries, each 1-64 bars).
-import { DeviceArchive, SLOOP_FORMAT, part, partBytes, sloopLabel } from "./archive";
+import { DeviceArchive, SLOOPArchive, SLOOP_FORMAT, part, partBytes, sloopLabel } from "./archive";
 import { FM1Error } from "./ota";
 
 export const PROJ_MAGIC = 0x46554e36, PROJ_SIZE = 3816;
@@ -302,4 +302,28 @@ export class SongDoc {
     }
     return { ...this.base, created: Date.now() / 1000, parts };
   }
+}
+
+// ---- song files (mirrors SLOOPSongFile in SLOOPSong.swift): a song's objects as a DeviceArchive in JSON, its name
+// in info.name, extension .fm1song. Shared with the iOS app (AirDrop, Files, iCloud Drive).
+export const SONG_EXT = "fm1song";
+const isSongPart = (id: string) => ["0", "1", "2", "3", "4", "5"].includes(id);
+export function songFile(a: DeviceArchive, name: string): { name: string; text: string } {
+  const safe = name.replace(/[/\\:?%*|"<>\n\r\t]/g, "-").trim().slice(0, 80) || "SLOOP song";
+  return { name: `${safe}.${SONG_EXT}`, text: JSON.stringify({ ...a, parts: a.parts.filter((p) => isSongPart(p.id)), info: { ...a.info, name, contents: "song" } }) };
+}
+/** Reads a song file (or a whole SLOOP backup, of which only the song is kept), checked as a load would check it. */
+export function readSongFile(text: string): { archive: DeviceArchive; name: string | null } {
+  let j: DeviceArchive;
+  try { j = JSON.parse(text); } catch { throw new FM1Error("badpkg", "This isn't an FM-1 Swapper song file."); }
+  if (typeof j?.format !== "string" || !Array.isArray(j.parts)) throw new FM1Error("badpkg", "This isn't an FM-1 Swapper song file.");
+  if (j.format !== SLOOP_FORMAT) throw new FM1Error("badpkg", "This file isn't a SLOOP song.");
+  const { name, ...info } = j.info ?? {};
+  const archive: DeviceArchive = { ...j, parts: j.parts.filter((p) => isSongPart(p.id)), info: { ...info, contents: "song" } };
+  SLOOPArchive.restoreOrder(archive);
+  return { archive, name: typeof name === "string" && name.trim() ? name.trim() : null };
+}
+export function sameSong(a: DeviceArchive, b: DeviceArchive) {
+  const key = (x: DeviceArchive) => JSON.stringify(x.parts.filter((p) => isSongPart(p.id)).map((p) => [p.id, p.crc]).sort());
+  return a.format === b.format && key(a) === key(b);
 }

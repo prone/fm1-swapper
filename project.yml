@@ -52,7 +52,17 @@ targets:
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [fwsc]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: org.fm1swapper.song
+            UTTypeDescription: FM-1 Swapper song
+            UTTypeConformsTo: [public.json, public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [fm1song]
         CFBundleDocumentTypes:
+          - CFBundleTypeName: FM-1 Swapper song
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes: [org.fm1swapper.song]
           - CFBundleTypeName: FM-1 firmware package
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner

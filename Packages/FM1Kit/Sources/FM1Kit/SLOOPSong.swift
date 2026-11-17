@@ -449,3 +449,48 @@ public struct SLOOPSongDoc: Equatable, Sendable {
         return a
     }
 }
+
+// MARK: Song files
+
+/// A saved SLOOP song as a file to share between devices (AirDrop, Files, iCloud Drive) and with the web app:
+/// the song's objects (loop, settings, sections A–D) as a DeviceArchive in JSON, its name in `info["name"]`.
+public enum SLOOPSongFile {
+    public static let fileExtension = "fm1song"
+    public static let typeIdentifier = "org.fm1swapper.song"
+
+    /// The file for a song (only its song objects, whatever else the archive holds).
+    public static func encode(_ archive: DeviceArchive, name: String) throws -> Data {
+        var a = archive
+        a.parts = a.parts.filter { UInt8($0.id).map(SLOOPArchive.songIDs.contains) ?? false }
+        a.info["name"] = name
+        a.info["contents"] = "song"
+        return try a.encoded()
+    }
+
+    public static func fileName(_ name: String) -> String {
+        let safe = name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>\n\r\t")).joined(separator: "-")
+            .trimmingCharacters(in: .whitespaces)
+        return "\(safe.isEmpty ? "SLOOP song" : String(safe.prefix(80))).\(fileExtension)"
+    }
+
+    /// Reads a song file (or a whole SLOOP backup, of which only the song is kept), checked as a load would check
+    /// it. Returns the song and the name it was saved under, if the file has one.
+    public static func decode(_ data: Data) throws -> (archive: DeviceArchive, name: String?) {
+        guard var a = try? DeviceArchive.decode(data) else { throw FM1Error.badPackage("This isn't an FM-1 Swapper song file.") }
+        guard a.format == SLOOPArchive.format else { throw FM1Error.badPackage("This file isn't a SLOOP song.") }
+        a.parts = a.parts.filter { UInt8($0.id).map(SLOOPArchive.songIDs.contains) ?? false }
+        _ = try SLOOPArchive.restoreOrder(a)                                  // checksums, loop and settings present
+        let name = a.info["name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        a.info["contents"] = "song"
+        a.info["name"] = nil
+        return (a, name?.isEmpty == false ? name : nil)
+    }
+
+    /// Whether two songs hold the same song data (to skip importing one twice).
+    public static func same(_ a: DeviceArchive, _ b: DeviceArchive) -> Bool {
+        func key(_ x: DeviceArchive) -> [String: UInt32] {
+            Dictionary(x.parts.filter { UInt8($0.id).map(SLOOPArchive.songIDs.contains) ?? false }.map { ($0.id, $0.crc) }, uniquingKeysWith: { a, _ in a })
+        }
+        return a.format == b.format && key(a) == key(b)
+    }
+}

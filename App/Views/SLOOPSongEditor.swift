@@ -29,6 +29,7 @@ struct SLOOPSongEditor: View {
     @State private var closing = false
     @State private var copyName = ""
     @State private var namingCopy = false
+    @State private var sharing: ShareItems?
 
     private var dirty: Bool { doc != saved }
 
@@ -49,6 +50,9 @@ struct SLOOPSongEditor: View {
                     Menu {
                         Button { save() } label: { Label("Save changes", systemImage: "square.and.arrow.down") }.disabled(!dirty)
                         Button { copyName = "\(song.label) (edit)"; namingCopy = true } label: { Label("Save as a new song…", systemImage: "plus.square.on.square") }
+                        Button {
+                            if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
+                        } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
                         Divider()
                         Button { sending = true } label: { Label("Send to FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
                     } label: { Label("Song", systemImage: "ellipsis.circle") }
@@ -74,6 +78,7 @@ struct SLOOPSongEditor: View {
                 Button("Save") { saveCopy() }
                 Button("Cancel", role: .cancel) {}
             }
+            .shareSheet($sharing)
             .task { open() }
         }
     }

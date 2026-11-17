@@ -159,3 +159,39 @@ final class SLOOPSongTests: XCTestCase {
         XCTAssertEqual(doc.archive().part("2")?.data, old)
     }
 }
+
+final class SLOOPSongFileTests: XCTestCase {
+    func testRoundTripKeepsTheNameAndOnlyTheSong() throws {
+        var a = sloopSong(sections: [0, 2])
+        a.parts.append(.init(id: "32", label: "Sample slot USR1", data: Data(repeating: 9, count: 100)))
+        let file = try SLOOPSongFile.encode(a, name: "Night drive")
+        let (back, name) = try SLOOPSongFile.decode(file)
+        XCTAssertEqual(name, "Night drive")
+        XCTAssertNil(back.info["name"])
+        XCTAssertEqual(back.parts.map(\.id), ["0", "1", "2", "3", "4", "5"], "samples aren't part of a song")
+        XCTAssertTrue(SLOOPSongFile.same(back, a))
+        XCTAssertEqual(SLOOPSongFile.fileName("A/B: mix?"), "A-B- mix-.fm1song")
+    }
+
+    func testRefusesOtherFiles() throws {
+        XCTAssertThrowsError(try SLOOPSongFile.decode(Data("{}".utf8)))
+        var felucca = sloopSong(); felucca.format = "felucca-backup"
+        XCTAssertThrowsError(try SLOOPSongFile.decode(felucca.encoded()))
+        var damaged = sloopSong()
+        damaged.parts[0].crc ^= 1
+        XCTAssertThrowsError(try SLOOPSongFile.decode(damaged.encoded()), "a damaged song is refused")
+    }
+
+    func testReadsTheWebAppsJSON() throws {
+        // the web app's DeviceArchive: base64 data, created in seconds since 1970, family as a string
+        let json = """
+        {"format":"sloop-backup","family":"felucca","firmware":"FELUCCA 2.8.5","created":1763350000.5,
+         "parts":[{"id":"0","label":"Loop in progress","data":"\(sloopProject().base64EncodedString())","crc":\(SysExCoding.crc32(sloopProject()))},
+                  {"id":"1","label":"Settings and song order","data":"\(sloopSettings().base64EncodedString())","crc":\(SysExCoding.crc32(sloopSettings()))}],
+         "info":{"contents":"song","name":"From the web"}}
+        """
+        let (a, name) = try SLOOPSongFile.decode(Data(json.utf8))
+        XCTAssertEqual(name, "From the web")
+        XCTAssertNoThrow(try SLOOPSongDoc(a))
+    }
+}

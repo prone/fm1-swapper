@@ -116,3 +116,21 @@ describe("SLOOP songs", () => {
     expect([...partBytes(d.archive().parts.find((p) => p.id === "2")!)]).toEqual([...old]);
   });
 });
+
+describe("song files", () => {
+  it("round-trips with its name, keeps only the song, refuses others", async () => {
+    const { readSongFile, songFile, sameSong } = await import("./sloopsong");
+    const a = song([0, 2]);
+    a.parts.push(part("32", "Sample slot USR1", new Uint8Array(100).fill(9)));
+    const f = songFile(a, "Night drive");
+    expect(f.name).toBe("Night drive.fm1song");
+    const back = readSongFile(f.text);
+    expect(back.name).toBe("Night drive");
+    expect(back.archive.info.name).toBeUndefined();
+    expect(back.archive.parts.map((p) => p.id)).toEqual(["0", "1", "2", "3", "4", "5"]);
+    expect(sameSong(back.archive, a)).toBe(true);
+    expect(() => readSongFile("{}")).toThrow();
+    const bad = song(); bad.parts[0] = { ...bad.parts[0], crc: bad.parts[0].crc ^ 1 };
+    expect(() => readSongFile(JSON.stringify(bad))).toThrow();
+  });
+});

@@ -61,6 +61,10 @@ struct FM1SwapperApp: App {
                 importMessage = "Added “\(kit.name)” to the Sampler."
                 return
             }
+            if SongFiles.isSong(data, fileName: url.lastPathComponent) {
+                importMessage = try SongFiles.add(data, fileName: url.lastPathComponent, context: container.mainContext)
+                return
+            }
             let r = try LibraryImport.add(data, fileName: url.lastPathComponent, context: container.mainContext)
             importMessage = (r.isNew ? "Added \(r.firmware.name) to your library." : "\(r.firmware.name) is already in your library.")
                 + (r.warning.map { "\n\n" + $0 } ?? "")

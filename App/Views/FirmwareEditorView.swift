@@ -45,6 +45,9 @@ struct SLOOPSongsView: View {
     @State private var deleting: Backup?
     @State private var newName = ""
     @State private var search = ""
+    @State private var sharing: ShareItems?
+    @State private var importing = false
+    @State private var message: String?
 
     private var shown: [Backup] {
         search.isEmpty ? songs : songs.filter { $0.label.localizedCaseInsensitiveContains(search) }
@@ -68,10 +71,12 @@ struct SLOOPSongsView: View {
                             Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
                             Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
                             Button { loading = s } label: { Label("Load", systemImage: "arrow.up.to.line") }.tint(.blue)
+                            Button { share(s) } label: { Label("Share", systemImage: "square.and.arrow.up") }.tint(.indigo)
                         }
                         .contextMenu {
                             Button { editing = s } label: { Label("Open and edit", systemImage: "pianokeys") }
                             Button { loading = s } label: { Label("Load onto the FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
+                            Button { share(s) } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
                             Button { duplicate(s) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                             Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
                             Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
@@ -79,11 +84,22 @@ struct SLOOPSongsView: View {
                     }
                 } header: { Text("SLOOP songs") } footer: {
                     if !songs.isEmpty {
-                        Text("Tap a song to review and edit it: the song order, the loop and sections A–D, notes, drums and bars. Changes stay \(CloudSync.whereKept) until you send the song to the FM-1 (from the editor, or swipe → Load, with SLOOP stopped).")
+                        Text("Tap a song to review and edit it: the song order, the loop and sections A–D, notes, drums and bars. Changes stay \(CloudSync.whereKept) until you send the song to the FM-1 (from the editor, or swipe → Load, with SLOOP stopped). To use a song on another iPhone or iPad, or in the web app, share it as a file (AirDrop, Files, iCloud Drive) and open it there.")
                     }
                 }
             }
             .navigationTitle("SLOOP songs")
+            .toolbar {
+                Button { importing = true } label: { Label("Import song files", systemImage: "square.and.arrow.down") }
+            }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.fm1song, .json], allowsMultipleSelection: true) { r in
+                guard case let .success(urls) = r else { return }
+                message = urls.map(importOne).joined(separator: "\n\n")
+            }
+            .shareSheet($sharing)
+            .alert("Song files", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+                Button("OK") { message = nil }
+            } message: { Text(message ?? "") }
             .searchable(text: $search, prompt: "Songs")
             .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
             .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -126,6 +142,20 @@ struct SLOOPSongsView: View {
             parts.append(used.isEmpty ? "no sections" : "sections " + used.joined(separator: " "))
         }
         return parts.joined(separator: " · ")
+    }
+
+    private func share(_ s: Backup) {
+        do { sharing = ShareItems(files: [try SongFiles.file(s)]) } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+    }
+
+    private func importOne(_ url: URL) -> String {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            return try SongFiles.add(try readImport(url, maxBytes: ImportLimit.backup), fileName: url.lastPathComponent, context: context)
+        } catch {
+            return "\(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+        }
     }
 
     private func duplicate(_ s: Backup) {

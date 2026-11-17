@@ -11,6 +11,7 @@
 		156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */; };
 		1DF4A65302F26F191A400B2B /* SLOOPSongEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */; };
 		22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A8C4B5763FA56BB526B413 /* CheckIn.swift */; };
+		2EA31FCE2C3377966DC8311F /* SongFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C6CD44F535661D75F07241 /* SongFiles.swift */; };
 		2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */; };
 		3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2653A28D6F9710CB02DA3504 /* Assets.xcassets */; };
 		392D0E1E4C844B0657015543 /* FirmwareHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 271621E80E8284852D3846F5 /* FirmwareHub.swift */; };
@@ -44,6 +45,7 @@
 		2653A28D6F9710CB02DA3504 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		271621E80E8284852D3846F5 /* FirmwareHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareHub.swift; sourceTree = "<group>"; };
 		34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
+		37C6CD44F535661D75F07241 /* SongFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongFiles.swift; sourceTree = "<group>"; };
 		3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceView.swift; sourceTree = "<group>"; };
 		4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SLOOPSongEditor.swift; sourceTree = "<group>"; };
 		51EBFA2F84608D287E56FA82 /* fm1-stage.fwsc */ = {isa = PBXFileReference; path = "fm1-stage.fwsc"; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 				5974C1423816D3BF46EF38B4 /* Info.plist */,
 				8DF00D4FA675DD34411607CD /* Models.swift */,
 				72A5E1C71BA0DFE8A5B00E28 /* Sampler.swift */,
+				37C6CD44F535661D75F07241 /* SongFiles.swift */,
 				7D20BB46C022437C51B2E0E4 /* Tutorial.swift */,
 				A0CC3A8FE9F3F4906A51793C /* MBoot */,
 				1094DE5081FEF79BA7C47AD7 /* Views */,
@@ -285,6 +288,7 @@
 				1DF4A65302F26F191A400B2B /* SLOOPSongEditor.swift in Sources */,
 				5DAE0B01A2CE8813F4BE56AD /* Sampler.swift in Sources */,
 				B67FA0FED33921D18916E9E2 /* SamplerView.swift in Sources */,
+				2EA31FCE2C3377966DC8311F /* SongFiles.swift in Sources */,
 				DCDBE05F482E16E80BEC84E0 /* SwapSheet.swift in Sources */,
 				954CFFD165B002456D08E2EA /* Tutorial.swift in Sources */,
 				779AEE75851D8D0B9E979669 /* TutorialPlayer.swift in Sources */,

@@ -5,8 +5,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Backup, store, uid } from "../store";
 import { device } from "../device";
-import { readArchiveFile, totalBytes, SLOOP_FORMAT } from "../fm1kit/archive";
-import { Clip, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
+import { totalBytes } from "../fm1kit/archive";
+import { Clip, SONG_EXT, readSongFile, sameSong, songFile, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
 import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 
 export function FirmwareEditor({ lib }: { lib: Library }) {
@@ -52,7 +52,7 @@ function SloopSongs({ lib, back }: { lib: Library; back: () => void }) {
       <h1>SLOOP songs</h1>
       <DeviceBusy s={s} />
       {songs.length > 3 && <input type="text" placeholder="Search songs" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} style={{ width: "100%", marginBottom: 10 }} />}
-      {!songs.length && <div class="card dim">No SLOOP songs yet. With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1, or import a song file below.</div>}
+      {!songs.length && <div class="card dim">No SLOOP songs yet. With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1, or import a song file below (Share song file in the iPhone or iPad app).</div>}
       {shown.length > 0 && <div class="rows">
         {shown.map((b) => (
           <div key={b.id}>
@@ -77,26 +77,31 @@ function SloopSongs({ lib, back }: { lib: Library; back: () => void }) {
                 <button class="linkbtn small" disabled={busy} onClick={() => setConfirm(b.id)}>Load</button>
                 <button class="linkbtn small" onClick={() => void store.saveBackup({ ...b, id: uid(), label: `${b.label} copy`, date: Date.now() })}>Duplicate</button>
                 <button class="linkbtn small" onClick={() => { setNewName(b.label); setRenaming(b.id); }}>Rename</button>
-                <button class="linkbtn small" onClick={() => b.archive && saveFile(`${b.label.replace(/[^\w .-]+/g, "_")}.sloop-song.json`, JSON.stringify(b.archive), "application/json")}>Download</button>
+                <button class="linkbtn small" onClick={() => { if (b.archive) { const f = songFile(b.archive, b.label); saveFile(f.name, f.text, "application/json"); } }}>Download</button>
                 <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => window.confirm(`Delete “${b.label}”? The FM-1 isn't changed.`) && void store.deleteBackup(b)}>Delete</button>
               </>
             )}
           </div>
         ))}
       </div>}
-      <h2>Import a song file</h2>
-      <FileDrop accept=".json" onFiles={async (files) => {
-        setMsg(null);
+      <h2>Import song files</h2>
+      <FileDrop accept={`.${SONG_EXT},.json`} multiple onFiles={async (files) => {
+        const out: string[] = [];
         for (const f of files) {
           try {
-            const a = readArchiveFile(await f.text());
-            if (a.format !== SLOOP_FORMAT) throw new Error(`${f.name} isn't a SLOOP song or backup.`);
-            await store.saveBackup({ id: uid(), firmwareId: "", date: Date.now(), identity: a.info.identity ?? a.firmware, family: a.family, kind: "song",
-              label: f.name.replace(/\.sloop-song\.json$|\.json$/i, ""), sizeBytes: totalBytes(a), partsSummary: `${a.parts.length} parts`, archive: a });
-          } catch (e) { setMsg((e as Error).message); }
+            const { archive, name } = readSongFile(await f.text());
+            const label = name ?? f.name.replace(/\.(fm1song|json)$/i, "").replace(/\.sloop-song$/i, "");
+            const twin = (await store.backups()).find((x) => x.kind === "song" && x.archive && sameSong(x.archive, archive));
+            if (twin) { out.push(`“${twin.label}” is already here, with the same notes.`); continue; }
+            const fw = lib.firmwares.find((x) => x.product === (archive.info.identity ?? archive.firmware));
+            await store.saveBackup({ id: uid(), firmwareId: fw?.id ?? "", date: Date.now(), identity: archive.info.identity ?? archive.firmware, family: archive.family, kind: "song",
+              label, sizeBytes: totalBytes(archive), partsSummary: `${archive.parts.length} parts`, archive });
+            out.push(`Added “${label}”.`);
+          } catch (e) { out.push(`${f.name}: ${(e as Error).message}`); }
         }
-      }}>A .sloop-song.json downloaded from this app.</FileDrop>
-      {msg && <div class="banner warn">{msg}</div>}
+        setMsg(out.join(" "));
+      }}>A <b>.{SONG_EXT}</b> song file shared from the iPhone or iPad app (or downloaded here). Older .sloop-song.json downloads work too.</FileDrop>
+      {msg && <div class="banner ok">{msg}</div>}
     </>
   );
 }
@@ -200,6 +205,7 @@ function SongEditor({ song, close }: { song: Backup; close: () => void }) {
         <button class="btn small" disabled={!undo.current.length} onClick={doUndo}>Undo</button>
         <button class="btn small" disabled={!dirty} onClick={() => void save()}>Save changes</button>
         <button class="btn small" onClick={() => void saveCopy()}>Save as new…</button>
+        <button class="btn small" onClick={() => { const f = songFile(doc.archive(), song.label); saveFile(f.name, f.text, "application/json"); }}>Download</button>
         <button class="btn small primary" disabled={!!s.busy} onClick={() => setSending(true)}>Send to FM-1…</button>
       </div>
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
