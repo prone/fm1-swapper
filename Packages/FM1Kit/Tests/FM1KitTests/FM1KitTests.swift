@@ -449,6 +449,25 @@ final class MBootTests: XCTestCase {
         XCTAssertFalse(dev.loader)
     }
 
+    func testCommunityFirmwareOutsideTheRangesGetsTheListedHelper() {
+        func kind(_ t: String) -> MBootProtocol.Helper? { MBootProtocol.helper(for: DeviceIdentity(text: t)!.family) }
+        XCTAssertEqual(kind("FM-1_015"), .stage)
+        XCTAssertEqual(kind("FM-1_918"), .listed)
+        XCTAssertEqual(kind("FM-1_91061"), .listed)      // Melodee
+        XCTAssertEqual(kind("FM-1_7010302"), .listed)    // AMB-1
+        XCTAssertNil(kind("FM-1_8000014"))               // FM1 Open: untested
+        XCTAssertNil(kind("ota-FM-1_001"))
+    }
+
+    func testRefusedHelperSaysNothingWasWritten() async throws {
+        let dev = VirtualFM1(identity: "FM-1_91061")
+        dev.refuse = "app"
+        let up = OTAUpdater(provider: SimProvider(device: dev), timing: .fast)
+        do { _ = try await up.startHelper(try FirmwarePackage(data: makePackage(product: "FM-1_099", size: 9000)), accept: accept); XCTFail("should refuse") }
+        catch let e as FM1Error { XCTAssertEqual(e, .unsupported(OTAProtocol.helperRefused)) }
+        XCTAssertFalse(dev.loader)
+    }
+
     func testNeverReadsFromAnUpdaterThatIsNotMBoot() async throws {
         let dev = VirtualFM1(identity: "FM-1_015")
         dev.loader = true

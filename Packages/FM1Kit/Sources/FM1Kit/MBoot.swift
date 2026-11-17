@@ -28,11 +28,14 @@ public enum MBootProtocol {
     }
 
     /// Which helper a running firmware accepts, or nil when it isn't known to accept one (spec §11.7): M-VAVE's firmware
-    /// takes the plain one; Felucca-family firmware only the "listed" one. Others aren't sent the message until tested.
+    /// takes the plain one; Felucca-family firmware only the "listed" one. Community firmware outside the number ranges
+    /// (Melodee `FM-1_91061`, AMB-1 `FM-1_7010302`, X0X `FM-1_9010202`) is almost all Felucca-based, so it gets the
+    /// listed one too; firmware with M-VAVE's update service refuses that package without writing anything. FM1 Open
+    /// isn't sent the message until tested.
     public static func helper(for family: FirmwareFamily) -> Helper? {
         switch family {
         case .official: .stage
-        case .felucca: .listed
+        case .felucca, .unknown: .listed
         default: nil
         }
     }

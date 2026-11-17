@@ -13,6 +13,7 @@ public enum OTAProtocol {
     public static let finishCheck: UInt32 = 0xE000_0000
     public static let finishWrite: UInt32 = 0xF000_0000
     public static let maxData = 512
+    public static let helperRefused = "This firmware didn't accept m-bootloader's helper. Nothing was written, and it keeps running as before."
 
     public struct ReadRequest: Equatable, Sendable { public let flags: UInt8; public let addr: UInt32; public let len: Int }
 
@@ -214,7 +215,8 @@ public final class OTAUpdater: @unchecked Sendable {
     /// `MBOOT` (flash chip, full flash reads, installs). `accept` guards which running firmware may receive it.
     public func startHelper(_ package: FirmwarePackage, accept: (DeviceIdentity) -> Bool,
                             onStep: @escaping @Sendable (UpdateStep) -> Void = { _ in }) async throws -> MBoot {
-        try await stageOne(package, image: package.logicalImage, onStep: onStep, accept: accept)
+        do { try await stageOne(package, image: package.logicalImage, onStep: onStep, accept: accept) }
+        catch FM1Error.refused(inLoader: false) { throw FM1Error.unsupported(OTAProtocol.helperRefused) }
         onStep(.loader)
         await sleep(timing.beforeLoader)
         let end = Date().addingTimeInterval(timing.waitLoader)

@@ -22,9 +22,11 @@ export type HelperKind = keyof typeof HELPERS;
 
 /** Which helper package a running firmware accepts, or null when it isn't known to accept one (spec §11.7):
  *  M-VAVE's firmware takes the plain one; Felucca-family firmware (Felucca, SLOOP, Melodee, ChoralRoot…) only the
- *  "listed" one. FM1 Open and others aren't sent the message until tested. */
+ *  "listed" one. Community firmware outside the number ranges (Melodee FM-1_91061, AMB-1 FM-1_7010302, X0X
+ *  FM-1_9010202) is almost all Felucca-based, so it gets the listed one too; firmware with M-VAVE's update service
+ *  refuses that package without writing anything. FM1 Open isn't sent the message until tested. */
 export function helperFor(family: Family): HelperKind | null {
-  return family === "official" ? "stage" : family === "felucca" ? "listed" : null;
+  return family === "official" ? "stage" : family === "felucca" || family === "unknown" ? "listed" : null;
 }
 
 export const RESTART = [0xf0, 0x22, 0x24, 0x35, 0x7e, 0xf7];

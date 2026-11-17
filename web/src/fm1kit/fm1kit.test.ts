@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { crc32, le32Bytes, maskPack, maskUnpack, pack7, u32From7, u32To7, unpack7, unpack7Strict } from "./sysex";
 import { familyOf, logicalImage, parseIdentity, readPackage } from "./package";
-import { DEFAULT_TIMING, FM1Error, HANDSHAKE, Timing, UPGRADE, Updater, identityReply, parseIdentityReply, parseRequest, request } from "./ota";
+import { DEFAULT_TIMING, FM1Error, HANDSHAKE, HELPER_REFUSED, Timing, UPGRADE, Updater, identityReply, parseIdentityReply, parseRequest, request } from "./ota";
 import { Inbox, PortCandidate, PortProvider, SysExLink } from "./midi";
 import { MBoot, chipOfJedec, frame, helperFor, parseFrame } from "./mboot";
 import { DeviceArchive, FELUCCA_IDS, FM1OpenArchive, FeluccaArchive, captureArchive, part, partBytes, readArchiveFile, restoreArchive } from "./archive";
@@ -293,6 +293,22 @@ describe("m-bootloader helper", () => {
   it("isn't sent to firmware not known to accept it", async () => {
     const dev = new VirtualFM1("FM-1_8000014"); dev.nextIsHelper = true;
     await expect(new Updater(new SimProvider(dev), FAST).startHelper(await helperPkg(), accept)).rejects.toMatchObject({ code: "unsupported" });
+    expect(dev.loader).toBe(false);
+  });
+
+  it("gives community firmware outside the ranges the listed helper", () => {
+    const kind = (t: string) => helperFor(familyOf(parseIdentity(t)!));
+    expect(kind("FM-1_015")).toBe("stage");
+    expect(kind("FM-1_918")).toBe("listed");
+    expect(kind("FM-1_91061")).toBe("listed");      // Melodee
+    expect(kind("FM-1_7010302")).toBe("listed");    // AMB-1
+    expect(kind("FM-1_8000014")).toBeNull();        // FM1 Open: untested
+    expect(kind("ota-FM-1_001")).toBeNull();
+  });
+
+  it("says nothing was written when firmware refuses the helper", async () => {
+    const dev = new VirtualFM1("FM-1_91061"); dev.refuse = "app";
+    await expect(new Updater(new SimProvider(dev), FAST).startHelper(await helperPkg(), accept)).rejects.toMatchObject({ code: "nohelper", message: HELPER_REFUSED });
     expect(dev.loader).toBe(false);
   });
 

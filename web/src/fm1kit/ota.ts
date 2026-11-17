@@ -15,6 +15,8 @@ export const FINISH_CHECK = 0xe0000000, FINISH_WRITE = 0xf0000000, MAX_DATA = 51
 
 export const RESCUE_URL = "https://thefirmwarehub.com/tools/rescue/#chip";
 
+export const HELPER_REFUSED = "This firmware didn't accept m-bootloader's helper. Nothing was written, and it keeps running as before.";
+
 export class FM1Error extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
@@ -194,7 +196,11 @@ export class Updater {
   /** Sends m-bootloader's helper (a RAM stage) as an update and connects to it once it runs. The FM-1 then answers
    *  `MBOOT`: flash chip, full flash reads, installs. `accept` guards which running firmware may receive it. */
   async startHelper(pkg: FirmwarePackage, accept: (id: Identity) => boolean, onStep: (s: Step) => void = () => {}): Promise<{ link: SysExLink; mboot: MBoot }> {
-    await this.stageOne(pkg, logicalImage(pkg.bytes), onStep, accept);
+    try { await this.stageOne(pkg, logicalImage(pkg.bytes), onStep, accept); }
+    catch (e) {
+      if (e instanceof FM1Error && e.code === "refused") throw new FM1Error("nohelper", HELPER_REFUSED);
+      throw e;
+    }
     onStep({ kind: "loader" });
     await sleep(this.timing.beforeLoader);
     const end = Date.now() + this.timing.waitLoader;
