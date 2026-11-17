@@ -2,16 +2,18 @@
 // Copyright (C) 2026 FM-1 Swapper contributors
 import Foundation
 
-/// A SLOOP song as data you can edit: the loop in progress, sections A–D and the song order, read from a saved
-/// song (or a SLOOP backup) and written back as one. The layouts follow SLOOP 2.6 and later (isod89/sloop-fm1
-/// `firmware/src/project.c` project_t "FUN6", `core.h` step_t / dstep_t, `arranger.h` arr_config_t at bytes 48–83 of
-/// the settings, the same bytes SLOOP's own web editor edits). Older formats are left as they are and not edited.
-///
-/// The edits match SLOOP's web editor (its piano roll: a NOTE step holds a chord of up to 4 notes, the TIE steps
-/// after it hold it, a REST is silence; the drum track is 16 lanes). Every pattern is at most 64 steps, so a section is
-/// a few bars; a longer song is the sections chained in the song order (16 entries, each 1–64 bars).
+// A SLOOP song as data you can edit: the loop in progress, sections A–D and the song order, read from a saved
+// song (or a SLOOP backup) and written back as one. The layouts follow SLOOP 2.6 and later (isod89/sloop-fm1
+// `firmware/src/project.c` project_t "FUN6", `core.h` step_t / dstep_t, `arranger.h` arr_config_t at bytes 48–83 of
+// the settings, the same bytes SLOOP's own web editor edits). Older formats are left as they are and not edited.
+//
+// The edits match SLOOP's web editor (its piano roll: a NOTE step holds a chord of up to 4 notes, the TIE steps
+// after it hold it, a REST is silence; the drum track is 16 lanes). Every pattern is at most 64 steps, so a section is
+// a few bars; a longer song is the sections chained in the song order (16 entries, each 1–64 bars).
+
 // MARK: Sections (project_t)
 
+/// A section (or the loop in progress): SLOOP's format-6 project, 4 tracks.
 public struct SLOOPPattern: Equatable, Sendable {
     public static let magic: UInt32 = 0x4655_4E36          // "FUN6"
     public static let size = 3816
@@ -47,8 +49,6 @@ public struct SLOOPPattern: Equatable, Sendable {
 
     /// How many bars the section plays as a loop: its longest track (SLOOP's section_bars).
     public var bars: Int { max(1, min(64, (0..<4).map { self[track: $0].bars }.max() ?? 1)) }
-
-    public var isSilent: Bool { (0..<4).allSatisfy { self[track: $0].isEmpty } }
 
     static func u32(_ b: [UInt8], _ at: Int) -> UInt32 {
         UInt32(b[at]) | UInt32(b[at + 1]) << 8 | UInt32(b[at + 2]) << 16 | UInt32(b[at + 3]) << 24
@@ -121,12 +121,10 @@ public struct SLOOPTrack: Equatable, Sendable {
     /// The drum track's 16 sounds, as SLOOP names them (one per white key).
     public static let drumLanes = ["KICK", "KICK 2", "SNARE", "CLAP", "HAT", "OPEN HAT", "PEDAL", "RIM", "SNARE 2",
                                    "LOW TOM", "HI TOM", "CRASH", "RIDE", "SHAKER", "CONGA", "COWBELL"]
-    static let lenAt = 29 * 2, divAt = 30 * 2, engineAt = 132, stepsAt = 134, mfAt = 774, locksAt = 838, nLocks = 24
+    static let lenAt = 29 * 2, divAt = 30 * 2, stepsAt = 134, mfAt = 774, locksAt = 838, nLocks = 24
 
     public internal(set) var raw: [UInt8]
     public let isDrum: Bool
-
-    public var engine: Int { Int(raw[Self.engineAt]) }
 
     /// LEN: the steps the pattern plays (1–64).
     public var length: Int {
@@ -144,18 +142,21 @@ public struct SLOOPTrack: Equatable, Sendable {
     mutating func setStep(_ i: Int, _ s: SLOOPStep) { raw.replaceSubrange(Self.stepsAt + i * 10 ..< Self.stepsAt + i * 10 + 10, with: s.b) }
     var empty: SLOOPStep { isDrum ? .emptyDrum : .rest }
 
-    public var isEmpty: Bool {
-        (0..<length).allSatisfy { i in let s = step(i); return isDrum ? s.drumLanes == 0 : !s.isNote }
-    }
+    // Reads of one step's bytes in place (no allocation: the grids and the loops below call them per step).
+    private func byte(_ i: Int, _ k: Int) -> UInt8 { raw[Self.stepsAt + i * 10 + k] }
+    func isNote(_ i: Int) -> Bool { byte(i, 5) == 0 && byte(i, 4) > 0 }
+    func isTie(_ i: Int) -> Bool { byte(i, 5) == 1 }
+    /// Whether drum `lane` plays on step `i`.
+    public func drum(at i: Int, lane: Int) -> Bool { (byte(i, lane >> 3) >> (lane & 7)) & 1 == 1 }
 
     // MARK: Synth track: the piano roll (SLOOP's web editor, ROLL)
 
     public var chords: [SLOOPChord] {
         guard !isDrum else { return [] }
         var out: [SLOOPChord] = []
-        for i in 0..<length where step(i).isNote {
+        for i in 0..<length where isNote(i) {
             var d = 1
-            while i + d < length, step(i + d).isTie { d += 1 }
+            while i + d < length, isTie(i + d) { d += 1 }
             let s = step(i)
             out.append(SLOOPChord(at: i, length: d, notes: s.notes, velocity: s.velocity))
         }
@@ -166,9 +167,8 @@ public struct SLOOPTrack: Equatable, Sendable {
     public func owner(_ i: Int) -> Int? {
         var k = i
         while k >= 0 {
-            let s = step(k)
-            if s.isNote { return k }
-            if !s.isTie { return nil }
+            if isNote(k) { return k }
+            if !isTie(k) { return nil }
             k -= 1
         }
         return nil
@@ -176,7 +176,7 @@ public struct SLOOPTrack: Equatable, Sendable {
 
     private mutating func cutTies(from end: Int) {
         var k = end
-        while k < length, step(k).isTie { setStep(k, .rest); k += 1 }
+        while k < length, isTie(k) { setStep(k, .rest); k += 1 }
     }
 
     /// Puts `pitch` at step `at` for `steps` steps. On a chord's first step it joins the chord (4 notes at most);
@@ -191,7 +191,7 @@ public struct SLOOPTrack: Equatable, Sendable {
         }
         setStep(at, .note(pitch & 127))
         var k = 1
-        while k < dur, at + k < length, !step(at + k).isNote { setStep(at + k, .tie); k += 1 }
+        while k < dur, at + k < length, !isNote(at + k) { setStep(at + k, .tie); k += 1 }
         cutTies(from: at + k)
     }
 
@@ -202,18 +202,6 @@ public struct SLOOPTrack: Equatable, Sendable {
         guard s.isNote, s.notes.contains(pitch) else { return }
         let left = s.notes.filter { $0 != pitch }
         if left.isEmpty { setStep(at, .rest); cutTies(from: at + 1) } else { var n = s; n.setNotes(left); setStep(at, n) }
-    }
-
-    /// The chord at `at` lasts `steps` steps: shorter leaves rests, longer ties over the rests up to the next chord.
-    public mutating func resize(at: Int, steps dur: Int) {
-        guard !isDrum, at >= 0, at < length, step(at).isNote else { return }
-        var cur = 1
-        while at + cur < length, step(at + cur).isTie { cur += 1 }
-        let d = max(1, min(dur, length - at))
-        if d < cur { for k in d..<cur { setStep(at + k, .rest) } } else {
-            var k = cur
-            while k < d, !step(at + k).isNote { setStep(at + k, .tie); k += 1 }
-        }
     }
 
     // MARK: Drum track
@@ -278,6 +266,7 @@ public struct SLOOPTrack: Equatable, Sendable {
             raw.replaceSubrange(Self.locksAt + free * 4 ..< Self.locksAt + free * 4 + 4, with: [UInt8(at + l.step), l.param] + l.val)
         }
         if at + n > length { length = at + n }
+        cutTies(from: at + n)                         // a chord the clip cut into doesn't run on into its last note
         tidy()
         return true
     }
@@ -298,7 +287,6 @@ public struct SLOOPTrack: Equatable, Sendable {
         let r = r.clamped(to: 0..<length)
         guard !r.isEmpty else { return }
         let newLength = max(1, length - r.count)
-        clearExtras(r)
         move(from: r.upperBound, to: r.lowerBound)
         length = newLength
         tidy()
@@ -330,10 +318,14 @@ public struct SLOOPTrack: Equatable, Sendable {
         }
     }
 
-    /// A tie with no chord before it (left by a cut or a paste) becomes a rest.
+    /// A tie with no chord before it (left by a cut or a paste) becomes a rest: one pass, tracking whether a chord
+    /// is still sounding.
     mutating func tidy() {
         guard !isDrum else { return }
-        for i in 0..<Self.maxSteps where step(i).isTie && owner(i) == nil { setStep(i, .rest) }
+        var sounding = false
+        for i in 0..<Self.maxSteps {
+            if isNote(i) { sounding = true } else if isTie(i) { if !sounding { setStep(i, .rest) } } else { sounding = false }
+        }
     }
 }
 
@@ -479,7 +471,7 @@ public enum SLOOPSongFile {
         guard var a = try? DeviceArchive.decode(data) else { throw FM1Error.badPackage("This isn't an FM-1 Swapper song file.") }
         guard a.format == SLOOPArchive.format else { throw FM1Error.badPackage("This file isn't a SLOOP song.") }
         a.parts = a.parts.filter { UInt8($0.id).map(SLOOPArchive.songIDs.contains) ?? false }
-        _ = try SLOOPArchive.restoreOrder(a)                                  // checksums, loop and settings present
+        _ = try SLOOPArchive.restoreOrder(a)                                  // checksums, and the loop is there
         let name = a.info["name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         a.info["contents"] = "song"
         a.info["name"] = nil

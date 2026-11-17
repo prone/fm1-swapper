@@ -70,10 +70,19 @@ export function emulatorSaveText(pkg: Uint8Array, hash: string, name: string, s:
   return JSON.stringify({ format: "fm1-emulator-save", version: 1, hash, name, package: toB64(pkg),
     sectors: [...s.keys()].sort((a, b) => a - b).map((at) => ({ at, data: toB64(s.get(at)!) })) });
 }
+/** The sectors of an emulator save, checked as fm1-emu checks them (aligned, in range, 4 KB each, 256 at most). */
 export function sectorsOfSave(text: string): Sectors {
   const j = JSON.parse(text);
-  if (j?.format !== "fm1-emulator-save" || !Array.isArray(j.sectors)) throw new FM1Error("badpkg", "Not an emulator save.");
-  return new Map(j.sectors.map((x: { at: number; data: string }) => [x.at, fromB64(x.data)]));
+  if (j?.format !== "fm1-emulator-save" || !Array.isArray(j.sectors) || j.sectors.length > 256) throw new FM1Error("badpkg", "Not an emulator save.");
+  const s: Sectors = new Map();
+  for (const x of j.sectors) {
+    const data = typeof x?.data === "string" ? fromB64(x.data) : null;
+    if (!Number.isInteger(x?.at) || x.at < 0 || x.at >= 1 << 20 || x.at % SECTOR || s.has(x.at) || data?.length !== SECTOR) {
+      throw new FM1Error("badpkg", "The emulator save is damaged.");
+    }
+    s.set(x.at, data);
+  }
+  return s;
 }
 
 /** The sectors fm1-emu keeps for a package in this browser (its IndexedDB "fm1-emulator", same origin), if any. */

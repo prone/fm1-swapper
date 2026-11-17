@@ -51,6 +51,13 @@ describe("SLOOP songs", () => {
     expect(t.chords.map((c) => c.at)).toEqual([2]);
   });
 
+  it("cuts a held chord where a paste lands, as placing a note does", () => {
+    const t = Pattern.parse(project())!.track(0), one = Pattern.parse(project())!.track(0);
+    t.place(60, 0, 16); one.place(64, 0, 1);
+    t.paste(one.copy(0, 1), 4);
+    expect(t.chords.map((c) => c.length)).toEqual([4, 1]);
+  });
+
   it("toggles drum lanes", () => {
     const t = Pattern.parse(project())!.track(3);
     t.toggleDrum(9, 4);

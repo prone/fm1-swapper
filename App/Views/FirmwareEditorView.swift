@@ -54,94 +54,77 @@ struct SLOOPSongsView: View {
     }
 
     var body: some View {
-            List {
-                Section {
-                    if songs.isEmpty {
-                        ContentUnavailableView("No SLOOP songs yet", systemImage: "music.note.list",
-                                               description: Text("With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1. Saved songs appear here, and you can edit them without the FM-1."))
-                    }
-                    ForEach(shown) { s in
-                        Button { editing = s } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(s.label).foregroundStyle(.primary)
-                                Text(detail(s)).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .swipeActions {
-                            Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
-                            Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
-                            Button { loading = s } label: { Label("Load", systemImage: "arrow.up.to.line") }.tint(.blue)
-                            Button { share(s) } label: { Label("Share", systemImage: "square.and.arrow.up") }.tint(.indigo)
-                        }
-                        .contextMenu {
-                            Button { editing = s } label: { Label("Open and edit", systemImage: "pianokeys") }
-                            Button { loading = s } label: { Label("Load onto the FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
-                            Button { share(s) } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
-                            Button { duplicate(s) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-                            Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
-                            Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
+        List {
+            Section {
+                if songs.isEmpty {
+                    ContentUnavailableView("No SLOOP songs yet", systemImage: "music.note.list",
+                                           description: Text("With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1. Saved songs appear here, and you can edit them without the FM-1."))
+                }
+                ForEach(shown) { s in
+                    Button { editing = s } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.label).foregroundStyle(.primary)
+                            Text(detail(s)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                } header: { Text("SLOOP songs") } footer: {
-                    if !songs.isEmpty {
-                        Text("Tap a song to review and edit it: the song order, the loop and sections A–D, notes, drums and bars. Changes stay \(CloudSync.whereKept) until you send the song to the FM-1 (from the editor, or swipe → Load, with SLOOP stopped). To use a song on another iPhone or iPad, or in the web app, share it as a file (AirDrop, Files, iCloud Drive) and open it there.")
+                    .swipeActions {
+                        Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
+                        Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
+                        Button { loading = s } label: { Label("Load", systemImage: "arrow.up.to.line") }.tint(.blue)
+                        Button { share(s) } label: { Label("Share", systemImage: "square.and.arrow.up") }.tint(.indigo)
+                    }
+                    .contextMenu {
+                        Button { editing = s } label: { Label("Open and edit", systemImage: "pianokeys") }
+                        DeviceIdleButton("Load onto the FM-1…", systemImage: "arrow.up.to.line") { loading = s }
+                        Button { share(s) } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
+                        Button { duplicate(s) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                        Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
+                        Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
                     }
                 }
+            } header: { Text("SLOOP songs") } footer: {
+                if !songs.isEmpty {
+                    Text("Tap a song to review and edit it: the song order, the loop and sections A–D, notes, drums and bars. Changes stay \(CloudSync.whereKept) until you send the song to the FM-1 (from the editor, or swipe → Load, with SLOOP stopped). To use a song on another iPhone or iPad, or in the web app, share it as a file (AirDrop, Files, iCloud Drive) and open it there.")
+                }
             }
-            .navigationTitle("SLOOP songs")
-            .toolbar {
-                Button { importing = true } label: { Label("Import song files", systemImage: "square.and.arrow.down") }
-            }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.fm1song, .json], allowsMultipleSelection: true) { r in
-                guard case let .success(urls) = r else { return }
-                message = urls.map(importOne).joined(separator: "\n\n")
-            }
-            .shareSheet($sharing)
-            .alert("Song files", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-                Button("OK") { message = nil }
-            } message: { Text(message ?? "") }
-            .searchable(text: $search, prompt: "Songs")
-            .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
-            .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-                TextField("Name", text: $newName)
-                Button("Rename") { if let r = renaming, !newName.trimmingCharacters(in: .whitespaces).isEmpty { r.label = newName; try? context.save() } }
-                Button("Cancel", role: .cancel) {}
-            }
-            .confirmationDialog(deleting.map { "Delete \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                                titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { if let d = deleting { context.delete(d); try? context.save() } }
-            } message: { Text("The saved song is removed from the app. The FM-1 isn't changed.") }
-            .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
-                                titleVisibility: .visible) {
-                Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
-            } message: {
-                Text("Needs the FM-1 connected with SLOOP, stopped. The loop, sections A–D and the song order on the FM-1 are replaced: save its current song first (Device tab) if you want to keep it.")
-            }
-            .safeAreaInset(edge: .bottom) { status }
-    }
-
-    /// The result of a load, shown here too so it isn't only on the Device tab.
-    @ViewBuilder private var status: some View {
-        switch device.phase {
-        case let .working(title, detail, _) where title == "Load song":
-            Label(detail, systemImage: "hourglass").banner()
-        case let .finished(title, detail) where title == "Load song":
-            Label(detail, systemImage: "checkmark.circle").banner()
-        case let .failed(title, detail) where title == "Load song":
-            Label(detail, systemImage: "exclamationmark.triangle").foregroundStyle(.red).banner()
-        default:
-            EmptyView()
         }
+        .navigationTitle("SLOOP songs")
+        .toolbar {
+            Button { importing = true } label: { Label("Import song files", systemImage: "square.and.arrow.down") }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.fm1song, .json], allowsMultipleSelection: true) { r in
+            guard case let .success(urls) = r else { return }
+            message = urls.map(importOne).joined(separator: "\n\n")
+        }
+        .shareSheet($sharing)
+        .alert("Song files", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+            Button("OK") { message = nil }
+        } message: { Text(message ?? "") }
+        .searchable(text: $search, prompt: "Songs")
+        .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Rename") { let n = newName.trimmingCharacters(in: .whitespaces); if let r = renaming, !n.isEmpty { r.label = n; try? context.save() } }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(deleting.map { "Delete \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { if let d = deleting { context.delete(d); try? context.save() } }
+        } message: { Text("The saved song is removed from the app. The FM-1 isn't changed.") }
+        .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
+                            titleVisibility: .visible) {
+            Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
+        } message: {
+            Text("Needs the FM-1 connected with SLOOP, stopped. The loop, sections A–D and the song order on the FM-1 are replaced: save its current song first (Device tab) if you want to keep it.")
+        }
+        .safeAreaInset(edge: .bottom) { LoadStatus() }
     }
 
+    /// The row's second line, from stored fields only (decoding each song's payload per row is slow).
     private func detail(_ s: Backup) -> String {
-        var parts = [s.date.formatted(date: .abbreviated, time: .shortened)]
-        if let fw = s.firmware?.name { parts.append(fw) }
-        if let a = s.archive {
-            let used = ["2": "A", "3": "B", "4": "C", "5": "D"].filter { a.part($0.key).map { !$0.data.isEmpty } ?? false }.values.sorted()
-            parts.append(used.isEmpty ? "no sections" : "sections " + used.joined(separator: " "))
-        }
-        return parts.joined(separator: " · ")
+        let used = ["A", "B", "C", "D"].filter { s.partsSummary.contains("Section \($0)") }
+        return ([s.date.formatted(date: .abbreviated, time: .shortened), s.firmware?.name].compactMap { $0 }
+                + [used.isEmpty ? "no sections" : "sections " + used.joined(separator: " ")]).joined(separator: " · ")
     }
 
     private func share(_ s: Backup) {
@@ -161,8 +144,44 @@ struct SLOOPSongsView: View {
     private func duplicate(_ s: Backup) {
         guard let a = s.archive, let b = try? Backup.from(a, label: "\(s.label) copy", kind: "song") else { return }
         b.firmware = s.firmware
+        b.date = Date()
         context.insert(b)
         try? context.save()
+    }
+}
+
+/// What the FM-1 is doing, on its own: only this view redraws on each progress tick.
+struct DeviceProgressLabel: View {
+    @Environment(DeviceController.self) private var device
+    var body: some View {
+        if case let .working(title, detail, _) = device.phase {
+            Label("\(title): \(detail)", systemImage: "hourglass").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A button that's off while the FM-1 is busy (reads the device itself, so the view around it doesn't redraw).
+struct DeviceIdleButton: View {
+    @Environment(DeviceController.self) private var device
+    let title: String, systemImage: String, action: () -> Void
+    init(_ title: String, systemImage: String, action: @escaping () -> Void) { self.title = title; self.systemImage = systemImage; self.action = action }
+    var body: some View { Button(action: action) { Label(title, systemImage: systemImage) }.disabled(device.busy) }
+}
+
+/// The result of a song load, at the bottom of the songs list.
+private struct LoadStatus: View {
+    @Environment(DeviceController.self) private var device
+    var body: some View {
+        switch device.phase {
+        case let .working(title, detail, _) where title == "Load song":
+            Label(detail, systemImage: "hourglass").banner()
+        case let .finished(title, detail) where title == "Load song":
+            Label(detail, systemImage: "checkmark.circle").banner()
+        case let .failed(title, detail) where title == "Load song":
+            Label(detail, systemImage: "exclamationmark.triangle").foregroundStyle(.red).banner()
+        default:
+            EmptyView()
+        }
     }
 }
 

@@ -41,6 +41,9 @@ public final class SysExInbox: @unchecked Sendable {
     private var waiter: (id: UInt64, cont: CheckedContinuation<[UInt8]?, Never>)?
     private var nextID: UInt64 = 0
 
+    /// Messages kept while no one is reading (the oldest go first).
+    static let maxQueued = 256
+
     public init() {}
 
     public func push(_ message: [UInt8]) {
@@ -51,6 +54,7 @@ public final class SysExInbox: @unchecked Sendable {
             w.cont.resume(returning: message)
         } else {
             queue.append(message)
+            if queue.count > Self.maxQueued { queue.removeFirst() }   // a device flooding SysEx while nobody reads
             lock.unlock()
         }
     }

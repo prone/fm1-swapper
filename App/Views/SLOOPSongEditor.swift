@@ -12,7 +12,10 @@ struct SLOOPSongEditor: View {
     @Environment(DeviceController.self) private var device
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    let song: Backup
+    /// The saved song being edited (after "Save as a new song", the copy).
+    @State private var song: Backup
+
+    init(song: Backup) { _song = State(initialValue: song) }
 
     @State private var doc: SLOOPSongDoc?
     @State private var saved: SLOOPSongDoc?
@@ -61,20 +64,19 @@ struct SLOOPSongEditor: View {
                             if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
                         } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
                         Divider()
-                        Button { sending = true } label: { Label("Send to FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
+                        DeviceIdleButton("Send to FM-1…", systemImage: "arrow.up.to.line") { sending = true }
                     } label: { Label("Song", systemImage: "ellipsis.circle") }
                     .disabled(doc == nil)
                 }
             }
             .confirmationDialog("Save your changes?", isPresented: $closing, titleVisibility: .visible) {
-                Button("Save changes") { save(); dismiss() }
+                Button("Save changes") { if save() { dismiss() } }
                 Button("Discard changes", role: .destructive) { dismiss() }
                 Button("Keep editing", role: .cancel) {}
             }
             .confirmationDialog("Send \"\(song.label)\" to the FM-1?", isPresented: $sending, titleVisibility: .visible) {
                 Button("Save and replace the song on the FM-1", role: .destructive) {
-                    save()
-                    Task { await device.loadSong(song) }
+                    if save() { Task { await device.loadSong(song) } }
                 }
             } message: {
                 Text("Saves your changes, then replaces the loop, sections A–D and the song order on the FM-1 (stop playback first). Save the FM-1's current song first if you want to keep it."
@@ -91,7 +93,7 @@ struct SLOOPSongEditor: View {
                                firmware: p.firmware, startSave: p.save,
                                startHint: "Song loaded. Tap Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY.")
             }
-            .alert("Play in the emulator", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            .alert(song.label, isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
                 Button("OK") { problem = nil }
             } message: { Text(problem ?? "") }
             .task { open() }
@@ -103,9 +105,7 @@ struct SLOOPSongEditor: View {
     @ViewBuilder private func editor(_ doc: SLOOPSongDoc) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if device.busy, case let .working(title, detail, _) = device.phase {
-                    Label("\(title): \(detail)", systemImage: "hourglass").font(.footnote).foregroundStyle(.secondary)
-                }
+                DeviceProgressLabel()
                 orderCard(doc)
                 Picker("Pattern", selection: $slot) {
                     ForEach(SLOOPSongDoc.Slot.allCases) { s in Text(doc.isEmpty(s) ? "\(s.name) (empty)" : s.name).tag(s) }
@@ -148,10 +148,10 @@ struct SLOOPSongEditor: View {
                             if doc.isEmpty(.section(e.section)) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                             Spacer()
                             Button { edit { $0.order?.entries.swapAt(i, i - 1) } } label: { Image(systemName: "chevron.up") }
-                                .disabled(i == 0)
+                                .disabled(i == 0).accessibilityLabel("Move entry \(i + 1) up")
                             Button { edit { $0.order?.entries.swapAt(i, i + 1) } } label: { Image(systemName: "chevron.down") }
-                                .disabled(i == order.entries.count - 1)
-                            Button(role: .destructive) { edit { $0.order?.entries.remove(at: i) } } label: { Image(systemName: "minus.circle") }
+                                .disabled(i == order.entries.count - 1).accessibilityLabel("Move entry \(i + 1) down")
+                            Button(role: .destructive) { edit { $0.order?.entries.remove(at: i) } } label: { Image(systemName: "minus.circle") }.accessibilityLabel("Remove entry \(i + 1)")
                                 .disabled(order.entries.count == 1)
                         }
                         .buttonStyle(.borderless)
@@ -213,7 +213,7 @@ struct SLOOPSongEditor: View {
                     Text("\(SLOOPTrack.divNames[t.div]) steps · \(formatBars(Double(t.length) / t.stepsPerBar)) bars").foregroundStyle(.secondary)
                     Spacer()
                     Menu {
-                        ForEach(SLOOPSongDoc.Slot.allCases.filter { $0 != slot }) { s in
+                        ForEach(SLOOPSongDoc.Slot.allCases.filter { $0 != slot && doc?.locked.contains($0) == false }) { s in
                             Button("Copy \(slot.name) to \(s.name)\(doc?.isEmpty(s) == false ? " (replaces it)" : "")") { edit { $0.copy(slot, to: s) } }
                         }
                         if slot != .loop {
@@ -235,7 +235,7 @@ struct SLOOPSongEditor: View {
         } label: { Text(slot == .loop ? "Loop in progress · \(p.bpm) BPM" : "Section \(slot.name) · \(p.bars) bar\(p.bars == 1 ? "" : "s") · \(p.bpm) BPM") }
     }
 
-    private func formatBars(_ b: Double) -> String { b == b.rounded() ? "\(Int(b))" : String(format: "%.2g", b) }
+    private func formatBars(_ b: Double) -> String { b.formatted(.number.precision(.fractionLength(0...2))) }
 
     // MARK: Bars
 
@@ -341,9 +341,9 @@ struct SLOOPSongEditor: View {
                 }
                 .pickerStyle(.segmented).fixedSize()
                 Spacer()
-                Button { octave[key] = max(0, low - 12) } label: { Image(systemName: "chevron.down") }
+                Button { octave[key] = max(0, low - 12) } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Octave down")
                 Text("\(PianoRoll.name(UInt8(low)))–\(PianoRoll.name(UInt8(min(127, low + 24))))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Button { octave[key] = min(103, low + 12) } label: { Image(systemName: "chevron.up") }
+                Button { octave[key] = min(103, low + 12) } label: { Image(systemName: "chevron.up") }.accessibilityLabel("Octave up")
             }
             .buttonStyle(.bordered)
             PianoRoll(track: t, low: low, selection: stepRange(t)) { pitch, i in
@@ -411,22 +411,37 @@ struct SLOOPSongEditor: View {
         }
     }
 
-    private func save() {
-        guard let d = doc, dirty else { return }
+    /// Saves the edits into the song; false (with the reason shown) when they couldn't be kept.
+    @discardableResult
+    private func save() -> Bool {
+        guard let d = doc, dirty else { return true }
         do {
             try song.replace(with: d.archive())
             try context.save()
             saved = d
-        } catch { loadError = error.localizedDescription }
+            return true
+        } catch {
+            context.rollback()
+            problem = "Couldn't save your changes: \(error.localizedDescription)"
+            return false
+        }
     }
 
+    /// Saves the edits as a new song and goes on editing that one (the original stays as it was).
     private func saveCopy() {
         guard let d = doc else { return }
         let n = copyName.trimmingCharacters(in: .whitespaces)
-        guard let b = try? Backup.from(d.archive(), label: n.isEmpty ? "\(song.label) (edit)" : n, kind: "song") else { return }
-        b.firmware = song.firmware
-        context.insert(b)
-        try? context.save()
+        do {
+            let b = try Backup.from(d.archive(), label: n.isEmpty ? "\(song.label) (edit)" : n, kind: "song")
+            b.firmware = song.firmware
+            context.insert(b)
+            try context.save()
+            song = b
+            saved = d
+        } catch {
+            context.rollback()
+            problem = "Couldn't save the copy: \(error.localizedDescription)"
+        }
     }
 }
 
@@ -458,6 +473,8 @@ struct PianoRoll: View {
         let w = Self.label + Self.cell.width * 64, h = Self.cell.height * CGFloat(rows)
         ScrollView(.horizontal) {
             Canvas { ctx, _ in draw(ctx) }
+                .accessibilityElement()
+                .accessibilityLabel(gridSummary(track))
                 .frame(width: w, height: h)
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { p in
@@ -503,6 +520,16 @@ struct PianoRoll: View {
 }
 
 /// The drum track: 16 lanes by 64 steps.
+/// What a grid holds, for VoiceOver (the canvas has no elements of its own).
+private func gridSummary(_ t: SLOOPTrack) -> String {
+    if t.isDrum {
+        let hits = (0..<t.length).map { i in (0..<16).filter { t.drum(at: i, lane: $0) }.count }.reduce(0, +)
+        return "Drum grid, \(t.length) steps, \(hits) hits"
+    }
+    let c = t.chords
+    return "Piano roll, \(t.length) steps, \(c.count) note\(c.count == 1 ? "" : "s")" + (c.first.map { ", first \($0.notes.map(PianoRoll.name).joined(separator: " ")) on step \($0.at + 1)" } ?? "")
+}
+
 struct DrumGrid: View {
     let track: SLOOPTrack
     let selection: Range<Int>?
@@ -512,6 +539,8 @@ struct DrumGrid: View {
     var body: some View {
         ScrollView(.horizontal) {
             Canvas { ctx, _ in draw(ctx) }
+                .accessibilityElement()
+                .accessibilityLabel(gridSummary(track))
                 .frame(width: Self.label + Self.cell.width * 64, height: Self.cell.height * 16)
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { p in
@@ -534,7 +563,7 @@ struct DrumGrid: View {
             ctx.draw(Text(SLOOPTrack.drumLanes[lane]).font(.caption2).foregroundStyle(.secondary), at: CGPoint(x: 4, y: y + c.height / 2), anchor: .leading)
             for i in 0..<64 {
                 let r = CGRect(x: Self.label + CGFloat(i) * c.width + 2, y: y + 2, width: c.width - 4, height: c.height - 4)
-                let on = track.step(i).drum(lane)
+                let on = track.drum(at: i, lane: lane)
                 ctx.fill(Path(roundedRect: r, cornerRadius: 3),
                          with: .color(on ? .accentColor : .primary.opacity((i / per) % 2 == 0 ? 0.08 : 0.04)))
             }

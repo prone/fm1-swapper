@@ -129,7 +129,8 @@ export class FeluccaArchive {
     const total = totalBytes(a);
     let done = 0;
     const ask = (cmd: number, args: number[]) => this.request(cmd, args, 4000);
-    const put = async (args: number[]) => { const r = await ask(67, args); FeluccaArchive.check(r[2]); return r; };
+    const ack = (r: number[]) => { if (r.length < 3) throw new FM1Error("protocol", "Unexpected restore reply"); return r[2]; };
+    const put = async (args: number[]) => { const r = await ask(67, args); FeluccaArchive.check(ack(r)); return r; };
     // live music last; other objects commit individually
     for (const o of [...a.parts.slice(2), a.parts[1], a.parts[0]]) {
       const id = Number(o.id), bytes = partBytes(o);
@@ -149,9 +150,9 @@ export class FeluccaArchive {
       }
       const begin = [0, id, ...u32To7(bytes.length), ...u32To7(o.crc)];
       if (id === 9) {
-        const r = await ask(67, begin);
-        if (r[2] === 1) { done += bytes.length; progress(done, total); continue; }   // firmware before 1.0.3
-        FeluccaArchive.check(r[2]);
+        const rc = ack(await ask(67, begin));
+        if (rc === 1) { done += bytes.length; progress(done, total); continue; }   // firmware before 1.0.3
+        FeluccaArchive.check(rc);
       } else await put(begin);
       try {
         for (let off = 0; off < bytes.length; off += 256) {

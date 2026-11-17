@@ -273,5 +273,12 @@ func readImport(_ url: URL, maxBytes: Int) throws -> Data {
         throw NSError(domain: "Import", code: 1, userInfo: [NSLocalizedDescriptionKey:
             "\(url.lastPathComponent) is too large (\(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)))."])
     }
-    return try Data(contentsOf: url)
+    // (the size above can be missing: read at most one byte past the limit to be sure)
+    let h = try FileHandle(forReadingFrom: url)
+    defer { try? h.close() }
+    let data = try h.read(upToCount: maxBytes + 1) ?? Data()
+    guard data.count <= maxBytes else {
+        throw NSError(domain: "Import", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(url.lastPathComponent) is too large."])
+    }
+    return data
 }

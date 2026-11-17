@@ -82,7 +82,7 @@ public enum SLOOPFlash {
         if let loop = song.part("0"), !loop.data.isEmpty { try write(&s, autosave, [UInt8](loop.data)) }
         for i in 0..<4 { try write(&s, project0 + i, [UInt8](song.part("\(i + 2)")?.data ?? Data())) }
         guard let settingsPart = song.part("1"), let order = SLOOPOrder(settings: settingsPart.data) else { return }
-        if let mine = read(s, settings), mine.count >= SLOOPOrder.at + 36, SLOOPOrder(settings: Data(mine)) != nil {
+        if let mine = read(s, settings), SLOOPOrder(settings: Data(mine)) != nil {
             try write(&s, settings, [UInt8](order.written(into: Data(mine))), keepSide: true)
         } else {
             try write(&s, settings, [UInt8](settingsPart.data))

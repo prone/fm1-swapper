@@ -7,13 +7,13 @@
 // The edits match SLOOP's web editor (its piano roll: a NOTE step holds a chord of up to 4 notes, the TIE steps after
 // it hold it, a REST is silence; the drum track is 16 lanes). A pattern is 64 steps at most; a longer song is the
 // sections chained in the song order (16 entries, each 1-64 bars).
-import { DeviceArchive, SLOOPArchive, SLOOP_FORMAT, part, partBytes, sloopLabel } from "./archive";
+import { DeviceArchive, SLOOPArchive, SLOOP_FORMAT, SLOOP_SONG_IDS, part, partBytes, sloopLabel } from "./archive";
 import { FM1Error } from "./ota";
 
 export const PROJ_MAGIC = 0x46554e36, PROJ_SIZE = 3816;
 const TRACK_BASE = 76, TRACK_SIZE = 934, SUM_AT = 3812;
 export const DRUM_TRACK = 3, MAX_STEPS = 64;
-const LEN_AT = 58, DIV_AT = 60, ENGINE_AT = 132, STEPS_AT = 134, MF_AT = 774, LOCKS_AT = 838, N_LOCKS = 24;
+const LEN_AT = 58, DIV_AT = 60, STEPS_AT = 134, MF_AT = 774, LOCKS_AT = 838, N_LOCKS = 24;
 export const STEPS_PER_BAR = [4, 8, 16, 32, 12, 24, 2, 1, 0.5];
 export const DIV_NAMES = ["1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1 bar", "2 bars"];
 export const DRUM_LANES = ["KICK", "KICK 2", "SNARE", "CLAP", "HAT", "OPEN HAT", "PEDAL", "RIM", "SNARE 2",
@@ -41,7 +41,6 @@ export interface Clip { isDrum: boolean; steps: Step[]; mf: number[]; locks: { s
 /** One track of a section, edited in place (a view onto the section's bytes). */
 export class Track {
   constructor(readonly raw: Uint8Array, readonly isDrum: boolean) {}
-  get engine() { return this.raw[ENGINE_AT]; }
   get length() { const v = (this.raw[LEN_AT] | (this.raw[LEN_AT + 1] << 8)) << 16 >> 16; return Math.max(1, Math.min(MAX_STEPS, v)); }
   set length(n: number) { const v = Math.max(1, Math.min(MAX_STEPS, Math.round(n))); this.raw[LEN_AT] = v & 255; this.raw[LEN_AT + 1] = v >> 8; }
   get div() { return Math.max(0, Math.min(8, this.raw[DIV_AT])); }
@@ -52,25 +51,28 @@ export class Track {
   step(i: number): Step { return this.raw.slice(STEPS_AT + i * 10, STEPS_AT + i * 10 + 10); }
   private set(i: number, s: ArrayLike<number>) { this.raw.set(s, STEPS_AT + i * 10); }
   private empty() { return this.isDrum ? new Array(10).fill(0) : REST; }
-  get isEmpty() { for (let i = 0; i < this.length; i++) { const s = this.step(i); if (this.isDrum ? (s[0] | s[1]) : isNote(s)) return false; } return true; }
+  // reads of one step's bytes in place (no copy: the grid and the loops below call them per step)
+  private noteAt(i: number) { return this.raw[STEPS_AT + i * 10 + 5] === 0 && this.raw[STEPS_AT + i * 10 + 4] > 0; }
+  private tieAt(i: number) { return this.raw[STEPS_AT + i * 10 + 5] === 1; }
+  drum(i: number, lane: number) { return ((this.raw[STEPS_AT + i * 10 + (lane >> 3)] >> (lane & 7)) & 1) === 1; }
 
   get chords(): Chord[] {
     if (this.isDrum) return [];
     const out: Chord[] = [];
     for (let i = 0; i < this.length; i++) {
+      if (!this.noteAt(i)) continue;
       const s = this.step(i);
-      if (!isNote(s)) continue;
       let d = 1;
-      while (i + d < this.length && isTie(this.step(i + d))) d++;
+      while (i + d < this.length && this.tieAt(i + d)) d++;
       out.push({ at: i, length: d, notes: stepNotes(s), velocity: s[7] });
     }
     return out;
   }
   owner(i: number): number | null {
-    for (let k = i; k >= 0; k--) { const s = this.step(k); if (isNote(s)) return k; if (!isTie(s)) return null; }
+    for (let k = i; k >= 0; k--) { if (this.noteAt(k)) return k; if (!this.tieAt(k)) return null; }
     return null;
   }
-  private cutTies(end: number) { for (let k = end; k < this.length && isTie(this.step(k)); k++) this.set(k, REST); }
+  private cutTies(end: number) { for (let k = end; k < this.length && this.tieAt(k); k++) this.set(k, REST); }
   /** `pitch` at step `at` for `dur` steps; on a chord's first step it joins the chord (4 notes at most). */
   place(pitch: number, at: number, dur: number) {
     if (this.isDrum || at < 0 || at >= this.length) return;
@@ -83,7 +85,7 @@ export class Track {
     }
     this.set(at, [pitch & 127, 0, 0, 0, 1, 0, 0, 96, 0, 0]);
     let k = 1;
-    for (; k < dur && at + k < this.length && !isNote(this.step(at + k)); k++) this.set(at + k, TIE);
+    for (; k < dur && at + k < this.length && !this.noteAt(at + k); k++) this.set(at + k, TIE);
     this.cutTies(at + k);
   }
   remove(pitch: number, at: number) {
@@ -93,14 +95,6 @@ export class Track {
     const left = stepNotes(s).filter((n) => n !== pitch);
     if (!left.length) { this.set(at, REST); this.cutTies(at + 1); return; }
     for (let i = 0; i < 4; i++) s[i] = left[i] ?? 0; s[4] = left.length; this.set(at, s);
-  }
-  resize(at: number, dur: number) {
-    if (this.isDrum || at < 0 || at >= this.length || !isNote(this.step(at))) return;
-    let cur = 1;
-    while (at + cur < this.length && isTie(this.step(at + cur))) cur++;
-    const d = Math.max(1, Math.min(dur, this.length - at));
-    if (d < cur) for (let k = d; k < cur; k++) this.set(at + k, REST);
-    else for (let k = cur; k < d && !isNote(this.step(at + k)); k++) this.set(at + k, TIE);
   }
   toggleDrum(lane: number, at: number) {
     if (!this.isDrum || at < 0 || at >= MAX_STEPS || lane < 0 || lane > 15) return;
@@ -153,6 +147,7 @@ export class Track {
       this.raw.set([at + l.step, l.param, ...l.val], LOCKS_AT + free * 4);
     }
     if (at + n > this.length) this.length = at + n;
+    this.cutTies(at + n);                       // a chord the clip cut into doesn't run on into its last note
     this.tidy();
     return true;
   }
@@ -169,7 +164,6 @@ export class Track {
     lo = Math.max(0, lo); hi = Math.min(this.length, hi);
     if (hi <= lo) return;
     const len = Math.max(1, this.length - (hi - lo));
-    this.clearExtras(lo, hi);
     this.move(hi, lo);
     this.length = len;
     this.tidy();
@@ -191,8 +185,14 @@ export class Track {
       else if (s >= lo) this.raw.set([0xff, 0, 0, 0], a);
     }
   }
-  /** A tie with no chord before it (left by a cut or a paste) becomes a rest. */
-  tidy() { if (!this.isDrum) for (let i = 0; i < MAX_STEPS; i++) if (isTie(this.step(i)) && this.owner(i) == null) this.set(i, REST); }
+  /** A tie with no chord before it (left by a cut or a paste) becomes a rest: one pass, tracking whether a chord sounds. */
+  tidy() {
+    if (this.isDrum) return;
+    let sounding = false;
+    for (let i = 0; i < MAX_STEPS; i++) {
+      if (this.noteAt(i)) sounding = true; else if (this.tieAt(i)) { if (!sounding) this.set(i, REST); } else sounding = false;
+    }
+  }
 }
 
 /** A format-6 section (or the loop). `raw` is edited through `track(k)`; `data` adds the checksum SLOOP checks. */
@@ -307,7 +307,7 @@ export class SongDoc {
 // ---- song files (mirrors SLOOPSongFile in SLOOPSong.swift): a song's objects as a DeviceArchive in JSON, its name
 // in info.name, extension .fm1song. Shared with the iOS app (AirDrop, Files, iCloud Drive).
 export const SONG_EXT = "fm1song";
-const isSongPart = (id: string) => ["0", "1", "2", "3", "4", "5"].includes(id);
+const isSongPart = (id: string) => SLOOP_SONG_IDS.includes(Number(id));
 export function songFile(a: DeviceArchive, name: string): { name: string; text: string } {
   const safe = name.replace(/[/\\:?%*|"<>\n\r\t]/g, "-").trim().slice(0, 80) || "SLOOP song";
   return { name: `${safe}.${SONG_EXT}`, text: JSON.stringify({ ...a, parts: a.parts.filter((p) => isSongPart(p.id)), info: { ...a.info, name, contents: "song" } }) };

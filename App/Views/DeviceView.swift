@@ -383,7 +383,6 @@ struct CheckInSettings: View {
     }
 }
 
-/// m-bootloader (or its helper) in MIDI mode: the flash chip, a whole-flash backup, installs through it, restart.
 /// SLOOP keeps one song on the FM-1. This keeps as many as you like in the app: save the one on the FM-1 under a name,
 /// load another back (the loop, the song order and sections A–D; presets, kits and samples stay as they are).
 struct SLOOPSongsSection: View {
@@ -394,6 +393,8 @@ struct SLOOPSongsSection: View {
     @State private var name = ""
     @State private var checking = false
     @State private var clearCheck: DeviceController.SongCheck?
+    /// Every saved song (the clear check compares the FM-1 with all of them, imported ones included).
+    @Query(filter: #Predicate<Backup> { $0.kindRaw == "song" }) private var allSongs: [Backup]
 
     var body: some View {
         Section {
@@ -404,7 +405,7 @@ struct SLOOPSongsSection: View {
                 .disabled(device.busy)
             Button(role: .destructive) {
                 checking = true
-                Task { clearCheck = await device.checkSongSaved(firmware?.songs ?? []); checking = false }
+                Task { clearCheck = await device.checkSongSaved(allSongs); checking = false }
             } label: {
                 HStack { Label("Clear the song on the FM-1…", systemImage: "eraser"); if checking { Spacer(); ProgressView() } }
             }
@@ -444,6 +445,7 @@ struct SLOOPSongsSection: View {
     private var autoName: String { "Song \((firmware?.songs.count ?? 0) + 1) · \(Date().formatted(date: .abbreviated, time: .shortened))" }
 }
 
+/// m-bootloader (or its helper) in MIDI mode: the flash chip, a whole-flash backup, installs through it, restart.
 struct MBootSection: View {
     @Environment(DeviceController.self) private var device
     @Environment(\.modelContext) private var context

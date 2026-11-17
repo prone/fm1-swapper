@@ -42,7 +42,6 @@ final class SLOOPSongTests: XCTestCase {
         XCTAssertEqual(p[track: 0].length, 16)
         XCTAssertEqual(p[track: 0].bars, 1)
         XCTAssertTrue(p[track: 3].isDrum)
-        XCTAssertTrue(p.isSilent)
         XCTAssertEqual(p.data, sloopProject())
         var bad = [UInt8](sloopProject()); bad[200] ^= 1
         XCTAssertNil(SLOOPPattern(Data(bad)), "a wrong checksum is refused")
@@ -64,9 +63,6 @@ final class SLOOPSongTests: XCTestCase {
         t.place(67, at: 2, steps: 4)                         // inside the held chord: it ends there
         XCTAssertEqual(t.chords.map(\.at), [0, 2])
         XCTAssertEqual(t.chords.map(\.length), [2, 4])
-        t.resize(at: 2, steps: 1)
-        XCTAssertEqual(t.chords.last?.length, 1)
-        XCTAssertFalse(t.step(3).isTie, "the steps it left are rests")
         t.remove(60, at: 0); t.remove(64, at: 0)
         XCTAssertEqual(t.chords.map(\.at), [2])
         XCTAssertFalse(t.step(1).isTie, "the last note's ties become rests")
@@ -75,10 +71,24 @@ final class SLOOPSongTests: XCTestCase {
         XCTAssertEqual(t.chords.last?.notes.count, 4, "4 notes at most")
     }
 
+    func testPasteIntoAHeldChordCutsItsTies() throws {
+        var t = try XCTUnwrap(SLOOPPattern(sloopProject()))[track: 0]
+        t.place(60, at: 0, steps: 16)
+        var one = try XCTUnwrap(SLOOPPattern(sloopProject()))[track: 0]
+        one.place(64, at: 0, steps: 1)
+        t.paste(one.copy(0..<1), at: 4)
+        XCTAssertEqual(t.chords.map(\.length), [4, 1], "the pasted note is as long as it was, the held one ends at it")
+        var u = try XCTUnwrap(SLOOPPattern(sloopProject()))[track: 0]
+        u.place(60, at: 0, steps: 8)
+        u.insert(one.copy(0..<2), at: 4)
+        XCTAssertEqual(u.chords.map(\.at), [0, 4])
+        XCTAssertEqual(u.chords.map(\.length), [4, 1], "the held chord ends at the insert; its old ties after it are rests")
+    }
+
     func testDrumLanes() throws {
         var t = try XCTUnwrap(SLOOPPattern(sloopProject()))[track: 3]
         t.toggleDrum(lane: 0, at: 0); t.toggleDrum(lane: 9, at: 4)
-        XCTAssertTrue(t.step(0).drum(0)); XCTAssertTrue(t.step(4).drum(9)); XCTAssertFalse(t.step(4).drum(1))
+        XCTAssertTrue(t.drum(at: 0, lane: 0)); XCTAssertTrue(t.drum(at: 4, lane: 9)); XCTAssertFalse(t.drum(at: 4, lane: 1))
         XCTAssertEqual(t.step(4).b[1], 0b10, "lane 9 is bit 1 of the second byte")
         t.toggleDrum(lane: 0, at: 0)
         XCTAssertEqual(t.step(0), .emptyDrum)

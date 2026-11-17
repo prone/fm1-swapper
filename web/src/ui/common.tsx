@@ -56,19 +56,27 @@ export const Bar = ({ value }: { value: number | null }) => (
   <div class="bar" role="progressbar" aria-valuenow={value == null ? undefined : Math.round(value * 100)}><i style={{ width: `${value == null ? 100 : value * 100}%`, opacity: value == null ? 0.35 : 1 }} /></div>
 );
 
-/** Drag a file anywhere onto this, or click to choose. */
-export function FileDrop({ accept, multiple, onFiles, children }: { accept: string; multiple?: boolean; onFiles: (f: File[]) => void; children: ComponentChildren }) {
+/** Drag a file anywhere onto this, or click to choose. Files over `maxBytes` are refused before they're read. */
+export function FileDrop({ accept, multiple, onFiles, children, maxBytes = 64 << 20 }: { accept: string; multiple?: boolean; onFiles: (f: File[]) => void; children: ComponentChildren; maxBytes?: number }) {
   const [over, setOver] = useState(false);
+  const [tooBig, setTooBig] = useState("");
+  const take = (f: File[]) => {
+    const big = f.filter((x) => x.size > maxBytes);
+    setTooBig(big.length ? `${big.map((x) => x.name).join(", ")}: too large (over ${fmtBytes(maxBytes)}).` : "");
+    const ok = f.filter((x) => x.size <= maxBytes);
+    if (ok.length) onFiles(ok);
+  };
   let input: HTMLInputElement | null = null;
   return (
     <div class={"drop" + (over ? " over" : "")} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); const f = [...(e.dataTransfer?.files ?? [])]; if (f.length) onFiles(f); }}>
+      onDrop={(e) => { e.preventDefault(); setOver(false); const f = [...(e.dataTransfer?.files ?? [])]; if (f.length) take(f); }}>
       {children}
       <div style={{ marginTop: 8 }}>
         <button class="btn" onClick={() => input?.click()}>Choose file…</button>
         <input ref={(r) => { input = r; }} type="file" accept={accept} multiple={multiple} hidden
-          onChange={(e) => { const f = [...((e.target as HTMLInputElement).files ?? [])]; (e.target as HTMLInputElement).value = ""; if (f.length) onFiles(f); }} />
+          onChange={(e) => { const f = [...((e.target as HTMLInputElement).files ?? [])]; (e.target as HTMLInputElement).value = ""; if (f.length) take(f); }} />
       </div>
+      {tooBig && <div class="small" style={{ color: "var(--orange)", marginTop: 6 }}>{tooBig}</div>}
     </div>
   );
 }

@@ -61,9 +61,27 @@ export async function tryDownload(url: string, maxBytes = 32 << 20): Promise<Uin
   let r: Response;
   try { r = await fetch(url); } catch { return null; }
   if (!r.ok) throw new Error(`Download failed: HTTP ${r.status}`);
-  const b = new Uint8Array(await r.arrayBuffer());
-  if (b.length > maxBytes) throw new Error("That file is too large.");
-  return b;
+  return readCapped(r, maxBytes);
+}
+
+/** A response body, refused as soon as it passes `maxBytes` (never buffered whole first). */
+export async function readCapped(r: Response, maxBytes: number): Promise<Uint8Array> {
+  const tooLarge = () => new Error("That file is too large.");
+  if (Number(r.headers.get("content-length") ?? 0) > maxBytes) throw tooLarge();
+  if (!r.body) { const b = new Uint8Array(await r.arrayBuffer()); if (b.length > maxBytes) throw tooLarge(); return b; }
+  const chunks: Uint8Array[] = [];
+  let n = 0;
+  for (const reader = r.body.getReader(); ;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (n > maxBytes) { void reader.cancel(); throw tooLarge(); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(n);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
 }
 
 export interface AddResult { firmware: Firmware; isNew: boolean; warning?: string }

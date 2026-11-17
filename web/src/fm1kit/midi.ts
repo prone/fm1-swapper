@@ -28,8 +28,11 @@ export class Inbox {
   private q: number[][] = [];
   private waiter: ((m: number[] | null) => void) | null = null;
   push(m: number[]) {
-    if (this.waiter) { const w = this.waiter; this.waiter = null; w(m); } else this.q.push(m);
+    if (this.waiter) { const w = this.waiter; this.waiter = null; w(m); return; }
+    this.q.push(m);
+    if (this.q.length > Inbox.MAX) this.q.shift();                  // a device flooding SysEx: keep the newest
   }
+  static readonly MAX = 256;
   drain() { this.q.length = 0; }
   read(ms: number): Promise<number[] | null> {
     const m = this.q.shift();

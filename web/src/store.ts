@@ -4,6 +4,7 @@
 // Same fields as the iOS app's SwiftData models. Everything can be exported to one JSON file and imported elsewhere.
 import { DeviceArchive, toB64, fromB64 } from "./fm1kit/archive";
 import { Family } from "./fm1kit/package";
+import { sha256Hex } from "./fm1kit/sysex";
 
 export type TryStatus = "notTried" | "tried" | "favorite" | "keeper" | "notForMe";
 export const STATUS_LABEL: Record<TryStatus, string> = { notTried: "Not tried", tried: "Tried", favorite: "Favorite", keeper: "Daily driver", notForMe: "Not for me" };
@@ -69,7 +70,12 @@ export const store = {
   firmwares: () => all<Firmware>("firmwares"),
   backups: () => all<Backup>("backups"),
   installs: () => all<InstallEvent>("installs"),
-  packageBytes: async (sha: string) => (await get<Uint8Array>("packages", sha)) ?? null,
+  /** A package file, re-checked against its SHA-256 on every read (null when missing or not matching): an install
+   *  or the emulator never gets bytes other than the ones the checksum names. */
+  async packageBytes(sha: string): Promise<Uint8Array | null> {
+    const b = await get<Uint8Array>("packages", sha);
+    return b && await sha256Hex(b) === sha ? b : null;
+  },
 
   async saveFirmware(f: Firmware, bytes?: Uint8Array) {
     if (bytes) { await put("packages", f.sha256, bytes); f.size = bytes.length; }
@@ -102,10 +108,17 @@ export const store = {
   async importLibrary(text: string) {
     const j = JSON.parse(text);
     if (j?.format !== "fm1-swapper-library" || j.version !== 1) throw new Error("Not an FM-1 Swapper library file.");
-    for (const [sha, b64] of Object.entries(j.packages ?? {})) if (/^[0-9a-f]{64}$/.test(sha)) await put("packages", sha, fromB64(String(b64)));
-    for (const f of j.firmwares ?? []) if (typeof f?.id === "string") await put("firmwares", f.id, f);
-    for (const b of j.backups ?? []) if (typeof b?.id === "string") await put("backups", b.id, b);
-    for (const e of j.installs ?? []) if (typeof e?.id === "string") await put("installs", e.id, e);
+    // a package is kept only under its own checksum: a shared library file can't put other bytes behind a trusted SHA
+    for (const [sha, b64] of Object.entries(j.packages ?? {})) {
+      if (!/^[0-9a-f]{64}$/.test(sha)) continue;
+      const bytes = fromB64(String(b64));
+      if (await sha256Hex(bytes) === sha) await put("packages", sha, bytes);
+    }
+    // records of the expected shape only (their text is shown as text; archives are checked again before a restore)
+    const str = (v: unknown, max = 500) => typeof v === "string" && v.length <= max;
+    for (const f of j.firmwares ?? []) if (str(f?.id) && str(f.name) && /^([0-9a-f]{64})?$/.test(f.sha256 ?? "")) await put("firmwares", f.id, f);
+    for (const b of j.backups ?? []) if (str(b?.id) && str(b.label) && ["device", "auto", "import", "file", "song"].includes(b.kind)) await put("backups", b.id, b);
+    for (const e of j.installs ?? []) if (str(e?.id) && typeof e.date === "number") await put("installs", e.id, e);
     changed();
     return { firmwares: (j.firmwares ?? []).length, backups: (j.backups ?? []).length };
   },
