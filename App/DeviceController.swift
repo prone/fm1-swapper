@@ -182,6 +182,44 @@ final class DeviceController {
         }
     }
 
+    enum SongCheck { case saved(String), unsaved, failed(String) }
+
+    /// Whether the song on the FM-1 is one of these saved songs (compares checksums; nothing is read out or written).
+    func checkSongSaved(_ songs: [Backup]) async -> SongCheck {
+        guard !busy else { return .failed("The FM-1 is busy.") }
+        do {
+            let dev = try await connect()
+            defer { dev.link.close() }
+            let now = try await SLOOPArchive(link: dev.link).checksums()
+            if let s = songs.first(where: { $0.archive.map { SLOOPArchive.matches($0, now) } ?? false }) { return .saved(s.label) }
+            return .unsaved
+        } catch {
+            return .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+        }
+    }
+
+    /// Clears the song on the FM-1 (every note of the loop, sections A–D), saving it first when asked.
+    func clearSong(saveFirstAs name: String?, context: ModelContext) async {
+        await run("Clear the song") {
+            let dev = try await connect()
+            defer { dev.link.close() }
+            let s = SLOOPArchive(link: dev.link)
+            var saved = ""
+            if let name {
+                let archive = try await s.capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs, progress: archiveProgress("Clear the song", "Saving"))
+                let b = try Backup.from(archive, label: name, kind: "song")
+                b.firmware = context.firmware(forIdentity: dev.identity)
+                context.insert(b)
+                try context.save()
+                saved = "Saved it as \"\(name)\", then cleared"
+            }
+            try await s.clearSong { [weak self] done, total in
+                Task { @MainActor in self?.progress("Clear the song", "Clearing…", Double(done) / Double(total)) }
+            }
+            return (saved.isEmpty ? "Cleared" : saved) + " the song on the FM-1: the loop's notes and sections A–D. Sounds and presets are as they were."
+        }
+    }
+
     /// Puts a saved SLOOP song back: the loop, the song order and sections A–D are replaced; presets, kits and
     /// samples on the FM-1 stay as they are.
     func loadSong(_ song: Backup) async {

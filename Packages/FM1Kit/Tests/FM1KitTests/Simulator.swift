@@ -31,6 +31,9 @@ final class VirtualFM1: @unchecked Sendable {
     var isSLOOP = false
     var sloopPlaying = false
     var sloopSaw: [UInt8] = []
+    var sloopProtocol: UInt8 = 12
+    var sloopErasedWhilePlaying = false
+    var sloopErased = Set<Int>()           // track * 128 + note, from LIVE ERASE
     var pendingPut: (id: UInt8, size: Int, crc: UInt32, buf: [UInt8])?
     var sampleWrite: [UInt8] = []
 
@@ -196,7 +199,7 @@ final class VirtualFM1: @unchecked Sendable {
         case 1:
             var p = Array("FELUCCA 2.8.5".utf8) + [0]
             p += [2, 60, 10, 64, 4] + Array("FM6".utf8) + [0] + Array("PHYS".utf8) + [0]
-            p += [4, 12]                                       // tracks, protocol version
+            p += [4, sloopProtocol]                            // tracks, protocol version
             send(p)
         case 34:
             let listed = ids.filter { !(($0 == 10 || $0 == 11) && (feluccaObjects[$0] ?? []).isEmpty) }
@@ -230,6 +233,14 @@ final class VirtualFM1: @unchecked Sendable {
             default: pendingPut = nil
             }
             send([op, id, rc])
+        case 77:                                               // LIVE: 0 state, 1 play/stop, 7 erase
+            if a.count >= 2, a[0] == 1 { sloopPlaying = a[1] == 1 }
+            if a.count >= 4, a[0] == 7, a[3] == 1 {
+                if sloopPlaying { sloopErasedWhilePlaying = true }
+                sloopErased.insert(Int(a[1]) * 128 + Int(a[2]))
+                feluccaObjects[0] = [0xEE, UInt8(sloopErased.count & 0x7F)]   // the loop changed
+            }
+            send([a.first ?? 0, sloopPlaying ? 1 : 0, 0, 0, 64])
         default: break
         }
     }

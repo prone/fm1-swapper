@@ -273,6 +273,50 @@ final class ArchiveTests: XCTestCase {
         XCTAssertFalse(dev.sloopSaw.contains(36))                               // nothing was sent
     }
 
+    func testSLOOPKnowsWhetherTheSongOnTheFM1IsSaved() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        for id: UInt8 in [0, 1, 2, 4] { dev.feluccaObjects[id] = (0..<900).map { UInt8(($0 + Int(id)) & 0xFF) } }
+        let device = try await connect(dev)
+        let s = SLOOPArchive(link: device.link)
+        let song = try await s.capture(firmware: device.identity.text, only: SLOOPArchive.songIDs)
+        var now = try await s.checksums()
+        XCTAssertTrue(SLOOPArchive.matches(song, now))
+        dev.feluccaObjects[1] = [1, 2, 3]                                       // settings alone don't count
+        now = try await s.checksums()
+        XCTAssertTrue(SLOOPArchive.matches(song, now))
+        dev.feluccaObjects[3] = [5, 5]                                          // a new section B
+        now = try await s.checksums()
+        XCTAssertFalse(SLOOPArchive.matches(song, now))
+    }
+
+    func testSLOOPClearSongStopsErasesEveryNoteAndEmptiesTheSections() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        dev.sloopPlaying = true
+        for id: UInt8 in [0, 1, 2, 3, 4, 5, 6] { dev.feluccaObjects[id] = [UInt8](repeating: id, count: 300) }
+        let device = try await connect(dev)
+        try await SLOOPArchive(link: device.link).clearSong()
+        XCTAssertFalse(dev.sloopPlaying)
+        XCTAssertFalse(dev.sloopErasedWhilePlaying)
+        XCTAssertEqual(dev.sloopErased.count, 4 * 128)
+        for id: UInt8 in 2...5 { XCTAssertEqual(dev.feluccaObjects[id] ?? [1], [], "section \(id)") }
+        XCTAssertEqual(dev.feluccaObjects[6], [UInt8](repeating: 6, count: 300))   // presets untouched
+    }
+
+    func testSLOOPClearSongNeedsSLOOP27() async throws {
+        let dev = VirtualFM1(identity: "FM-1_900")
+        dev.isSLOOP = true
+        dev.sloopProtocol = 11
+        dev.feluccaObjects[2] = [1]
+        let device = try await connect(dev)
+        do { try await SLOOPArchive(link: device.link).clearSong(); XCTFail("should refuse") } catch let e as FM1Error {
+            if case .unsupported = e {} else { XCTFail("\(e)") }
+        }
+        XCTAssertTrue(dev.sloopErased.isEmpty)
+        XCTAssertEqual(dev.feluccaObjects[2], [1])
+    }
+
     func testSLOOPInfoIsNotFelucca() {
         var info = Array("FELUCCA 2.8.5".utf8) + [0, 1, 60, 10, 64, 4] + Array("FM6".utf8) + [0]
         XCTAssertNil(SLOOPArchive.protocolVersion(info: info))

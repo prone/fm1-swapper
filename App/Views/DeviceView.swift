@@ -395,6 +395,8 @@ struct SLOOPSongsSection: View {
     @State private var loading: Backup?
     @State private var renaming: Backup?
     @State private var newName = ""
+    @State private var checking = false
+    @State private var clearCheck: DeviceController.SongCheck?
 
     var body: some View {
         Section {
@@ -403,6 +405,13 @@ struct SLOOPSongsSection: View {
                 naming = true
             } label: { Label("Save the song on the FM-1…", systemImage: "square.and.arrow.down") }
                 .disabled(device.busy)
+            Button(role: .destructive) {
+                checking = true
+                Task { clearCheck = await device.checkSongSaved(firmware?.songs ?? []); checking = false }
+            } label: {
+                HStack { Label("Clear the song on the FM-1…", systemImage: "eraser"); if checking { Spacer(); ProgressView() } }
+            }
+            .disabled(device.busy || checking)
             ForEach(firmware?.songs ?? []) { s in
                 Button { loading = s } label: {
                     VStack(alignment: .leading, spacing: 2) {
@@ -422,7 +431,7 @@ struct SLOOPSongsSection: View {
                 }
             }
         } header: { Text("SLOOP songs") } footer: {
-            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, then start a new one on the FM-1 (SAVE → TOOLS → NEW, and SECTION → ERASE for A–D). Tap a song to put it back. Stop playback first. Works with SLOOP 2.3 or later and firmware built on it.")
+            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, and tap a song to put it back (stop playback first). Clear empties the FM-1 for a new song and offers to save first; it needs SLOOP 2.7 or later. Saving and loading work with SLOOP 2.3 or later and firmware built on it.")
         }
         .alert("Save the song", isPresented: $naming) {
             TextField("Name", text: $name)
@@ -434,6 +443,22 @@ struct SLOOPSongsSection: View {
             Button("Rename") { if let r = renaming, !newName.trimmingCharacters(in: .whitespaces).isEmpty { r.label = newName; try? context.save() } }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog(clearTitle, isPresented: Binding(get: { clearCheck != nil }, set: { if !$0 { clearCheck = nil } }),
+                            titleVisibility: .visible, presenting: clearCheck) { check in
+            if case .saved = check {
+                Button("Clear", role: .destructive) { Task { await device.clearSong(saveFirstAs: nil, context: context) } }
+            } else {
+                Button("Save, then clear") { Task { await device.clearSong(saveFirstAs: autoName, context: context) } }
+                Button("Clear without saving", role: .destructive) { Task { await device.clearSong(saveFirstAs: nil, context: context) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { check in
+            switch check {
+            case let .saved(n): Text("It's saved as \"\(n)\". This erases every note in the loop and empties sections A–D. Sounds, presets, kits and samples stay.")
+            case .unsaved: Text("This song isn't saved in the app. Save it first (as \"\(autoName)\", rename it later), or clear it for good: every note in the loop and sections A–D.")
+            case let .failed(m): Text("Couldn't check whether it's saved (\(m)). Save it first to be safe. Clearing erases every note in the loop and sections A–D.")
+            }
+        }
         .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
                             titleVisibility: .visible) {
             Button("Replace the song on the FM-1", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
@@ -441,6 +466,12 @@ struct SLOOPSongsSection: View {
             Text("The loop, sections A–D and the song order on the FM-1 are replaced. Save the current song first if you want to keep it.")
         }
     }
+
+    private var clearTitle: String {
+        if case .saved = clearCheck { return "Clear the song on the FM-1?" }
+        return "The song on the FM-1 isn't saved"
+    }
+    private var autoName: String { "Song \((firmware?.songs.count ?? 0) + 1) · \(Date().formatted(date: .abbreviated, time: .shortened))" }
 
     private func sections(_ s: Backup) -> String {
         guard let a = s.archive else { return "" }
