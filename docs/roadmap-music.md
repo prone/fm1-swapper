@@ -207,6 +207,18 @@ web views) or several machines in one worklet with shared work; LCD/LED frame tr
 audio path; and the native Rust core (`fm1-live`) on iOS with one thread per instance. Method: a repeatable
 benchmark (Chrome, WebKit/iPad web view, native) with 1, 3 and 5 instances of Felucca, SLOOP and stock.
 
+## Safety track (alongside the music features)
+
+**m-bootloader support** (S–M, both apps), from docs/flash-chips.md:
+1. Recognise m-bootloader's MIDI mode (`ota-FM-1_900` + a `0x12` "MBOOT" answer) and say "m-bootloader recovery"
+   instead of "an install was interrupted"; install or reinstall firmware through it from the Device tab.
+2. Read the flash chip with `0x12` and fill in the flash chip setting automatically.
+3. **Full flash backup over MIDI** (`0x23` reads, `0x24` CRC-32 check) from iPhone, iPad or browser, kept per unit,
+   which today needs M-Flasher on a computer.
+4. Later, after hardware testing and only for older-chip units at first: offer to install m-bootloader itself
+   (its `.fwsc` through our updater, after a full backup), opt-in, with its known issues spelled out.
+We don't write our own bootloader: m-bootloader is MIT, specified and tested, and boot-area code is where bricks happen.
+
 ## Order
 
 | Step | What | Why then |

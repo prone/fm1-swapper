@@ -51,6 +51,29 @@ through M-Flasher (github.com/jvitkauskas/m-flasher, desktop: Windows/Mac/Linux)
 2. Device info then shows model, firmware (e.g. "FM-1 820"), bootloader (e.g. m-bootloader 2.3), **FLASH CHIP**
    (`0x856014 (old) · 1 MiB` on the video's unit) and the chip key, plus a map of the flash.
 
-Lead to check: units with **m-bootloader** may report the chip over MIDI (its README says the recovery menu shows the
-chip and that MIDI mode answers read commands). If so, the apps could detect the chip automatically on those units.
-Read m-bootloader's source before relying on it.
+The video (transcribed): the M-VAVE logo under the screen does **not** tell the chip apart; only M-Flasher can. The
+chips are the same apart from the ID. The presenter recommends installing m-bootloader for protection, and filtering
+The Firmware Hub by "Saves on newer FM-1s" (157 firmwares then; 73 not yet updated, which their authors can fix).
+
+## m-bootloader (github.com/jvitkauskas/m-bootloader, MIT, 2.4 on 2026-11-16)
+
+A replacement for the FM-1/SMK-37 bootloader. It checks every firmware file's checksum before starting it, opens a
+recovery menu when firmware is damaged (or hold PLAY at power-on), enters download mode from REC at power-on, and has
+a **MIDI mode** (spec `docs/SPEC.md` §11.6) so a phone or browser can do what M-Flasher does:
+
+- It appears as USB-MIDI `FM-1 Update` and answers the normal update protocol as `ota-FM-1_900`. Our updater's
+  resume path (handshake → `F0 22 24 35 7F F7` → serve 0x30 reads → `0xF0000000`) should install through it
+  unchanged. Its own install only writes `[0x4000, size)`: never the boot area or key area.
+- Command `0x12` answers `MBOOT`, protocol, kind, chip key, capacity, **JEDEC ID** and the flash unique ID, plus the
+  version. That's automatic flash chip detection on units with m-bootloader.
+- `0x23` reads raw flash (1–512 bytes) and `0x24` returns the chip's CRC-32 of a range: a verified **full 1 MB
+  flash backup over MIDI**, from iPhone or a browser.
+- `F0 22 24 35 7D F7` asks for download mode; `F0 22 24 35 7E F7` restarts.
+- **Safety rule:** M-VAVE's stock update service uses the same frame, and on some versions its `0x21` erases a flash
+  sector unchecked. `0x21` and `0x23` differ by one bit and the checksum doesn't cover the command. **Always send
+  `0x12` and require the `MBOOT` answer before any `0x23`/`0x24`**, and never build these commands from data.
+
+Installing it: M-Flasher writes the `.boot` file (boot area only), or its `.fwsc` goes through M-VAVE's normal
+update protocol (M-UPGRADE then reports a timeout that can be ignored). Official M-VAVE updates and Baud Girl's
+installer put the stock bootloader back. Known issue: one newer-chip unit failed to start after m-bootloader 1.1/1.2
+(cause unknown); its README says to check the chip first and treats the newer chip as at your own risk.
