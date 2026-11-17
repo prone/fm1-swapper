@@ -39,11 +39,8 @@ enum SongFiles {
         if let twin = songs.first(where: { $0.archive.map { SLOOPSongFile.same($0, archive) } ?? false }) {
             return "“\(twin.label)” is already in Firmware Editor → SLOOP, with the same notes."
         }
-        let b = try Backup.from(archive, label: name, kind: "song")
         let identity = archive.info["identity"] ?? archive.firmware
-        b.firmware = try context.fetch(FetchDescriptor<Firmware>()).first { $0.product == identity }
-        context.insert(b)
-        try context.save()
+        try context.addBackup(archive, label: name, kind: "song", firmware: try context.fetch(FetchDescriptor<Firmware>()).first { $0.product == identity })
         return "Added the song “\(name)” to Firmware Editor → SLOOP."
     }
 }

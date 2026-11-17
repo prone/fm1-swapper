@@ -80,9 +80,6 @@ final class TutorialPlayer {
         }
     }
 
-    /// MIDI note-on from a keyboard or the SMC-PAD counts like a panel key.
-    func midiNote(_ note: Int, on: Bool) { userEvent("#\(note)", down: on) }
-
     /// "C4" -> "#60"; panel names unchanged.
     static func canonical(_ name: String) -> String {
         let pcs: [Character: Int] = ["C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11]

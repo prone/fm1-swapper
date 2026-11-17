@@ -159,10 +159,7 @@ final class DeviceController {
             defer { dev.link.close() }
             let archive = try await Archives.capture(dev, includeSamples: includeSamples, progress: archiveProgress("Back up", "Reading"))
             let fw = context.firmware(forIdentity: dev.identity)
-            let b = try Backup.from(archive, label: label ?? "Backup", kind: "device")
-            b.firmware = fw
-            context.insert(b)
-            try context.save()
+            let b = try context.addBackup(archive, label: label ?? "Backup", kind: "device", firmware: fw)
             return "Saved \(b.partsSummary.isEmpty ? "backup" : b.partsSummary) (\(ByteCountFormatter.string(fromByteCount: Int64(b.sizeBytes), countStyle: .file))) to \(fw.name)."
         }
     }
@@ -178,10 +175,7 @@ final class DeviceController {
             }
             let archive = try await s.capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs, progress: archiveProgress("Save song", "Reading"))
             let fw = context.firmware(forIdentity: dev.identity)
-            let b = try Backup.from(archive, label: name, kind: "song")
-            b.firmware = fw
-            context.insert(b)
-            try context.save()
+            try context.addBackup(archive, label: name, kind: "song", firmware: fw)
             return "Saved the song \"\(name)\"."
         }
     }
@@ -215,10 +209,7 @@ final class DeviceController {
             var saved = ""
             if let name {
                 let archive = try await s.capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs, progress: archiveProgress("Clear the song", "Saving"))
-                let b = try Backup.from(archive, label: name, kind: "song")
-                b.firmware = context.firmware(forIdentity: dev.identity)
-                context.insert(b)
-                try context.save()
+                try context.addBackup(archive, label: name, kind: "song", firmware: context.firmware(forIdentity: dev.identity))
                 saved = "Saved it as \"\(name)\", then cleared"
             }
             // (not saved first: only if it's still the song that was checked)
@@ -241,10 +232,7 @@ final class DeviceController {
             if let name, let context {
                 let mine = try await SLOOPArchive(link: dev.link).capture(firmware: dev.identity.text, only: SLOOPArchive.songIDs,
                                                                           progress: archiveProgress("Load song", "Saving the FM-1's song"))
-                let b = try Backup.from(mine, label: name, kind: "song")
-                b.firmware = context.firmware(forIdentity: dev.identity)
-                context.insert(b)
-                try context.save()
+                try context.addBackup(mine, label: name, kind: "song", firmware: context.firmware(forIdentity: dev.identity))
                 saved = "Saved the FM-1's song as \"\(name)\", then l"
             }
             try await Archives.restore(archive, to: dev, progress: archiveProgress("Load song", "Writing"))
@@ -303,10 +291,7 @@ final class DeviceController {
                 do {
                     let archive = try await Archives.capture(dev, includeSamples: options.includeSamples,
                                                              progress: archiveProgress(title, "Backing up \(current.name):"))
-                    let b = try Backup.from(archive, label: "Before installing \(target.name)", kind: "auto")
-                    b.firmware = current
-                    context.insert(b)
-                    try context.save()
+                    let b = try context.addBackup(archive, label: "Before installing \(target.name)", kind: "auto", firmware: current)
                     tookBackup = true
                     append("backup saved: \(b.partsSummary)")
                 } catch {

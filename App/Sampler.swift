@@ -284,9 +284,4 @@ final class SlicePlayer: @unchecked Sendable {
         }
         v.player.play()
     }
-
-    func stopAll() {
-        clearVoices()
-        voices.forEach { $0.player.stop() }
-    }
 }

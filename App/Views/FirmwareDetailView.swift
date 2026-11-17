@@ -45,6 +45,20 @@ extension View {
     }
 }
 
+extension Binding {
+    /// For an alert or dialog shown while an optional is set: dismissing it clears the optional.
+    func isPresent<T>() -> Binding<Bool> where Value == T? {
+        Binding<Bool>(get: { wrappedValue != nil }, set: { if !$0 { wrappedValue = nil } })
+    }
+}
+
+extension View {
+    /// An alert showing `text` with OK, while it's set.
+    func messageAlert(_ title: String, _ text: Binding<String?>) -> some View {
+        alert(title, isPresented: text.isPresent()) { Button("OK") { text.wrappedValue = nil } } message: { Text(text.wrappedValue ?? "") }
+    }
+}
+
 /// A share button that prepares its files on tap.
 struct ShareFilesButton<Label: View>: View {
     let files: () -> [(name: String, data: Data)]
@@ -246,8 +260,6 @@ struct FirmwareDetailView: View {
         }
         .fileImporter(isPresented: $importingPackage, allowedContentTypes: [.fwsc, .data]) { r in
             guard case let .success(url) = r else { return }
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 let data = try readImport(url, maxBytes: ImportLimit.firmware)
                 let pkg = try FirmwarePackage(data: data)
@@ -261,15 +273,11 @@ struct FirmwareDetailView: View {
                 try context.save()
             } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
         }
-        .alert("Firmware", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-            Button("OK") { message = nil }
-        } message: { Text(message ?? "") }
+        .messageAlert("Firmware", $message)
     }
 
     func attach(_ urls: [URL]) {
         for url in urls {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             guard let data = try? readImport(url, maxBytes: ImportLimit.backup) else { continue }
             let b: Backup
             if let a = try? FeluccaArchive.fromNativeJSON(data), let made = try? Backup.from(a, label: url.deletingPathExtension().lastPathComponent, kind: "import") {

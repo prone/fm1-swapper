@@ -30,8 +30,6 @@ struct CatalogEntry: Decodable, Identifiable, Hashable {
     var title: String { repo?.split(separator: "/").last.map(String.init) ?? id }
     var owner: String { repo?.split(separator: "/").first.map(String.init) ?? "" }
     var packages: [Release] { (upstream_releases ?? []).filter { ($0.name ?? "").lowercased().hasSuffix(".fwsc") && $0.url != nil } }
-    /// Packages that look like they are for the FM-1 (not the SMK-37 or Pocket amps).
-    var fm1Packages: [Release] { packages.filter { !($0.name ?? "").lowercased().contains("smk") } }
     var pushedDate: Date? { pushed.flatMap { Self.iso.date(from: $0) } }
     private static let iso = ISO8601DateFormatter()
 }
@@ -266,8 +264,11 @@ enum ImportLimit {
     static let emulatorSave = 8 << 20
 }
 
-/// Reads an imported file, refusing it before loading when it is larger than `maxBytes`.
+/// Reads an imported file, refusing it before loading when it is larger than `maxBytes`. Files picked or opened from
+/// elsewhere (Files, iCloud Drive) are reached through their security scope, held only while reading.
 func readImport(_ url: URL, maxBytes: Int) throws -> Data {
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
     guard size <= maxBytes else {
         throw NSError(domain: "Import", code: 1, userInfo: [NSLocalizedDescriptionKey:

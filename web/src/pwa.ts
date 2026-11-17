@@ -11,8 +11,6 @@ let userAskedReload = false;   // never reload on our own: an FM-1 install may b
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((f) => f());
 
-export const isInstalled = () => matchMedia("(display-mode: standalone)").matches;
-
 export function startPWA() {
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e as InstallPrompt; changed(); });
   addEventListener("appinstalled", () => { installEvent = null; changed(); });

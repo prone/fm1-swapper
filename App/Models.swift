@@ -104,7 +104,6 @@ final class Firmware {
     var latestRestorableBackup: Backup? { sortedBackups.first { $0.isRestorable && !$0.isSong } }
     /// Saved SLOOP songs, newest first.
     var songs: [Backup] { sortedBackups.filter(\.isSong) }
-    var displayVersion: String { version.isEmpty ? product : version }
     /// The emulator treats a file named FM-1.fwsc as M-VAVE's own firmware.
     var emulatorFileName: String { isStock ? "FM-1.fwsc" : "\(name.replacingOccurrences(of: "/", with: "-")).fwsc" }
 }
@@ -172,10 +171,7 @@ final class Backup {
 
     static func from(_ archive: DeviceArchive, label: String, kind: String) throws -> Backup {
         let b = Backup(label: label, identity: archive.info["identity"] ?? archive.firmware, family: archive.family, kind: kind)
-        b.date = archive.created
-        b.payload = try archive.encoded()
-        b.sizeBytes = archive.totalBytes
-        b.partsSummary = archive.parts.filter { !$0.data.isEmpty }.map(\.label).joined(separator: ", ")
+        try b.replace(with: archive)
         return b
     }
 }
@@ -233,6 +229,16 @@ final class ControllerProfile {
 
 extension ModelContext {
     /// The library entry for whatever the device reports, creating a placeholder if needed.
+    /// Keeps an archive as a backup of `firmware` (a song, a device backup, one taken before an install) and saves.
+    @discardableResult
+    func addBackup(_ archive: DeviceArchive, label: String, kind: String, firmware: Firmware?) throws -> Backup {
+        let b = try Backup.from(archive, label: label, kind: kind)
+        b.firmware = firmware
+        insert(b)
+        try save()
+        return b
+    }
+
     func firmware(forIdentity id: DeviceIdentity) -> Firmware {
         let text = id.text
         let all = (try? fetch(FetchDescriptor<Firmware>(predicate: #Predicate { $0.product == text }))) ?? []

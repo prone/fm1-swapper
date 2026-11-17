@@ -9,6 +9,7 @@
 // sections chained in the song order (16 entries, each 1-64 bars).
 import { DeviceArchive, SLOOPArchive, SLOOP_FORMAT, SLOOP_SONG_IDS, part, partBytes, sloopLabel } from "./archive";
 import { FM1Error } from "./ota";
+import { le32 as u32 } from "./sysex";
 
 export const PROJ_MAGIC = 0x46554e36, PROJ_SIZE = 3816;
 const TRACK_BASE = 76, TRACK_SIZE = 934, SUM_AT = 3812;
@@ -19,7 +20,6 @@ export const DIV_NAMES = ["1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1 b
 export const DRUM_LANES = ["KICK", "KICK 2", "SNARE", "CLAP", "HAT", "OPEN HAT", "PEDAL", "RIM", "SNARE 2",
   "LOW TOM", "HI TOM", "CRASH", "RIDE", "SHAKER", "CONGA", "COWBELL"];
 
-const u32 = (b: Uint8Array, at: number) => (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
 export function fnv(b: Uint8Array): number {
   let s = 0x811c9dc5;
   for (const x of b) s = Math.imul(s ^ x, 16777619) >>> 0;
@@ -31,7 +31,6 @@ export function fnv(b: Uint8Array): number {
 export type Step = Uint8Array;
 const REST = [0, 0, 0, 0, 0, 2, 0, 0, 0, 0], TIE = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0];
 export const isNote = (s: Step) => s[5] === 0 && s[4] > 0;
-export const isTie = (s: Step) => s[5] === 1;
 export const stepNotes = (s: Step) => [...s.subarray(0, Math.min(4, s[4]))];
 export const drumOn = (s: Step, lane: number) => ((s[lane >> 3] >> (lane & 7)) & 1) === 1;
 

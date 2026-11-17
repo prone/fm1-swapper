@@ -169,7 +169,7 @@ struct EmulatorScreen: View {
             Button("Save a copy, then reset") { Task { if await keep(label: "Before reset", auto: false) { await reset() } } }
             Button("Reset without saving", role: .destructive) { Task { await reset() } }
         } message: { Text("Erases the saved settings and patches for \(title) in the emulator and restarts it from the firmware's factory state.") }
-        .confirmationDialog("Restore this save?", isPresented: Binding(get: { restoreTarget != nil }, set: { if !$0 { restoreTarget = nil } }),
+        .confirmationDialog("Restore this save?", isPresented: $restoreTarget.isPresent(),
                             titleVisibility: .visible, presenting: restoreTarget) { s in
             Button("Restore \(s.label)", role: .destructive) { Task { await restore(s) } }
         } message: { _ in Text("Replaces the emulator's current settings and patches for this firmware.") }
@@ -180,8 +180,6 @@ struct EmulatorScreen: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json, .data]) { r in
             guard case let .success(url) = r else { return }
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             guard let data = try? readImport(url, maxBytes: ImportLimit.emulatorSave), let text = String(data: data, encoding: .utf8) else {
                 emu.saveStatus = "Could not read that file (saves are up to 8 MB)."; return
             }

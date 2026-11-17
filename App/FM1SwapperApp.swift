@@ -36,9 +36,7 @@ struct FM1SwapperApp: App {
                 .environment(pads)
                 .onAppear { let hub = pads; device.onBusyChange = { busy in hub.setDeviceBusy(busy) } }
                 .onOpenURL { url in importFile(url) }
-                .alert("Import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
-                    Button("OK") { importMessage = nil }
-                } message: { Text(importMessage ?? "") }
+                .messageAlert("Import", $importMessage)
                 .task { await device.refresh() }
         }
         .modelContainer(container)
@@ -47,8 +45,6 @@ struct FM1SwapperApp: App {
     /// A .fwsc shared from Files, Safari or AirDrop.
     @MainActor
     func importFile(_ url: URL) {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         // files shared into the app land in Documents/Inbox: remove our copy once imported
         defer { if url.path.contains("/Documents/Inbox/") { try? FileManager.default.removeItem(at: url) } }
         do {
@@ -154,7 +150,7 @@ struct RootView: View {
             .modifier(CheckInDriver())
             .modifier(PadProfileDriver())
         #if DEBUG
-            .fullScreenCover(isPresented: Binding(get: { demo != nil }, set: { if !$0 { demo = nil } })) {
+            .fullScreenCover(isPresented: $demo.isPresent()) {
                 if let d = demo {
                     let tut = ProcessInfo.processInfo.environment["FM1_DEMO_TUTORIAL"].flatMap(TutorialLibrary.byID)
                     let name = ProcessInfo.processInfo.environment["FM1_DEMO_NAME"] ?? "demo.fwsc"

@@ -24,8 +24,8 @@ public struct SLOOPPattern: Equatable, Sendable {
     /// A section's bytes; nil when the data isn't a format-6 project (empty, or written by SLOOP 2.5 or older).
     public init?(_ data: Data) {
         let b = [UInt8](data)
-        guard b.count == Self.size, Self.u32(b, 0) == Self.magic, Self.u32(b, 4) == UInt32(Self.size),
-              Self.u32(b, Self.sumAt) == Self.fnv(b[0..<Self.sumAt]) else { return nil }
+        guard b.count == Self.size, SysExCoding.le32(b, 0) == Self.magic, SysExCoding.le32(b, 4) == UInt32(Self.size),
+              SysExCoding.le32(b, Self.sumAt) == Self.fnv(b[0..<Self.sumAt]) else { return nil }
         raw = b
     }
 
@@ -50,9 +50,6 @@ public struct SLOOPPattern: Equatable, Sendable {
     /// How many bars the section plays as a loop: its longest track (SLOOP's section_bars).
     public var bars: Int { max(1, min(64, (0..<4).map { self[track: $0].bars }.max() ?? 1)) }
 
-    static func u32(_ b: [UInt8], _ at: Int) -> UInt32 {
-        UInt32(b[at]) | UInt32(b[at + 1]) << 8 | UInt32(b[at + 2]) << 16 | UInt32(b[at + 3]) << 24
-    }
     static func fnv(_ b: ArraySlice<UInt8>) -> UInt32 {
         var s: UInt32 = 0x811C_9DC5
         for x in b { s = (s ^ UInt32(x)) &* 16_777_619 }
@@ -345,7 +342,7 @@ public struct SLOOPOrder: Equatable, Sendable {
     /// The order in a settings object, or nil when the settings have none (SLOOP before 2.5).
     public init?(settings d: Data) {
         let b = [UInt8](d)
-        guard b.count >= Self.at + 36, SLOOPPattern.u32(b, 0) == Self.settingsMagic else { return nil }
+        guard b.count >= Self.at + 36, SysExCoding.le32(b, 0) == Self.settingsMagic else { return nil }
         let n = Int(b[Self.at])
         guard (1...Self.maxEntries).contains(n) else { return nil }
         entries = (0..<n).map { i in Entry(section: Int(b[Self.at + 4 + 2 * i]) & 3, bars: max(1, min(64, Int(b[Self.at + 5 + 2 * i])))) }

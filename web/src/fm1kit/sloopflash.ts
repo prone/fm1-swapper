@@ -5,7 +5,7 @@
 // seq, length, CRC-32s; the valid copy with the highest seq wins; a save writes the other copy with seq + 1).
 // Sections A-D are objects 1-4, the loop in progress object 7, the settings object 0 (only its song order changes).
 import { DeviceArchive, SLOOPArchive, SLOOP_FORMAT, partBytes, toB64, fromB64 } from "./archive";
-import { crc32 } from "./sysex";
+import { crc32, le32 as u32 } from "./sysex";
 import { FM1Error } from "./ota";
 import { readOrder, writeOrder } from "./sloopsong";
 
@@ -16,7 +16,6 @@ export type Sectors = Map<number, Uint8Array>;
 
 const sectorOf = (obj: number, copy: number) =>
   obj === SETTINGS ? 0xfc000 + copy * SECTOR : obj === AUTOSAVE ? (copy ? 0xfe000 : 0x9f000) : 0x97000 + (obj - PROJECT0) * 2 * SECTOR + copy * SECTOR;
-const u32 = (b: Uint8Array, at: number) => (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
 
 function header(s: Sectors, obj: number, copy: number): { seq: number; len: number } | null {
   const b = s.get(sectorOf(obj, copy));

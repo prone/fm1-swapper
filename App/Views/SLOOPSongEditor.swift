@@ -96,9 +96,7 @@ struct SLOOPSongEditor: View {
                                firmware: p.firmware, startSave: p.save,
                                startHint: "Song loaded. Tap Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY.")
             }
-            .alert(song.label, isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
-                Button("OK") { problem = nil }
-            } message: { Text(problem ?? "") }
+            .messageAlert(song.label, $problem)
             .task { open() }
         }
     }
@@ -435,11 +433,7 @@ struct SLOOPSongEditor: View {
         guard let d = doc else { return }
         let n = copyName.trimmingCharacters(in: .whitespaces)
         do {
-            let b = try Backup.from(d.archive(), label: n.isEmpty ? "\(song.label) (edit)" : n, kind: "song")
-            b.firmware = song.firmware
-            context.insert(b)
-            try context.save()
-            song = b
+            song = try context.addBackup(d.archive(), label: n.isEmpty ? "\(song.label) (edit)" : n, kind: "song", firmware: song.firmware)
             saved = d
         } catch {
             context.rollback()

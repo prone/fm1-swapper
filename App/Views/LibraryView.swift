@@ -165,8 +165,6 @@ struct LibraryView: View {
                 guard case let .success(urls) = result else { return }
                 var lines: [String] = []
                 for url in urls {
-                    let scoped = url.startAccessingSecurityScopedResource()
-                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                     do {
                         let r = try LibraryImport.add(try readImport(url, maxBytes: ImportLimit.firmware), fileName: url.lastPathComponent, context: context)
                         lines.append((r.isNew ? "Added " : "Already have ") + r.firmware.name + (r.warning.map { " — \($0)" } ?? ""))
@@ -181,9 +179,7 @@ struct LibraryView: View {
                 Button("Download") { download() }
                 Button("Cancel", role: .cancel) {}
             } message: { Text("A direct link to a .fwsc file.") }
-            .alert("Library", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-                Button("OK") { message = nil }
-            } message: { Text(message ?? "") }
+            .messageAlert("Library", $message)
         }
     }
 

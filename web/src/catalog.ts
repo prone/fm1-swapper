@@ -25,7 +25,6 @@ export interface CatalogEntry {
   id: string; repo?: string; url?: string; description?: string; license?: string; stars?: number; pushed?: string;
   upstream_releases?: { tag?: string; name?: string; url?: string; size?: number; prerelease?: boolean }[];
 }
-export interface HubPackage { name: string; version: string; author: string; url: string; repo: string; about: string }
 
 export const entryTitle = (e: CatalogEntry) => e.repo?.split("/")[1] ?? e.id;
 export const entryOwner = (e: CatalogEntry) => e.repo?.split("/")[0] ?? "";
@@ -36,23 +35,6 @@ export async function loadCommunity(): Promise<CatalogEntry[]> {
   if (!r.ok) throw new Error(`Catalog: HTTP ${r.status}`);
   const j = await r.json();
   return (j.firmwares as CatalogEntry[]).filter((e) => packagesOf(e).length).sort((a, b) => (b.pushed ?? "").localeCompare(a.pushed ?? ""));
-}
-
-/** The Firmware Hub's packages (via the emulator's catalog), keyed by lower-case "owner/name": downloadable from a browser. */
-let hub: Promise<Map<string, HubPackage>> | null = null;
-export function hubPackages(): Promise<Map<string, HubPackage>> {
-  hub ??= fetch("emu/firmwares.json").then((r) => r.json()).then((j) => {
-    const m = new Map<string, HubPackage>();
-    for (const f of j.firmwares ?? []) {
-      const repo = /github\.com\/([^/]+\/[^/#?]+)/.exec(f.repo ?? "")?.[1]?.toLowerCase();
-      const url = f.package ?? f.download;
-      if (repo && typeof url === "string" && url.startsWith("https://")) {
-        m.set(repo, { name: f.name, version: f.version ?? "", author: f.author ?? "", url, repo, about: f.about ?? "" });
-      }
-    }
-    return m;
-  }).catch(() => new Map());
-  return hub;
 }
 
 /** Downloads over https when the server allows it; null when the browser isn't allowed to (CORS). */

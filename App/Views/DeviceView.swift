@@ -128,7 +128,7 @@ struct DeviceView: View {
                 }
             }
             .navigationTitle("FM-1")
-            .confirmationDialog(restoring.map { "Restore \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }),
+            .confirmationDialog(restoring.map { "Restore \"\($0.label)\"?" } ?? "", isPresented: $restoring.isPresent(),
                                 titleVisibility: .visible, presenting: restoring) { b in
                 Button("Restore", role: .destructive) { Task { await device.restore(b, context: context, includeSamples: includeSamples) } }
             } message: { b in
@@ -425,7 +425,7 @@ struct SLOOPSongsSection: View {
             Button("Save") { let n = name.trimmingCharacters(in: .whitespaces); Task { await device.saveSong(n.isEmpty ? "Song" : n, context: context) } }
             Button("Cancel", role: .cancel) {}
         } message: { Text("Saves the loop, sections A–D and the song order from the FM-1.") }
-        .confirmationDialog(clearTitle, isPresented: Binding(get: { clearCheck != nil }, set: { if !$0 { clearCheck = nil } }),
+        .confirmationDialog(clearTitle, isPresented: $clearCheck.isPresent(),
                             titleVisibility: .visible, presenting: clearCheck) { check in
             if case .saved = check {
                 Button("Clear", role: .destructive) { Task { await device.clearSong(saveFirstAs: nil, context: context) } }

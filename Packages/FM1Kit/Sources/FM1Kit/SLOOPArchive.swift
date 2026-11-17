@@ -17,7 +17,6 @@ public struct SLOOPArchive: Sendable {
     enum Cmd { static let info: UInt8 = 1, list: UInt8 = 34, get: UInt8 = 35, put: UInt8 = 36 }
     /// A SLOOP song: the loop in progress, the settings (they hold the song order) and sections A–D.
     public static let songIDs: Set<UInt8> = [0, 1, 2, 3, 4, 5]
-    static let chunk = 256
 
     public static func label(_ id: UInt8) -> String {
         switch id {
@@ -59,9 +58,7 @@ public struct SLOOPArchive: Sendable {
         return v >= 6
     }
 
-    struct Entry { let id: UInt8; let size: Int; let crc: UInt32 }
-
-    static func manifest(_ a: [UInt8]) throws -> [Entry] {
+    static func manifest(_ a: [UInt8]) throws -> [FeluccaArchive.ManifestEntry] {
         guard a.count >= 2 else { throw FM1Error.protocolError("Short backup list") }
         try FeluccaArchive.check(a[0])
         let n = Int(a[1])
@@ -70,7 +67,7 @@ public struct SLOOPArchive: Sendable {
             let p = 2 + i * 11
             let size = Int(try SysExCoding.u32From7(a, at: p + 1)), crc = try SysExCoding.u32From7(a, at: p + 6)
             guard size <= 256 * 1024 else { throw FM1Error.protocolError("Backup object too large") }
-            return Entry(id: a[p], size: size, crc: crc)
+            return .init(id: a[p], size: size, crc: crc)
         }
     }
 
@@ -79,28 +76,7 @@ public struct SLOOPArchive: Sendable {
         guard await supported() else { throw FM1Error.unsupported("This firmware doesn't have SLOOP's backup (SLOOP 2.3 or later).") }
         let all = try Self.manifest(try await felucca.request(Cmd.list, [], timeout: 5))
         let manifest = all.filter { only?.contains($0.id) ?? true }
-        let total = manifest.reduce(0) { $0 + $1.size }
-        var done = 0
-        var parts: [DeviceArchive.Part] = []
-        for o in manifest {
-            var bytes = [UInt8](repeating: 0, count: o.size)
-            var off = 0
-            while off < o.size {
-                let size = min(Self.chunk, o.size - off)
-                let a = try await felucca.request(Cmd.get, [o.id] + SysExCoding.u32To7(UInt32(off)) + [UInt8(size & 127), UInt8(size >> 7)],
-                                                  timeout: 1, retries: 1)
-                guard a.count >= 9 else { throw FM1Error.protocolError("Short backup reply") }
-                try FeluccaArchive.check(a[1])
-                guard a[0] == o.id, try SysExCoding.u32From7(a, at: 2) == off, Int(a[7]) | Int(a[8]) << 7 == size else {
-                    throw FM1Error.protocolError("Unexpected backup reply")
-                }
-                bytes.replaceSubrange(off..<(off + size), with: try SysExCoding.maskUnpack(Array(a[9...]), size: size))
-                off += size; done += size
-                progress(done, total)
-            }
-            guard SysExCoding.crc32(bytes) == o.crc else { throw FM1Error.device("The FM-1 changed during the backup. Stop playback and try again.") }
-            parts.append(.init(id: "\(o.id)", label: Self.label(o.id), data: Data(bytes)))
-        }
+        let parts = try await felucca.readObjects(manifest, get: Cmd.get, label: Self.label, progress: progress)
         guard parts.contains(where: { $0.id == "0" && !$0.data.isEmpty }), parts.contains(where: { $0.id == "1" && !$0.data.isEmpty }) else {
             throw FM1Error.device("The backup is missing the loop in progress or the settings.")
         }
@@ -224,19 +200,7 @@ public struct SLOOPArchive: Sendable {
             } else {
                 try await put(begin)
             }
-            do {
-                var off = 0
-                while off < o.data.count {
-                    let c = o.data[off..<min(off + Self.chunk, o.data.count)]
-                    try await put([1, o.id] + SysExCoding.u32To7(UInt32(off)) + SysExCoding.maskPack(c))
-                    off += c.count; done += c.count
-                    progress(done, total)
-                }
-                try await put([2, o.id])
-            } catch {
-                try? await put([3, o.id])
-                throw error
-            }
+            try await FeluccaArchive.sendObject(o.id, o.data, put: put) { done += $0; progress(done, total) }
         }
     }
 }

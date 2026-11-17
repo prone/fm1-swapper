@@ -192,7 +192,7 @@ struct PackageDownloadRow: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: Binding(get: { trying != nil }, set: { if !$0 { trying = nil } })) {
+        .fullScreenCover(isPresented: $trying.isPresent()) {
             if let d = trying { EmulatorScreen(title: name, package: d, fileName: "\(name.replacingOccurrences(of: "/", with: "-")).fwsc") }
         }
     }

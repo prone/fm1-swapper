@@ -83,10 +83,9 @@ export class FeluccaArchive {
     });
   }
 
-  async capture(identity: string, progress: Progress = () => {}): Promise<DeviceArchive> {
-    const info = await this.info();
-    if (!info.supported) throw new FM1Error("unsupported", `This Felucca (${info.version}) does not support complete backups. Update Felucca first.`);
-    const manifest = FeluccaArchive.manifest(await this.request(65, [], 3000));
+  /** Reads objects in chunks with `get` (Felucca's archive GET, or SLOOP's backup GET: the same reply), each checked
+   *  against its CRC-32 from the manifest. */
+  async readObjects(manifest: { id: number; size: number; crc: number }[], get: number, label: (id: number) => string, progress: Progress): Promise<Part[]> {
     const total = manifest.reduce((n, o) => n + o.size, 0);
     let done = 0;
     const parts: Part[] = [];
@@ -94,15 +93,36 @@ export class FeluccaArchive {
       const bytes = new Uint8Array(o.size);
       for (let off = 0; off < o.size; off += 256) {
         const size = Math.min(256, o.size - off);
-        const a = await this.request(66, [o.id, ...u32To7(off), size & 127, size >>> 7], 1000, 1);
+        const a = await this.request(get, [o.id, ...u32To7(off), size & 127, size >>> 7], 1000, 1);
+        if (a.length < 9) throw new FM1Error("protocol", "Short backup reply");
         FeluccaArchive.check(a[1]);
-        if (a[0] !== o.id || u32From7(a, 2) !== off || (a[7] | (a[8] << 7)) !== size) throw new Error("Unexpected backup reply");
+        if (a[0] !== o.id || u32From7(a, 2) !== off || (a[7] | (a[8] << 7)) !== size) throw new FM1Error("protocol", "Unexpected backup reply");
         bytes.set(maskUnpack(a.slice(9), size), off);
         done += size; progress(done, total);
       }
       if (crc32(bytes) !== o.crc) throw new FM1Error("device", "The FM-1 changed during the backup. Stop playback and try again.");
-      parts.push(part(String(o.id), feluccaLabel(o.id), bytes));
+      parts.push(part(String(o.id), label(o.id), bytes));
     }
+    return parts;
+  }
+
+  /** After a PUT begin: the object's data in chunks, then the commit; an abort when anything fails (the object on the
+   *  FM-1 stays as it was). Shared by Felucca's archive and SLOOP's backup (the same PUT ops). */
+  static async sendObject(id: number, bytes: Uint8Array, put: (args: number[]) => Promise<unknown>, sent: (n: number) => void) {
+    try {
+      for (let off = 0; off < bytes.length; off += 256) {
+        const c = bytes.subarray(off, off + 256);
+        await put([1, id, ...u32To7(off), ...maskPack(c)]);
+        sent(c.length);
+      }
+      await put([2, id]);
+    } catch (e) { await put([3, id]).catch(() => {}); throw e; }
+  }
+
+  async capture(identity: string, progress: Progress = () => {}): Promise<DeviceArchive> {
+    const info = await this.info();
+    if (!info.supported) throw new FM1Error("unsupported", `This Felucca (${info.version}) does not support complete backups. Update Felucca first.`);
+    const parts = await this.readObjects(FeluccaArchive.manifest(await this.request(65, [], 3000)), 66, feluccaLabel, progress);
     const archive: DeviceArchive = { format: "felucca-backup", family: "felucca", firmware: info.version, created: Date.now() / 1000, parts, info: { identity } };
     FeluccaArchive.validate(archive);
     return archive;
@@ -157,14 +177,7 @@ export class FeluccaArchive {
         if (rc === 1) { done += bytes.length; progress(done, total); continue; }   // firmware before 1.0.3
         FeluccaArchive.check(rc);
       } else await put(begin);
-      try {
-        for (let off = 0; off < bytes.length; off += 256) {
-          const c = bytes.subarray(off, off + 256);
-          await put([1, id, ...u32To7(off), ...maskPack(c)]);
-          done += c.length; progress(done, total);
-        }
-        await put([2, id]);
-      } catch (e) { await put([3, id]).catch(() => {}); throw e; }
+      await FeluccaArchive.sendObject(id, bytes, put, (n) => { done += n; progress(done, total); });
     }
   }
 
@@ -412,23 +425,7 @@ export class SLOOPArchive {
   async capture(identity: string, only: number[] | null = null, progress: Progress = () => {}): Promise<DeviceArchive> {
     if (!(await this.supported())) throw new FM1Error("unsupported", "This firmware doesn't have SLOOP's backup (SLOOP 2.3 or later).");
     const manifest = SLOOPArchive.manifest(await this.f.request(34, [], 5000)).filter((o) => !only || only.includes(o.id));
-    const total = manifest.reduce((n, o) => n + o.size, 0);
-    let done = 0;
-    const parts: Part[] = [];
-    for (const o of manifest) {
-      const bytes = new Uint8Array(o.size);
-      for (let off = 0; off < o.size; off += 256) {
-        const size = Math.min(256, o.size - off);
-        const a = await this.f.request(35, [o.id, ...u32To7(off), size & 127, size >>> 7], 1000, 1);
-        if (a.length < 9) throw new FM1Error("protocol", "Short backup reply");
-        FeluccaArchive.check(a[1]);
-        if (a[0] !== o.id || u32From7(a, 2) !== off || (a[7] | (a[8] << 7)) !== size) throw new FM1Error("protocol", "Unexpected backup reply");
-        bytes.set(maskUnpack(a.slice(9), size), off);
-        done += size; progress(done, total);
-      }
-      if (crc32(bytes) !== o.crc) throw new FM1Error("device", "The FM-1 changed during the backup. Stop playback and try again.");
-      parts.push(part(String(o.id), sloopLabel(o.id), bytes));
-    }
+    const parts = await this.f.readObjects(manifest, 35, sloopLabel, progress);
     if (!parts.some((p) => p.id === "0" && p.data) || !parts.some((p) => p.id === "1" && p.data))
       throw new FM1Error("device", "The backup is missing the loop in progress or the settings.");
     const song = !!only && only.length === SLOOP_SONG_IDS.length && SLOOP_SONG_IDS.every((i) => only.includes(i));
@@ -517,14 +514,7 @@ export class SLOOPArchive {
         if (r[2] === 1) { done += o.data.length; progress(done, total); continue; }
         FeluccaArchive.check(r[2]);
       } else await put(begin);
-      try {
-        for (let off = 0; off < o.data.length; off += 256) {
-          const c = o.data.subarray(off, Math.min(off + 256, o.data.length));
-          await put([1, o.id, ...u32To7(off), ...maskPack(c)]);
-          done += c.length; progress(done, total);
-        }
-        await put([2, o.id]);
-      } catch (e) { try { await put([3, o.id]); } catch { /* already failing */ } throw e; }
+      await FeluccaArchive.sendObject(o.id, o.data, put, (n) => { done += n; progress(done, total); });
     }
   }
 }

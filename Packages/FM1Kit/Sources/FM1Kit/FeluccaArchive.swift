@@ -75,12 +75,10 @@ public struct FeluccaArchive: Sendable {
         }
     }
 
-    public func capture(firmware: String, progress: @escaping ArchiveProgress = { _, _ in }) async throws -> DeviceArchive {
-        let info = try await supportsArchive()
-        guard info.supported else {
-            throw FM1Error.unsupported("This Felucca (\(info.version)) does not support complete backups. Update Felucca first.")
-        }
-        let manifest = try Self.manifest(try await request(Cmd.list, [], timeout: 3))
+    /// Reads objects in chunks with `get` (Felucca's archive GET, or SLOOP's backup GET: the same reply), each checked
+    /// against its CRC-32 from the manifest.
+    func readObjects(_ manifest: [ManifestEntry], get: UInt8, label: (UInt8) -> String,
+                     progress: @escaping ArchiveProgress) async throws -> [DeviceArchive.Part] {
         let total = manifest.reduce(0) { $0 + $1.size }
         var done = 0
         var parts: [DeviceArchive.Part] = []
@@ -89,7 +87,7 @@ public struct FeluccaArchive: Sendable {
             var off = 0
             while off < o.size {
                 let size = min(Self.chunk, o.size - off)
-                let a = try await request(Cmd.get, [o.id] + SysExCoding.u32To7(UInt32(off)) + [UInt8(size & 127), UInt8(size >> 7)], timeout: 1, retries: 1)
+                let a = try await request(get, [o.id] + SysExCoding.u32To7(UInt32(off)) + [UInt8(size & 127), UInt8(size >> 7)], timeout: 1, retries: 1)
                 guard a.count >= 9 else { throw FM1Error.protocolError("Short backup reply") }
                 try Self.check(a[1])
                 guard a[0] == o.id, try SysExCoding.u32From7(a, at: 2) == off, Int(a[7]) | Int(a[8]) << 7 == size else {
@@ -101,8 +99,18 @@ public struct FeluccaArchive: Sendable {
                 progress(done, total)
             }
             guard SysExCoding.crc32(bytes) == o.crc else { throw FM1Error.device("The FM-1 changed during the backup. Stop playback and try again.") }
-            parts.append(.init(id: "\(o.id)", label: Self.label(o.id), data: Data(bytes)))
+            parts.append(.init(id: "\(o.id)", label: label(o.id), data: Data(bytes)))
         }
+        return parts
+    }
+
+    public func capture(firmware: String, progress: @escaping ArchiveProgress = { _, _ in }) async throws -> DeviceArchive {
+        let info = try await supportsArchive()
+        guard info.supported else {
+            throw FM1Error.unsupported("This Felucca (\(info.version)) does not support complete backups. Update Felucca first.")
+        }
+        let parts = try await readObjects(try Self.manifest(try await request(Cmd.list, [], timeout: 3)), get: Cmd.get, label: Self.label,
+                                          progress: progress)
         guard parts.count >= 2, !parts[0].data.isEmpty, !parts[1].data.isEmpty else {
             throw FM1Error.device("The backup is missing the current music or settings.")
         }
@@ -165,18 +173,25 @@ public struct FeluccaArchive: Sendable {
             } else {
                 _ = try await put(begin)
             }
-            do {
-                var off = 0
-                while off < bytes.count {
-                    let c = bytes[off..<min(off + Self.chunk, bytes.count)]
-                    _ = try await put([1, id] + SysExCoding.u32To7(UInt32(off)) + SysExCoding.maskPack(c))
-                    off += c.count; done += c.count; progress(done, total)
-                }
-                _ = try await put([2, id])
-            } catch {
-                _ = try? await put([3, id])
-                throw error
+            try await Self.sendObject(id, bytes, put: { _ = try await put($0) }) { done += $0; progress(done, total) }
+        }
+    }
+
+    /// After a PUT begin: the object's data in chunks, then the commit; an abort when anything fails (the object
+    /// on the FM-1 stays as it was). Shared by Felucca's archive and SLOOP's backup (the same PUT ops).
+    static func sendObject(_ id: UInt8, _ bytes: [UInt8], put: ([UInt8]) async throws -> Void, sent: (Int) -> Void) async throws {
+        do {
+            var off = 0
+            while off < bytes.count {
+                let c = bytes[off..<min(off + chunk, bytes.count)]
+                try await put([1, id] + SysExCoding.u32To7(UInt32(off)) + SysExCoding.maskPack(c))
+                off += c.count
+                sent(c.count)
             }
+            try await put([2, id])
+        } catch {
+            try? await put([3, id])
+            throw error
         }
     }
 

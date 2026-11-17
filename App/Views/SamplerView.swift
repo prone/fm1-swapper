@@ -187,8 +187,6 @@ struct SamplerView: View {
     }
 
     func importAudio(_ url: URL, name: String? = nil) {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let data: Data
         do { data = try readImport(url, maxBytes: ImportLimit.audio) } catch { loadError = error.localizedDescription; return }
         let kit = SampleKit(name: name ?? url.deletingPathExtension().lastPathComponent, fileName: url.lastPathComponent, audio: data)

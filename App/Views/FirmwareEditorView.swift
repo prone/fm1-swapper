@@ -97,21 +97,19 @@ struct SLOOPSongsView: View {
             message = urls.map(importOne).joined(separator: "\n\n")
         }
         .shareSheet($sharing)
-        .alert("Song files", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-            Button("OK") { message = nil }
-        } message: { Text(message ?? "") }
+        .messageAlert("Song files", $message)
         .searchable(text: $search, prompt: "Songs")
         .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+        .alert("Rename", isPresented: $renaming.isPresent()) {
             TextField("Name", text: $newName)
             Button("Rename") { let n = newName.trimmingCharacters(in: .whitespaces); if let r = renaming, !n.isEmpty { r.label = n; try? context.save() } }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog(deleting.map { "Delete \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+        .confirmationDialog(deleting.map { "Delete \"\($0.label)\"?" } ?? "", isPresented: $deleting.isPresent(),
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) { if let d = deleting { context.delete(d); try? context.save() } }
         } message: { Text("The saved song is removed from the app. The FM-1 isn't changed.") }
-        .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: Binding(get: { loading != nil }, set: { if !$0 { loading = nil } }),
+        .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: $loading.isPresent(),
                             titleVisibility: .visible) {
             Button("Save the FM-1's song, then load") { if let l = loading { Task { await device.loadSong(l, saveFirstAs: DeviceController.autoSongName(), context: context) } } }
             Button("Replace without saving", role: .destructive) { if let l = loading { Task { await device.loadSong(l) } } }
@@ -133,8 +131,6 @@ struct SLOOPSongsView: View {
     }
 
     private func importOne(_ url: URL) -> String {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
             return try SongFiles.add(try readImport(url, maxBytes: ImportLimit.backup), fileName: url.lastPathComponent, context: context)
         } catch {
