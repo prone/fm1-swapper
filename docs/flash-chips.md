@@ -39,3 +39,18 @@ M-VAVE's own firmware (V15/V16) works on both chips.
 Sources: The Firmware Hub FAQ and rescue page; Felucca README and v1.8.2 release notes; jvitkauskas/m-bootloader
 README; SLOOP 2.8.5 notes; isod89/sloop-fm1 `firmware/hal/fm1_flash_id.h`. Mooring for FM-1 advertises chip
 detection, but its source isn't public, so how it does it is unknown.
+
+## Checking a unit's chip (M-Flasher)
+
+Confirmed in DECIMA1's video "FM-1 New VS Old Flash Chip" (2026-11-16, youtube.com/watch?v=VNFZqDnTFYs), which walks
+through M-Flasher (github.com/jvitkauskas/m-flasher, desktop: Windows/Mac/Linux):
+
+1. Put the FM-1 in download mode. M-Flasher's "How to connect" panel lists: M-VAVE firmware or Felucca running →
+   connect and press DOWNLOAD MODE (it sends a MIDI message); FM-1 with m-bootloader → hold REC while switching on;
+   Felucca, SLOOP or Snoop37 running → hold OCT− and OCT+; then connect USB with a data cable.
+2. Device info then shows model, firmware (e.g. "FM-1 820"), bootloader (e.g. m-bootloader 2.3), **FLASH CHIP**
+   (`0x856014 (old) · 1 MiB` on the video's unit) and the chip key, plus a map of the flash.
+
+Lead to check: units with **m-bootloader** may report the chip over MIDI (its README says the recovery menu shows the
+chip and that MIDI mode answers read commands). If so, the apps could detect the chip automatically on those units.
+Read m-bootloader's source before relying on it.
