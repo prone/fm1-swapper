@@ -48,6 +48,11 @@ Run 2026-11-16 with FM1Kit (`OTAUpdater.startHelper`, `MBoot.backup`, `MBoot.res
 | "Back to official firmware…" (downloaded V15, sha db1642…) | OK, `FM-1_015` |
 | V15 → SLOOP 2.8.5 | OK |
 | SLOOP → Melodee v1.6.1 **via V15** (two installs in one run) | OK, `FM-1_91061` |
+| Melodee → Felucca v1.8.2 with "restore after install" (the earlier Felucca backup) | OK, restored |
+
+Found: Melodee answers `FM-1_91061` and fm1-amb `FM-1_7010302`, outside the number ranges `DeviceIdentity.family`
+knows, so the app calls them unknown. Melodee is Felucca-family (m-bootloader SPEC §11.7), so it isn't offered
+"Check this FM-1". To fix: recognise families by more than the number range.
 
 ## What this means for the roadmap
 
