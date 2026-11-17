@@ -162,6 +162,14 @@ final class Backup {
         return try? DeviceArchive.decode(payload)
     }
 
+    /// Puts an edited archive in place of this one (an edited SLOOP song), keeping its name and firmware.
+    func replace(with archive: DeviceArchive) throws {
+        payload = try archive.encoded()
+        date = archive.created
+        sizeBytes = archive.totalBytes
+        partsSummary = archive.parts.filter { !$0.data.isEmpty }.map(\.label).joined(separator: ", ")
+    }
+
     static func from(_ archive: DeviceArchive, label: String, kind: String) throws -> Backup {
         let b = Backup(label: label, identity: archive.info["identity"] ?? archive.firmware, family: archive.family, kind: kind)
         b.date = archive.created

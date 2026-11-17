@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */; };
 		156AD398D777D5E86962A0AE /* FM1SwapperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */; };
+		1DF4A65302F26F191A400B2B /* SLOOPSongEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */; };
 		22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A8C4B5763FA56BB526B413 /* CheckIn.swift */; };
 		2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */; };
 		3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2653A28D6F9710CB02DA3504 /* Assets.xcassets */; };
@@ -43,6 +44,7 @@
 		271621E80E8284852D3846F5 /* FirmwareHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareHub.swift; sourceTree = "<group>"; };
 		34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
 		3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceView.swift; sourceTree = "<group>"; };
+		4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SLOOPSongEditor.swift; sourceTree = "<group>"; };
 		51EBFA2F84608D287E56FA82 /* fm1-stage.fwsc */ = {isa = PBXFileReference; path = "fm1-stage.fwsc"; sourceTree = "<group>"; };
 		52120CB6C770736D513A9CA9 /* LICENSE-m-bootloader.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-m-bootloader.txt"; sourceTree = "<group>"; };
 		52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				ABFBB628BDDF7EDAACB8F080 /* LibraryView.swift */,
 				5C0B929FAAEB090069D5FBE0 /* PadsView.swift */,
 				A689C414052F8A2578ADFC59 /* SamplerView.swift */,
+				4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */,
 				2078894A38E17E956727E27A /* SwapSheet.swift */,
 				08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */,
 			);
@@ -275,6 +278,7 @@
 				03F19F117300624C7AB18C5B /* LibraryView.swift in Sources */,
 				3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */,
 				D4322B93C8DC2AF4726D99A6 /* PadsView.swift in Sources */,
+				1DF4A65302F26F191A400B2B /* SLOOPSongEditor.swift in Sources */,
 				5DAE0B01A2CE8813F4BE56AD /* Sampler.swift in Sources */,
 				B67FA0FED33921D18916E9E2 /* SamplerView.swift in Sources */,
 				DCDBE05F482E16E80BEC84E0 /* SwapSheet.swift in Sources */,

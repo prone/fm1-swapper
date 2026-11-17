@@ -397,6 +397,7 @@ struct SLOOPSongsSection: View {
     @State private var newName = ""
     @State private var checking = false
     @State private var clearCheck: DeviceController.SongCheck?
+    @State private var editing: Backup?
 
     var body: some View {
         Section {
@@ -413,26 +414,29 @@ struct SLOOPSongsSection: View {
             }
             .disabled(device.busy || checking)
             ForEach(firmware?.songs ?? []) { s in
-                Button { loading = s } label: {
+                Button { editing = s } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.label).foregroundStyle(.primary)
                         Text("\(s.date.formatted(date: .abbreviated, time: .shortened)) · \(s.partsSummary.contains("Section") ? sections(s) : "no sections")")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .disabled(device.busy)
                 .swipeActions {
                     Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
                     Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
+                    Button { loading = s } label: { Label("Load", systemImage: "arrow.up.to.line") }.tint(.blue).disabled(device.busy)
                 }
                 .contextMenu {
+                    Button { editing = s } label: { Label("Open and edit", systemImage: "pianokeys") }
+                    Button { loading = s } label: { Label("Load onto the FM-1…", systemImage: "arrow.up.to.line") }.disabled(device.busy)
                     Button { newName = s.label; renaming = s } label: { Label("Rename", systemImage: "pencil") }
                     Button(role: .destructive) { context.delete(s); try? context.save() } label: { Label("Delete", systemImage: "trash") }
                 }
             }
         } header: { Text("SLOOP songs") } footer: {
-            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name, and tap a song to put it back (stop playback first). Clear empties the FM-1 for a new song and offers to save first; it needs SLOOP 2.7 or later. Saving and loading work with SLOOP 2.3 or later and firmware built on it.")
+            Text("SLOOP holds one song: the loop, sections A–D and their order. Save it here under a name. Tap a song to review and edit it: its song order, sections and notes, bars copied from one section to another. Send it to the FM-1 from there, or swipe it to Load (stop playback first). Clear empties the FM-1 for a new song and offers to save first; it needs SLOOP 2.7 or later. Saving and loading work with SLOOP 2.3 or later and firmware built on it.")
         }
+        .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
         .alert("Save the song", isPresented: $naming) {
             TextField("Name", text: $name)
             Button("Save") { let n = name.trimmingCharacters(in: .whitespaces); Task { await device.saveSong(n.isEmpty ? "Song" : n, context: context) } }
