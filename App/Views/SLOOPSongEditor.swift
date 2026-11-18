@@ -57,7 +57,11 @@ struct SLOOPSongEditor: View {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { importingAudio = true } label: { Label("Import from audio", systemImage: "waveform.badge.plus") }
                         .disabled(doc == nil)
-                    Button { play() } label: { Label("Play in the emulator", systemImage: "play.rectangle") }
+                    Menu {
+                        Button { play() } label: { Label("Play the loop", systemImage: "repeat") }
+                        Button { play(song: true) } label: { Label("Play the song (sections in order)", systemImage: "list.number") }
+                            .disabled(doc?.order?.entries.isEmpty != false)
+                    } label: { Label("Play in the emulator", systemImage: "play.rectangle") }
                         .disabled(doc == nil)
                     Button { if let last = undo.popLast() { doc = last } } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                         .disabled(undo.isEmpty)
@@ -96,15 +100,19 @@ struct SLOOPSongEditor: View {
             }
             .shareSheet($sharing)
             .sheet(isPresented: $importingAudio) {
-                if let d = doc { AudioImportSheet(doc: d) { plan in
+                if let d = doc { AudioImportSheet(doc: d) { plan, name in
                     edit { $0.apply(plan) }
+                    // a new song made from audio takes the audio's name (until then it's "New song n")
+                    if importOnOpen, song.label.hasPrefix("New song"), !name.isEmpty { song.label = name; try? context.save() }
                     if let k = plan.targets.first { slot = .section(k); bars = nil }   // (show what came in: not the loop)
                 } }
             }
             .fullScreenCover(item: $playing) { p in
                 EmulatorScreen(title: "\(song.label) · \(p.firmware.name)", package: p.package, fileName: p.firmware.emulatorFileName,
                                firmware: p.firmware, startSave: p.save,
-                               startHint: "Song loaded. Tap Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY.")
+                               startHint: p.songMode ? "Song loaded. Tap Start: it switches SLOOP to song mode and plays the sections in order."
+                                   : "Song loaded. Tap Start, then PLAY for the loop. For the song: SAVE (the SONG screen), OCT− (song mode), PLAY.",
+                               startActions: p.songMode ? Self.playTheSong : nil)
             }
             .messageAlert(song.label, $problem)
             .task { open() }
@@ -402,7 +410,14 @@ struct SLOOPSongEditor: View {
 
     /// Opens SLOOP in the emulator with this song as it is now (edits included, saved or not): the song goes into
     /// the emulator's saved flash for SLOOP, over the emulator's own settings for it.
-    private func play() {
+    /// SLOOP's song mode from the TRACKS screen: SAVE opens the SONG screen, OCT− toggles loop / song (SLOOP starts
+    /// in loop mode), PLAY plays the sections in the song's order.
+    static let playTheSong: [Tutorial.Action] = [
+        .init(press: "SAVE"), .init(wait: 700), .init(press: "OCT-"), .init(wait: 500), .init(press: "PLAY"),
+    ]
+
+    /// `song`: then the emulator switches SLOOP to song mode and plays it through, once Start is tapped.
+    private func play(song asSong: Bool = false) {
         guard let d = doc else { return }
         let sloop = firmwares.filter { $0.hasPackage && $0.name.localizedCaseInsensitiveContains("sloop") }
         guard let fw = (song.firmware?.hasPackage == true && song.firmware!.name.localizedCaseInsensitiveContains("sloop") ? song.firmware : nil)
@@ -417,7 +432,7 @@ struct SLOOPSongEditor: View {
             let text: String
             do { text = try SLOOPFlash.emulatorSave(song: d.archive(), package: pkg, sha256: sha, name: fw.name, base: base) }
             catch where base != nil { text = try SLOOPFlash.emulatorSave(song: d.archive(), package: pkg, sha256: sha, name: fw.name, base: nil) }
-            playing = EmulatorStart(firmware: fw, package: pkg, save: text)
+            playing = EmulatorStart(firmware: fw, package: pkg, save: text, songMode: asSong)
         } catch {
             problem = error.localizedDescription
         }
@@ -458,6 +473,7 @@ struct EmulatorStart: Identifiable {
     let firmware: Firmware
     let package: Data
     let save: String
+    var songMode = false
 }
 
 private extension SLOOPTrack {

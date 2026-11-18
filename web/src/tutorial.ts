@@ -5,6 +5,9 @@
 import type { Firmware } from "./store";
 
 export type Action = { press?: string; hold?: string; release?: string; turn?: string; clicks?: number; note?: string; ms?: number; wait?: number };
+/** SLOOP's song mode from the TRACKS screen: SAVE opens the SONG screen, OCT− toggles loop / song (SLOOP starts in
+ *  loop mode), PLAY plays the sections in the song's order. */
+export const PLAY_THE_SONG: Action[] = [{ press: "SAVE" }, { wait: 700 }, { press: "OCT-" }, { wait: 500 }, { press: "PLAY" }];
 export interface Await { press?: string[]; turn?: string; anyNote?: boolean; hint?: string }
 export interface Step { title: string; text: string; highlight?: string[]; show?: Action[]; await?: Await }
 export interface Tutorial {

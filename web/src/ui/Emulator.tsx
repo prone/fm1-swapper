@@ -19,7 +19,7 @@ const DOCKS: Dock[] = ["bottom", "top", "left", "right"];
 function savedDock(): Dock { try { const d = localStorage.getItem("tutorialDock") as Dock; return DOCKS.includes(d) ? d : "bottom"; } catch { return "bottom"; } }
 
 /** `start`: an emulator save to import once the firmware is loaded (a SLOOP song from the song editor), and what to say. */
-export function Emulator({ f, tutorial, start, title, close }: { f: Firmware; tutorial?: Tutorial; start?: { save: string; hint: string }; title?: string; close: () => void }) {
+export function Emulator({ f, tutorial, start, title, close }: { f: Firmware; tutorial?: Tutorial; start?: { save: string; hint: string; actions?: Action[] }; title?: string; close: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState("Loading the emulator…");
   const [dock, setDock] = useState<Dock>(savedDock);
@@ -35,6 +35,13 @@ export function Emulator({ f, tutorial, start, title, close }: { f: Firmware; tu
     if (start) {
       const r = await w.__fm1action?.("import", start.save);
       setStatus(r?.ok ? start.hint : `Couldn't load the song: ${r?.message ?? "the emulator has no import"}`);
+      if (!r?.ok || !start.actions) return;
+      // (Start needs the user's press: the page's audio starts from a gesture; up to 10 minutes)
+      const running = () => { try { return frame.current?.contentDocument?.getElementById("start")?.hidden === true; } catch { return false; } };
+      for (let n = 0; !running(); n++) { if (n > 1200 || !frame.current) return; await sleep(500); }
+      await sleep(3000);                                                  // the firmware boots to TRACKS
+      const done = await emu()?.__fm1do?.(start.actions);
+      if (done && done !== "ok") setStatus(`Couldn't start the song: ${done}`);
       return;
     }
     setStatus("Press Start, then play the panel (or your computer keyboard / a MIDI keyboard).");

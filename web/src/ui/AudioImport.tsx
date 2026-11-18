@@ -7,6 +7,7 @@ import { DRUM_LANES, SongDoc } from "../fm1kit/sloopsong";
 import { SR } from "../audio/dsp";
 import { AudioNote, Section, SongAudio, analyseSection, dropGhosts, suggestSections } from "../audio/analysis";
 import { decode, startRecording, transcribe } from "../audio/input";
+import { fmtDateTime } from "./common";
 import { DEFAULT_TRACKS, Part, applyImport } from "../audio/toSong";
 import { Bar, FileDrop } from "./common";
 
@@ -14,8 +15,8 @@ const PARTS: [Part, string][] = [["bass", "Bassline"], ["keys", "Chords"], ["lea
 const mmss = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 const yieldUI = () => new Promise((r) => setTimeout(r, 30));                     // (let the page paint the status)
 
-/** `show`: opens a section in the editor (after Apply, the first one imported). */
-export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f: (d: SongDoc) => void) => void; show: (section: number) => void; close: () => void }) {
+/** `show`: opens a section in the editor (after Apply, the first one imported); `named`: the audio's name, on Apply. */
+export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; edit: (f: (d: SongDoc) => void) => void; show: (section: number) => void; named: (name: string) => void; close: () => void }) {
   const [phase, setPhase] = useState<"pick" | "recording" | "working" | "review">("pick");
   const [status, setStatus] = useState(""), [progress, setProgress] = useState<number | null>(null), [err, setErr] = useState("");
   const [name, setName] = useState("");
@@ -87,6 +88,7 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
     const bpm = song.current?.bpm ?? 120;
     edit((d) => applyImport(d, { sections, targets, tracks, tempo: setTempo ? bpm : null, order: setOrder }));
     if (targets.length) show(targets[0]);
+    named(name);
     close();
   };
 
@@ -119,7 +121,7 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
           <p class="small">Recording… {recFor.toFixed(0)} s. Play the part (or the song near the mic), then stop. 10–30 seconds is plenty.</p>
           <Bar value={Math.min(1, level * 4)} />
           <div class="tools">
-            <button class="btn primary" onClick={async () => { const r = rec.current; rec.current = null; if (r) { setPhase("working"); setStatus("Reading the recording…"); try { void analyse(await r.stop(), "Recording"); } catch (e) { setErr((e as Error).message); setPhase("pick"); } } }}>■ Stop and analyse</button>
+            <button class="btn primary" onClick={async () => { const r = rec.current; rec.current = null; if (r) { setPhase("working"); setStatus("Reading the recording…"); try { void analyse(await r.stop(), `Recording ${fmtDateTime(Date.now())}`); } catch (e) { setErr((e as Error).message); setPhase("pick"); } } }}>■ Stop and analyse</button>
             <button class="linkbtn" onClick={() => { rec.current?.cancel(); rec.current = null; setPhase("pick"); }}>Cancel</button>
           </div>
         </>

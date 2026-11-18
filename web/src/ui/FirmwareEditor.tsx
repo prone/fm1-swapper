@@ -14,7 +14,8 @@ import { AudioImport } from "./AudioImport";
 /** Whether the song editor has unsaved changes (main.tsx asks before another tab replaces it). */
 export const unsavedEdits = { dirty: false };
 
-type Play = (f: Firmware, save: string, title: string) => void;
+/** `song`: the emulator switches SLOOP to song mode and plays the sections in order, once Start is pressed. */
+type Play = (f: Firmware, save: string, title: string, song?: boolean) => void;
 
 export function FirmwareEditor({ lib, play }: { lib: Library; play: Play }) {
   const [view, setView] = useState<"home" | "sloop">("home");
@@ -193,7 +194,7 @@ function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Ba
     if (b) void device.loadSong(b, saveFirst ? autoSongName() : null);
   };
   /** SLOOP in the emulator with the song as it is now (edits included): written into the emulator's saved flash. */
-  const playIt = async () => {
+  const playIt = async (asSong = false) => {
     setProblem("");
     // the song's own SLOOP first, then the newest; the first one whose package is in the library
     const sloop = lib.firmwares.filter((f) => f.sha256 && /sloop/i.test(f.name))
@@ -204,7 +205,7 @@ function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Ba
     try {
       const sectors = await emulatorSectors(fw.sha256);
       putSong(doc.archive(), sectors);
-      play(fw, emulatorSaveText(pkg, fw.sha256, fw.name, sectors), `${song.label} · ${fw.name}`);
+      play(fw, emulatorSaveText(pkg, fw.sha256, fw.name, sectors), `${song.label} · ${fw.name}`, asSong);
     } catch (e) { setProblem((e as Error).message); }
   };
   const leave = () => { if (!dirty || window.confirm("Close without saving your changes?")) { unsavedEdits.dirty = false; close(); } };
@@ -256,13 +257,17 @@ function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Ba
         <button class="btn small" onClick={() => void saveCopy()}>Save as new…</button>
         <button class="btn small" onClick={() => { const f = songFile(doc.archive(), song.label); saveFile(f.name, f.text, "application/json"); }}>Download</button>
         <button class="btn small" onClick={() => setImporting(!importing)}>Import from audio…</button>
-        <button class="btn small" onClick={() => void playIt()}>▶ Play in the emulator</button>
+        <button class="btn small" onClick={() => void playIt()}>▶ Play the loop in the emulator</button>
+        <button class="btn small" disabled={!doc.order?.entries.length} onClick={() => void playIt(true)}>▶ Play the song</button>
         <button class="btn small primary" disabled={!!s.busy} onClick={() => setSending(true)}>Send to FM-1…</button>
       </div>
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
       <DeviceBusy s={s} />
       {problem && <div class="banner warn">{problem}</div>}
-      {importing && <AudioImport doc={doc} edit={edit} show={(k) => { setSlot(sectionSlot(k)); setBars(null); }} close={() => setImporting(false)} />}
+      {importing && <AudioImport doc={doc} edit={edit} named={(name) => {
+        // a new song made from audio takes the audio's name (until then it's "New song n")
+        if (importOnOpen && /^New song \d+$/.test(song.label) && name) void store.saveBackup({ ...song, label: name });
+      }} show={(k) => { setSlot(sectionSlot(k)); setBars(null); }} close={() => setImporting(false)} />}
       {sending && (
         <div class="banner warn">
           <b>Send “{song.label}” to the FM-1?</b>

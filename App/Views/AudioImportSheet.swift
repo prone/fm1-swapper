@@ -14,7 +14,8 @@ import WebKit
 struct AudioImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     let doc: SLOOPSongDoc
-    let apply: (SLOOPImportPlan) -> Void
+    /// The plan, and the audio's name (the file's, or "Recording" and the time).
+    let apply: (SLOOPImportPlan, String) -> Void
 
     @State private var analyser = AudioAnalyser()
     @State private var result: AudioAnalyser.Result?
@@ -45,7 +46,7 @@ struct AudioImportSheet: View {
                         Button("Import") {
                             player?.stop()
                             apply(SLOOPImportPlan(sections: sections, targets: targets, tracks: tracks,
-                                                  tempo: setTempo ? Int((result?.bpm ?? 120).rounded()) : nil, order: setOrder))
+                                                  tempo: setTempo ? Int((result?.bpm ?? 120).rounded()) : nil, order: setOrder), name)
                             dismiss()
                         }
                         .disabled(sections.isEmpty)
@@ -56,7 +57,7 @@ struct AudioImportSheet: View {
                 if case let .success(url) = r { run(url, name: url.deletingPathExtension().lastPathComponent) }
             }
             .sheet(isPresented: $recording) {
-                RecorderSheet(hint: "Play the part, or the song near the mic, then stop. 10–30 seconds is plenty.") { run($0, name: "Recording") }
+                RecorderSheet(hint: "Play the part, or the song near the mic, then stop. 10–30 seconds is plenty.") { run($0, name: "Recording \(Date().formatted(date: .abbreviated, time: .shortened))") }
             }
             .background(AudioAnalyserView(analyser: analyser).frame(width: 1, height: 1).opacity(0))
         }

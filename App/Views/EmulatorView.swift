@@ -77,6 +77,8 @@ struct EmulatorScreen: View {
     /// An emulator save to import once the page is ready (a SLOOP song from the song editor), and what to say then.
     var startSave: String? = nil
     var startHint: String? = nil
+    /// Run on the firmware once the user has tapped Start (and it has booted), after `startSave` loaded.
+    var startActions: [Tutorial.Action]? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -145,6 +147,16 @@ struct EmulatorScreen: View {
                         Task {
                             let r = await emu.action("import", save)
                             emu.status = r.ok ? (startHint ?? "Tap Start") : "Couldn't load the song: \(r.message)"
+                            guard r.ok, let actions = startActions else { return }
+                            // (Start needs the user's tap: the page's audio starts from a gesture)
+                            var waited = 0                                       // (up to 10 minutes, then it gives up)
+                            while !(await emu.isRunning()) {
+                                waited += 1
+                                guard waited < 1200, emu.web != nil, (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
+                            }
+                            try? await Task.sleep(for: .seconds(3))              // the firmware boots to TRACKS
+                            let done = await emu.perform(actions)
+                            if done != "ok" { emu.status = "Couldn't start the song: \(done)" }
                         }
                     }
                     if emu.ready, tutorial != nil, !startedTutorial, let t = tutorial { startedTutorial = true; Task { await toggleTutorial(t) } }

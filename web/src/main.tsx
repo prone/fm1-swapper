@@ -5,7 +5,7 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import "./style.css";
 import { Firmware } from "./store";
-import { Tutorial, tutorialFor } from "./tutorial";
+import { Action, PLAY_THE_SONG, Tutorial, tutorialFor } from "./tutorial";
 import { useDevice, useLibrary } from "./ui/common";
 import { DeviceView } from "./ui/DeviceView";
 import { LibraryView } from "./ui/LibraryView";
@@ -25,7 +25,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("Library");
   const [openId, setOpenId] = useState<string | null>(null);
   const [swapNow, setSwapNow] = useState(false);
-  const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial; start?: { save: string; hint: string }; title?: string } | null>(null);
+  const [emu, setEmu] = useState<{ f: Firmware; t?: Tutorial; start?: { save: string; hint: string; actions?: Action[] }; title?: string } | null>(null);
   useEffect(() => { if (lib.loaded && !lib.firmwares.length && tab === "Library") setTab("Get firmware"); }, [lib.loaded]);
   const open = (id: string, swap = false) => { setOpenId(id); setSwapNow(swap); setTab("Library"); scrollTo(0, 0); };
 
@@ -52,7 +52,9 @@ function App() {
         {tab === "Device" && <DeviceView lib={lib} open={open} />}
         {tab === "Library" && <LibraryView lib={lib} openId={openId} setOpenId={(id) => { setOpenId(id); setSwapNow(false); }} swapNow={swapNow} swapped={() => setSwapNow(false)} tryIt={(f, tut) => setEmu({ f, t: tut ? tutorialFor(f) : undefined })} />}
         {tab === "Get firmware" && <GetFirmware lib={lib} opened={open} />}
-        {tab === "Firmware Editor" && <FirmwareEditor lib={lib} play={(f, save, title) => setEmu({ f, title, start: { save, hint: "Song loaded. Press Start, then PLAY for the loop; for the song order, SAVE + key 13 (song mode), then PLAY." } })} />}
+        {tab === "Firmware Editor" && <FirmwareEditor lib={lib} play={(f, save, title, song) => setEmu({ f, title, start: song
+          ? { save, hint: "Song loaded. Press Start: it switches SLOOP to song mode and plays the sections in order.", actions: PLAY_THE_SONG }
+          : { save, hint: "Song loaded. Press Start, then PLAY for the loop. For the song: SAVE (the SONG screen), OCT− (song mode), PLAY." } })} />}
         {tab === "History" && <HistoryView lib={lib} open={open} />}
         <footer class="small faint" style={{ marginTop: 40 }}>
           Beta. Not affiliated with M-VAVE. Firmware is written at your own risk; the FM-1's update loader lets an interrupted install be finished.
