@@ -13,6 +13,7 @@
 		22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A8C4B5763FA56BB526B413 /* CheckIn.swift */; };
 		2EA31FCE2C3377966DC8311F /* SongFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C6CD44F535661D75F07241 /* SongFiles.swift */; };
 		2F72AEA246DC874C79EACEE5 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */; };
+		321124FF606A09B1D7C05E83 /* BasicPitchCoreML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324B20977F0994D71F63D917 /* BasicPitchCoreML.swift */; };
 		3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2653A28D6F9710CB02DA3504 /* Assets.xcassets */; };
 		392D0E1E4C844B0657015543 /* FirmwareHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 271621E80E8284852D3846F5 /* FirmwareHub.swift */; };
 		3FDAC5D4FA4EC597338718D8 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF00D4FA675DD34411607CD /* Models.swift */; };
@@ -25,9 +26,11 @@
 		779AEE75851D8D0B9E979669 /* TutorialPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E4621C8C1AB93E5360AF48 /* TutorialPlayer.swift */; };
 		85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D29C0B53676467FFDF1FB65 /* CatalogView.swift */; };
 		8DDDE094A05F790E1A81E301 /* EmulatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */; };
+		8F09A96C6B9B0AE0395B855B /* BasicPitch-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3F18C17932533AA9A8AEFB5A /* BasicPitch-LICENSE.txt */; };
 		954CFFD165B002456D08E2EA /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D20BB46C022437C51B2E0E4 /* Tutorial.swift */; };
 		97742A301100ACECDEFE3888 /* DeviceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */; };
 		A040DF929CCC2615B9DE9078 /* Tutorials in Resources */ = {isa = PBXBuildFile; fileRef = 194938F457EA65FAB2408A63 /* Tutorials */; };
+		A54B033A8C6C385762B7EC21 /* BasicPitch.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = D26652A5FBC385A26533B0FB /* BasicPitch.mlpackage */; };
 		AAC6325968A95D84A2D5F3A2 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D24E4F2CE2385DF16D10A2 /* HistoryView.swift */; };
 		B67FA0FED33921D18916E9E2 /* SamplerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A689C414052F8A2578ADFC59 /* SamplerView.swift */; };
 		BBB851064D8ED9AC18888631 /* AudioImport in Resources */ = {isa = PBXBuildFile; fileRef = 5CF0559D4501CF9B9949B246 /* AudioImport */; };
@@ -47,9 +50,11 @@
 		2078894A38E17E956727E27A /* SwapSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwapSheet.swift; sourceTree = "<group>"; };
 		2653A28D6F9710CB02DA3504 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		271621E80E8284852D3846F5 /* FirmwareHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareHub.swift; sourceTree = "<group>"; };
+		324B20977F0994D71F63D917 /* BasicPitchCoreML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicPitchCoreML.swift; sourceTree = "<group>"; };
 		34EFB3CC226EEA43947CB9D3 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
 		37C6CD44F535661D75F07241 /* SongFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongFiles.swift; sourceTree = "<group>"; };
 		3EFAB78B9D460CE4E3D09633 /* DeviceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceView.swift; sourceTree = "<group>"; };
+		3F18C17932533AA9A8AEFB5A /* BasicPitch-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "BasicPitch-LICENSE.txt"; sourceTree = "<group>"; };
 		4E2C7D7A7ECDDDABCA56DAE7 /* SLOOPSongEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SLOOPSongEditor.swift; sourceTree = "<group>"; };
 		51EBFA2F84608D287E56FA82 /* fm1-stage.fwsc */ = {isa = PBXFileReference; path = "fm1-stage.fwsc"; sourceTree = "<group>"; };
 		52120CB6C770736D513A9CA9 /* LICENSE-m-bootloader.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-m-bootloader.txt"; sourceTree = "<group>"; };
@@ -71,6 +76,7 @@
 		AFBD2EDCAF3FEC04F3593D3C /* FM1SwapperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FM1SwapperApp.swift; sourceTree = "<group>"; };
 		B4DC3F267FFFB444E366B274 /* FirmwareEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirmwareEditorView.swift; sourceTree = "<group>"; };
 		C6A8C4B5763FA56BB526B413 /* CheckIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckIn.swift; sourceTree = "<group>"; };
+		D26652A5FBC385A26533B0FB /* BasicPitch.mlpackage */ = {isa = PBXFileReference; path = BasicPitch.mlpackage; sourceTree = "<group>"; };
 		D5D2D38CFFDEBFF9AD25D8B5 /* EmulatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorView.swift; sourceTree = "<group>"; };
 		D90470C94E4420DF4C64A1C8 /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
 		D9809E654621D0C67A0B435D /* FM1Swapper-iCloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FM1Swapper-iCloud.entitlements"; sourceTree = "<group>"; };
@@ -118,6 +124,15 @@
 			path = public;
 			sourceTree = "<group>";
 		};
+		467C3302D4D8314161A78443 /* BasicPitch */ = {
+			isa = PBXGroup;
+			children = (
+				3F18C17932533AA9A8AEFB5A /* BasicPitch-LICENSE.txt */,
+				D26652A5FBC385A26533B0FB /* BasicPitch.mlpackage */,
+			);
+			path = BasicPitch;
+			sourceTree = "<group>";
+		};
 		46C474F30EA9BC7B7D5A9CA1 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -139,6 +154,7 @@
 			children = (
 				2653A28D6F9710CB02DA3504 /* Assets.xcassets */,
 				5CF0559D4501CF9B9949B246 /* AudioImport */,
+				324B20977F0994D71F63D917 /* BasicPitchCoreML.swift */,
 				D90470C94E4420DF4C64A1C8 /* Catalog.swift */,
 				C6A8C4B5763FA56BB526B413 /* CheckIn.swift */,
 				7EFDA4A70905BE3374712A8F /* ControllerHub.swift */,
@@ -151,6 +167,7 @@
 				72A5E1C71BA0DFE8A5B00E28 /* Sampler.swift */,
 				37C6CD44F535661D75F07241 /* SongFiles.swift */,
 				7D20BB46C022437C51B2E0E4 /* Tutorial.swift */,
+				467C3302D4D8314161A78443 /* BasicPitch */,
 				A0CC3A8FE9F3F4906A51793C /* MBoot */,
 				1094DE5081FEF79BA7C47AD7 /* Views */,
 			);
@@ -262,6 +279,7 @@
 			files = (
 				3340B2BC4603F1AE92F4C07E /* Assets.xcassets in Resources */,
 				BBB851064D8ED9AC18888631 /* AudioImport in Resources */,
+				8F09A96C6B9B0AE0395B855B /* BasicPitch-LICENSE.txt in Resources */,
 				E02B5A51C610D9201ADE1CAE /* LICENSE-m-bootloader.txt in Resources */,
 				A040DF929CCC2615B9DE9078 /* Tutorials in Resources */,
 				5DE1664F8208568C4A4F9068 /* emu-bridge.js in Resources */,
@@ -278,6 +296,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				63247994FA1C4A62220ED834 /* AudioImportSheet.swift in Sources */,
+				A54B033A8C6C385762B7EC21 /* BasicPitch.mlpackage in Sources */,
+				321124FF606A09B1D7C05E83 /* BasicPitchCoreML.swift in Sources */,
 				44BCE9F05148619AD10F0A8D /* Catalog.swift in Sources */,
 				85CE12901C76D7530432BE27 /* CatalogView.swift in Sources */,
 				22E5450D353EF526E86FF3FC /* CheckIn.swift in Sources */,

@@ -234,8 +234,16 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     /// binary (a whole song in the web view's own decoder can run it out of memory).
     func analyse(_ file: URL) async throws -> Result {
         busy = true; status = "Reading the audio…"; progress = nil
-        defer { busy = false; files.input = nil }
-        files.input = try await Task.detached { try Self.monoSamples(file) }.value
+        defer { busy = false; files.input = nil; files.pitch = nil }
+        let samples = try await Task.detached { try Self.monoSamples(file) }.value
+        files.input = samples
+        // the notes' model on the Neural Engine / GPU (Core ML); if it can't run, the page runs it itself
+        status = "Finding the notes (Basic Pitch)…"
+        let t0 = Date()
+        files.pitch = try? await Task.detached { try BasicPitchCoreML.output(samples: samples) }.value
+        #if DEBUG
+        NSLog("AUDIOTEST Core ML %@ in %.1f s", files.pitch == nil ? "unavailable" : "ran", Date().timeIntervalSince(t0))
+        #endif
         let web = try await page()
         return try decode(Result.self, try await run(web, "return await window.__fm1audio.analyse('')", [:]))
     }
@@ -311,11 +319,13 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
 private final class BundleFiles: NSObject, WKURLSchemeHandler {
     private let root = Bundle.main.url(forResource: "AudioImport", withExtension: nil)?.standardizedFileURL
     var input: Data?
+    /// Basic Pitch's output for it, from Core ML (pitch.bin), when that ran.
+    var pitch: Data?
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard let url = task.request.url, let root, url.host == "app" else { return fail(task) }
-        if url.path == "/input.pcm" {
-            guard let input else { return fail(task) }
+        if url.path == "/input.pcm" || url.path == "/pitch.bin" {
+            guard let input = url.path == "/input.pcm" ? input : pitch else { return fail(task) }
             task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
                                             headerFields: ["Content-Type": "application/octet-stream", "Content-Length": "\(input.count)"])!)
             task.didReceive(input)

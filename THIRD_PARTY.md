@@ -148,6 +148,8 @@ SOFTWARE.
 https://github.com/spotify/basic-pitch-ts (npm `@spotify/basic-pitch` 1.0.1), by Spotify's Audio Intelligence Lab. The
 song editor's Import from audio uses it to find the notes in audio: the library (with TensorFlow.js, Apache-2.0) is
 bundled into its own chunk, and its model (`model.json`, `group1-shard1of1.bin`) ships unchanged in
-`web/public/basic-pitch/` with its LICENSE. The tempo, grid and drum analysis around it is this project's own
+`web/public/basic-pitch/` with its LICENSE. The iOS app also ships Basic Pitch's Core ML version of the same model
+(`nmp.mlpackage` from the Python package basic-pitch 0.4.0, as `App/BasicPitch/BasicPitch.mlpackage`, unchanged, with
+its licence), run on the device's Neural Engine or GPU. The tempo, grid and drum analysis around it is this project's own
 (`web/src/audio/`). Paper: Bittner et al., "A Lightweight Instrument-Agnostic Model for Polyphonic Note Transcription
 and Multipitch Estimation", ICASSP 2022.

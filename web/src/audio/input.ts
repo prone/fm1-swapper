@@ -35,13 +35,36 @@ export async function startRecording(): Promise<{ stop: () => Promise<Float32Arr
   };
 }
 
-/** The notes in the audio (Basic Pitch's settings as the prototype: onsets 0.5, frames 0.3, notes 80 ms or longer). */
-export async function transcribe(y: Float32Array, progress: (f: number) => void): Promise<AudioNote[]> {
+/** Notes from Basic Pitch's model output (note, onset: n x 88; contour: n x 264, one row per frame), as transcribe()
+ *  makes them: for output the iOS app computed with Core ML (on the iPad's Neural Engine / GPU). */
+export async function notesFromOutput(frames: number[][], onsets: number[][], contours: number[][]): Promise<AudioNote[]> {
   const bp = await import("@spotify/basic-pitch");
-  const model = new bp.BasicPitch(new URL("basic-pitch/model.json", document.baseURI).href);
-  const frames: number[][] = [], onsets: number[][] = [], contours: number[][] = [];
-  await model.evaluateModel(y, (f, o, c) => { frames.push(...f); onsets.push(...o); contours.push(...c); }, progress);
+  return toNotes(bp, frames, onsets, contours);
+}
+
+type BP = typeof import("@spotify/basic-pitch");
+function toNotes(bp: BP, frames: number[][], onsets: number[][], contours: number[][]): AudioNote[] {
   const notes = bp.noteFramesToTime(bp.addPitchBendsToNoteEvents(contours, bp.outputToNotesPoly(frames, onsets, 0.5, 0.3, 7)));
   return notes.map((n) => ({ start: n.startTimeSeconds, end: n.startTimeSeconds + n.durationSeconds, pitch: n.pitchMidi, amp: n.amplitude }))
     .sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+}
+
+/** The notes in the audio (Basic Pitch's settings as the prototype: onsets 0.5, frames 0.3, notes 80 ms or longer). */
+export async function transcribe(y: Float32Array, progress: (f: number) => void): Promise<AudioNote[]> {
+  const [bp, tf] = await Promise.all([import("@spotify/basic-pitch"), import("@tensorflow/tfjs")]);
+  const run = async () => {
+    const model = new bp.BasicPitch(new URL("basic-pitch/model.json", document.baseURI).href);
+    const out = { frames: [] as number[][], onsets: [] as number[][], contours: [] as number[][] };
+    await model.evaluateModel(y, (f, o, c) => { out.frames.push(...f); out.onsets.push(...o); out.contours.push(...c); }, progress);
+    return out;
+  };
+  let r: Awaited<ReturnType<typeof run>>;
+  try { r = await run(); } catch (e) {
+    // the GPU (WebGL) path fails on some devices (an iPad's driver refusing a shader): the CPU path is slower but
+    // runs everywhere
+    if (tf.getBackend() === "cpu") throw e;
+    await tf.setBackend("cpu");
+    r = await run();
+  }
+  return toNotes(bp, r.frames, r.onsets, r.contours);
 }

@@ -4,7 +4,7 @@
 // (App/AudioImport.swift). The app hands over the file's bytes; progress goes back through the "fm1audio" message
 // handler; results come back as JSON.
 import { AudioNote, Section, SongAudio, analyseSection, dropGhosts, suggestSections } from "./analysis";
-import { decode, transcribe } from "./input";
+import { decode, notesFromOutput, transcribe } from "./input";
 
 declare global {
   interface Window {
@@ -39,7 +39,8 @@ const api = {
       : new Float32Array(await (await fetch("input.pcm")).arrayBuffer());
     if (y.length < 22050 * 4) throw new Error("That's under 4 seconds: a 4-bar section needs more.");
     tell("Finding the notes (Basic Pitch)…", 0);
-    notes = dropGhosts(await transcribe(y, (f) => tell("Finding the notes (Basic Pitch)…", f)));
+    const out = b64 ? null : await fetch("pitch.bin").then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+    notes = dropGhosts(out ? await notesFromOutput(...rows(out)) : await transcribe(y, (f) => tell("Finding the notes (Basic Pitch)…", f)));
     tell("Finding the beat and the drums…"); await wait();
     song = new SongAudio(y);
     const sections: ReturnType<typeof plain>[] = [];
@@ -54,6 +55,13 @@ const api = {
     return JSON.stringify(plain(analyseSection(song, notes, start)));
   },
 };
+/** pitch.bin (from the app's Core ML run): Int32 frame count, then note (n x 88), onset (n x 88), contour (n x 264). */
+function rows(buf: ArrayBuffer): [number[][], number[][], number[][]] {
+  const n = new Int32Array(buf, 0, 1)[0], f = new Float32Array(buf, 4);
+  const take = (from: number, w: number) => Array.from({ length: n }, (_, i) => Array.from(f.subarray(from + i * w, from + (i + 1) * w)));
+  return [take(0, 88), take(n * 88, 88), take(n * 176, 264)];
+}
+
 window.__fm1audio = {
   analyse: (b64) => guarded(() => api.analyse(b64)),
   section: (start) => guarded(() => api.section(start)) as unknown as string,
