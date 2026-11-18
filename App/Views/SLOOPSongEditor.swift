@@ -55,6 +55,8 @@ struct SLOOPSongEditor: View {
                     Button("Close") { if dirty { closing = true } else { dismiss() } }
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    DeviceIdleButton("Send to FM-1", systemImage: "arrow.up.to.line") { sending = true }
+                        .disabled(doc == nil)
                     Button { importingAudio = true } label: { Label("Import from audio", systemImage: "waveform.badge.plus") }
                         .disabled(doc == nil)
                     Menu {
@@ -71,8 +73,6 @@ struct SLOOPSongEditor: View {
                         Button {
                             if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
                         } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
-                        Divider()
-                        DeviceIdleButton("Send to FM-1…", systemImage: "arrow.up.to.line") { sending = true }
                     } label: { Label("Song", systemImage: "ellipsis.circle") }
                     .disabled(doc == nil)
                 }
@@ -82,7 +82,7 @@ struct SLOOPSongEditor: View {
                 Button("Discard changes", role: .destructive) { dismiss() }
                 Button("Keep editing", role: .cancel) {}
             }
-            .confirmationDialog("Send \"\(song.label)\" to the FM-1?", isPresented: $sending, titleVisibility: .visible) {
+            .confirmationDialog("Send \"\(song.label)\" to the FM-1? This overwrites the song on it.", isPresented: $sending, titleVisibility: .visible) {
                 Button("Save the FM-1's song first, then send") {
                     if save() { Task { await device.loadSong(song, saveFirstAs: DeviceController.autoSongName(), context: context) } }
                 }
@@ -90,7 +90,7 @@ struct SLOOPSongEditor: View {
                     if save() { Task { await device.loadSong(song) } }
                 }
             } message: {
-                Text("Saves your changes here, then replaces the loop, sections A–D and the song order on the FM-1. Save the FM-1's song first to keep it."
+                Text("Everything in the FM-1's song is replaced: its loop, sections A–D and song order. What's on it now is lost unless you save it first (it's kept in your library). Your changes here are saved before sending."
                      + (doc?.emptyEntries.isEmpty == false ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""))
             }
             .alert("Save as a new song", isPresented: $namingCopy) {

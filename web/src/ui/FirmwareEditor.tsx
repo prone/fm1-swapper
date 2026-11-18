@@ -270,9 +270,9 @@ function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Ba
       }} show={(k) => { setSlot(sectionSlot(k)); setBars(null); }} close={() => setImporting(false)} />}
       {sending && (
         <div class="banner warn">
-          <b>Send “{song.label}” to the FM-1?</b>
-          <div class="small">Saves your changes here, then replaces the loop, sections A–D and the song order on the FM-1 (SLOOP connected).
-            Save the FM-1's song first to keep it.{doc.emptyEntries.length ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""}</div>
+          <b>Send “{song.label}” to the FM-1? This overwrites the song on it.</b>
+          <div class="small">Everything in the FM-1's song is replaced: its loop, sections A–D and song order (SLOOP connected). What's on
+            it now is lost unless you save it first (it's kept in your library). Your changes here are saved before sending.{doc.emptyEntries.length ? " Some song-order entries point at empty sections: SLOOP won't play song mode until they're filled." : ""}</div>
           <div class="btnrow">
             <button class="btn primary" disabled={!!s.busy} onClick={() => void send(true)}>Save the FM-1's song first, then send</button>
             <button class="btn danger" disabled={!!s.busy} onClick={() => void send(false)}>Send without saving it</button>
