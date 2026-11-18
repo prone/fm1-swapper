@@ -4,6 +4,7 @@
 // (App/AudioImport.swift). The app hands over the file's bytes; progress goes back through the "fm1audio" message
 // handler; results come back as JSON.
 import { AudioNote, Section, SongAudio, analyseSection, dropGhosts, suggestSections } from "./analysis";
+import { findLoops } from "./loops";
 import { decode, notesFromOutput, transcribe } from "./input";
 
 declare global {
@@ -23,6 +24,7 @@ const plain = (s: Section) => ({
   lead: s.lead.map(([step, len, pitch]) => ({ step, len, pitch })),
   keys: s.keys.map(([step, len, pitches]) => ({ step, len, pitches })),
   drums: s.drums.map(([step, lanes]) => ({ step, lanes })),
+  ...(s.repeats ? { repeats: s.repeats, lengths: s.lengths, unsure: !!s.unsure } : {}),
 });
 
 /** Errors come back as {"error": …} (the app shows the message: WebKit only says "an exception occurred"). */
@@ -43,8 +45,9 @@ const api = {
     notes = dropGhosts(out ? await notesFromOutput(...rows(out)) : await transcribe(y, (f) => tell("Finding the notes (Basic Pitch)…", f)));
     tell("Finding the beat and the drums…"); await wait();
     song = new SongAudio(y);
-    const sections: ReturnType<typeof plain>[] = [];
-    for (const [i, t] of suggestSections(song, notes, 4).entries()) {
+    tell("Finding the loops…", 0); await wait();
+    const sections = (await findLoops(song, notes, 4, async (f) => { tell("Finding the loops…", f); await wait(); })).map(plain);
+    if (!sections.length) for (const [i, t] of suggestSections(song, notes, 4).entries()) {
       tell(`Analysing section ${"ABCD"[i]}…`); await wait();
       sections.push(plain(analyseSection(song, notes, t)));
     }

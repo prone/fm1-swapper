@@ -258,6 +258,20 @@ final class SLOOPBlankSongTests: XCTestCase {
         let settings = [UInt8](a.part("1")!.data)
         XCTAssertEqual(SysExCoding.le32(settings, 16), 0x5041_4E35, "SLOOP's default panel")
     }
+    func testALoopsPartsGetTheirOwnLength() throws {
+        var doc = try SLOOPSongDoc(SLOOPBlankSong.archive())
+        let json = #"{"start": 0, "bpm": 92, "bass": [{"step": 0, "len": 4, "pitch": 36}], "lead": [], "keys": [], "drums": [{"step": 0, "lanes": [0]}], "repeats": 6, "lengths": {"bass": 32, "keys": 64, "lead": 64, "drums": 16}, "unsure": false}"#
+        let sec = try JSONDecoder().decode(SLOOPAudioSection.self, from: Data(json.utf8))
+        XCTAssertEqual(sec.repeats, 6)
+        doc.apply(SLOOPImportPlan(sections: [sec], targets: [0], tempo: nil, order: false))
+        let a = try XCTUnwrap(doc.patterns[.a])
+        XCTAssertEqual((0..<4).map { a[track: $0].length }, [32, 64, 64, 16])
+        // a section picked by hand (no loop details) still gets 4 bars
+        let plain = try JSONDecoder().decode(SLOOPAudioSection.self, from: Data(#"{"start": 0, "bpm": 92, "bass": [], "lead": [], "keys": [], "drums": []}"#.utf8))
+        doc.apply(SLOOPImportPlan(sections: [plain], targets: [1], tempo: nil, order: false))
+        XCTAssertEqual(doc.patterns[.b]?[track: 0].length, 64)
+    }
+
     func testImportIntoABlankSongFillsItsSilentLoop() throws {
         var doc = try SLOOPSongDoc(SLOOPBlankSong.archive())
         XCTAssertTrue((0..<4).allSatisfy { doc.patterns[.loop]![track: $0].isSilent })

@@ -33,7 +33,7 @@ export function applyImport(doc: SongDoc, plan: ImportPlan) {
       if (k == null) return null;
       const t = p.track(k);
       t.raw[60] = 2;                                              // DIV 1/16 (p[30], see SLOOPTrack.divAt)
-      t.length = 64;
+      t.length = sec.lengths?.[part] ?? 64;                       // (a loop's part: its own pattern's length)
       t.clearAll();
       return t;
     };

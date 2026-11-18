@@ -51,4 +51,12 @@ describe("import into a song", () => {
     expect(doc.patterns.a!.bpm).toBe(120);
     expect(doc.order!.entries).toEqual([{ section: 0, bars: 4 }]);
   });
+  it("gives a loop's parts their own pattern length", () => {
+    const doc = SongDoc.open(song());
+    const sec = { start: 0, bpm: 92, bass: [[0, 4, 36], [16, 4, 38]], keys: [], lead: [], drums: [[0, [0]]], repeats: 6, lengths: { bass: 32, keys: 64, lead: 64, drums: 16 } } as const;
+    applyImport(doc, { sections: [sec as never], targets: [0], tracks: DEFAULT_TRACKS, tempo: null, order: false });
+    const a = doc.patterns.a!;
+    expect([a.track(0).length, a.track(1).length, a.track(2).length, a.track(3).length]).toEqual([32, 64, 64, 16]);
+    expect(a.track(0).chords.map((c) => c.notes[0])).toEqual([36, 38]);
+  });
 });

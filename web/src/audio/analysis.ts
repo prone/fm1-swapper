@@ -10,6 +10,9 @@ export interface AudioNote { start: number; end: number; pitch: number; amp: num
 /** One SLOOP section's worth: 64 16ths. Steps 0..63; drum lanes as SLOOP's (0 kick, 2 snare, 4 hat, 5 open hat). */
 export interface Section {
   start: number; bpm: number;
+  /** A loop of the song (loops.ts): how often it plays, each part's own length in steps (16, 32 or 64), and whether
+   *  it's a weak find (few repeats, loosely alike, or it crosses a change). */
+  repeats?: number; lengths?: { bass: number; keys: number; lead: number; drums: number }; unsure?: boolean;
   bass: [number, number, number][];        // [step, length, pitch]
   keys: [number, number, number[]][];      // [step, length, pitches (up to 4)]
   lead: [number, number, number][];
@@ -143,8 +146,13 @@ export class SectionAudio {
   /** Hits on the grid: kick (the lows rise most, and aren't a bass tone), snare (the mids rise well above the lows),
    *  hat (the highs; on a snare only when well above the mids; open when it rings past 150 ms). A hit counts when
    *  strong, or when moderate at a position of the bar the section's other bars also hit (drum parts repeat). */
-  drums(steps: number[]): [number, number][] {
-    const { R, tone, ring } = this.rises(steps), n = steps.length;
+  drums(steps: number[]): [number, number][] { return drumHits(this.rises(steps)); }
+}
+
+/** Rises (SectionAudio.rises) as hits: see SectionAudio.drums. */
+export function drumHits({ R, tone, ring }: Rises): [number, number][] {
+  {
+    const n = tone.length;
     const cand: Record<number, Float64Array> = {
       0: R.low.map((v, s) => (v >= R.mid[s] - 2 && tone[s] < 12 ? v : 0)),
       2: R.mid.map((v, s) => (v - R.low[s] >= 2.5 ? v : 0)),
@@ -164,6 +172,7 @@ export class SectionAudio {
     return [...out].map((k) => k.split(",").map(Number) as [number, number]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   }
 }
+export type Rises = ReturnType<SectionAudio["rises"]>;
 
 /** Which beat of the first bar is the downbeat (step 0, 4, 8 or 12): kicks on 1 (and 3), snares on 2 and 4. */
 export function barStart(hits: [number, number][]): number {

@@ -506,6 +506,11 @@ public struct SLOOPAudioSection: Codable, Sendable, Equatable {
     public let bass, lead: [Note]
     public let keys: [Chord]
     public let drums: [Hit]
+    /// A loop of the song: how often it plays, each part's own length in steps ("bass", "keys", "lead", "drums": 16,
+    /// 32 or 64), and whether it's a weak find. Absent for a stretch picked by hand.
+    public var repeats: Int? = nil
+    public var lengths: [String: Int]? = nil
+    public var unsure: Bool? = nil
 }
 
 /// What goes where when sections are imported.
@@ -539,7 +544,7 @@ extension SLOOPSongDoc {
             func fresh(_ part: SLOOPImportPlan.Part) -> Int? {
                 guard let k = plan.tracks[part], (0..<4).contains(k) else { return nil }
                 p[track: k].div = 2
-                p[track: k].length = SLOOPTrack.maxSteps
+                p[track: k].length = sec.lengths?[part.rawValue] ?? SLOOPTrack.maxSteps   // (a loop's part: its pattern's length)
                 p[track: k].clear()
                 return k
             }

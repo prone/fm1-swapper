@@ -7,6 +7,7 @@ import { DRUM_LANES, SongDoc } from "../fm1kit/sloopsong";
 import { SR } from "../audio/dsp";
 import { AudioNote, Section, SongAudio, analyseSection, dropGhosts, suggestSections } from "../audio/analysis";
 import { decode, startRecording, transcribe } from "../audio/input";
+import { findLoops } from "../audio/loops";
 import { fmtDateTime } from "./common";
 import { DEFAULT_TRACKS, Part, applyImport } from "../audio/toSong";
 import { Bar, FileDrop } from "./common";
@@ -45,9 +46,11 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
       notes.current = dropGhosts(await transcribe(y, (f) => setProgress(f)));
       setStatus("Finding the beat and the drums…"); setProgress(null); await yieldUI();
       song.current = new SongAudio(y);
-      const starts = suggestSections(song.current, notes.current, 4);
-      const secs: Section[] = [];
-      for (const [i, t] of starts.entries()) {
+      // the song's own loops; a short recording that doesn't repeat: the busiest 4-bar stretches instead
+      setStatus("Finding the loops…"); setProgress(0); await yieldUI();
+      const secs: Section[] = await findLoops(song.current, notes.current, 4, async (f) => { setProgress(f); await yieldUI(); });
+      setProgress(null);
+      if (!secs.length) for (const [i, t] of suggestSections(song.current, notes.current, 4).entries()) {
         setStatus(`Analysing section ${"ABCD"[i]}…`); await yieldUI();
         secs.push(analyseSection(song.current, notes.current, t));
       }
@@ -158,6 +161,9 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
                     <button class="btn small" onClick={() => listen(sec)}>▶ Listen</button>
                     <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => { setSections(sections.filter((_, j) => j !== i)); setTargets(targets.filter((_, j) => j !== i)); }}>Leave out</button>
                   </div>
+                  {sec.repeats ? <div class="small">A loop of the song: plays <b>{sec.repeats}×</b>{sec.lengths ? ` · drums ${bars(sec.lengths.drums)}, bass ${bars(sec.lengths.bass)}, chords ${bars(sec.lengths.keys)}` : ""}.
+                    {sec.unsure ? <span class="dim"> Not sure of this one: it repeats little, or a new sound comes in during it.</span> : null}</div>
+                    : <div class="small dim">Your pick (not one of the song's loops).</div>}
                   <div class="small dim">{sec.bass.length} bass notes · {sec.keys.length} chords · {sec.lead.length} lead notes · {sec.drums.length} drum steps</div>
                   <DrumRows sec={sec} />
                 </div>
@@ -192,6 +198,8 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
     </div>
   );
 }
+
+const bars = (steps: number) => (steps === 16 ? "1 bar" : `${steps / 16} bars`);
 
 /** A section's drums as rows of the lanes found (to check by eye against the original). */
 function DrumRows({ sec }: { sec: Section }) {

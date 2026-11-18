@@ -116,6 +116,13 @@ struct AudioImportSheet: View {
                     Button { listen(sec) } label: { Image(systemName: "play.fill") }.accessibilityLabel("Listen to the original")
                 }
                 .buttonStyle(.bordered).disabled(analyser.busy)
+                if let r = sec.repeats {
+                    Text(LocalizedStringKey("A loop of the song: plays **\(r)×**" + (sec.lengths.map { " · drums \(bars($0["drums"])), bass \(bars($0["bass"])), chords \(bars($0["keys"]))" } ?? "") + "."
+                         + (sec.unsure == true ? " Not sure of this one: it repeats little, or a new sound comes in during it." : "")))
+                        .font(.caption)
+                } else {
+                    Text("Your pick (not one of the song's loops).").font(.caption).foregroundStyle(.secondary)
+                }
                 Text("\(sec.bass.count) bass notes · \(sec.keys.count) chords · \(sec.lead.count) lead notes · \(sec.drums.count) drum steps")
                     .font(.caption).foregroundStyle(.secondary)
                 Text(drumRows(sec)).font(.system(size: 11, design: .monospaced)).lineLimit(nil)
@@ -195,6 +202,8 @@ struct AudioImportSheet: View {
         }
     }
 
+    private func bars(_ steps: Int?) -> String { (steps ?? 64) == 16 ? "1 bar" : "\((steps ?? 64) / 16) bars" }
+
     private func clock(_ t: Double) -> String { String(format: "%d:%04.1f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60)) }
 
     private func add() {
@@ -232,13 +241,16 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     /// The audio's loudness, 0...1, in 400 slices (the review's overview).
     var envelope: [Float] = []
     @ObservationIgnored private var ready = false
-    @ObservationIgnored weak var web: WKWebView?
+    @ObservationIgnored var web: WKWebView?
 
     nonisolated static let scheme = "fm1audio"
 
     @ObservationIgnored private let files = BundleFiles()
 
+    /// The page, made once: SwiftUI may rebuild the hidden view that shows it, and a new page would cut off an
+    /// analysis running in the old one (WebKit then only says "unsupported type").
     func makeWebView() -> WKWebView {
+        if let w = web { return w }
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(files, forURLScheme: Self.scheme)
         config.userContentController.add(WeakHandler(self), name: "fm1audio")
