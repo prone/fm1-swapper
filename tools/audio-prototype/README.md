@@ -45,6 +45,7 @@ Run the scripts with `python -I` (isolated mode), and pass audio paths as argume
 | `timbre.py` | Finds where a new sound comes in (`entries`: two or more tonal bands jumping at the same beat), plus tone-colour change points. |
 | `bounds.py` | Section boundaries: where the bars before differ from the bars after. |
 | `render_loops.py` | Listening files: each loop twice in a row (to check the join), then its drums from all repeats. |
+| `render_parts.py` | What the app takes from one of its loops (from `loops.songs.test.ts` with `LOOP_DUMP` and `LOOP_NOTES`), as plain synth: the original, the lead alone, the bass and chords, then all of it over the original. |
 | `inspect_loops.py`, `onset_of_change.py`, `period_secs.py`, `entries_check.py` | Diagnostics: how well each loop's join scores at each start, where a change starts to the beat, the repeat length in seconds, and the entries found. |
 | `compare_feats.py`, `compare_drums.py` | Check the TypeScript port against this prototype bar by bar, using features dumped by `loops.songs.test.ts`. |
 
