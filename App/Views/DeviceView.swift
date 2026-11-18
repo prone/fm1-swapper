@@ -97,7 +97,7 @@ struct DeviceView: View {
                                 gettingOfficial = true
                                 defer { gettingOfficial = false }
                                 do { official = try await FirmwareHub.shared.officialFirmware(in: firmwares, context: context); officialError = nil }
-                                catch { officialError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+                                catch { officialError = error.localizedDescription }
                             }
                         } label: {
                             HStack { Label("Back to official firmware…", systemImage: "arrow.uturn.backward.circle"); if gettingOfficial { Spacer(); ProgressView() } }
@@ -509,10 +509,7 @@ struct FlashImagesSection: View {
                             .font(.caption)
                     }
                 }
-                .onDelete { idx in
-                    for i in idx { context.delete(images[i]) }
-                    try? context.save()
-                }
+                .onDelete { context.delete(images, at: $0) }
             } header: { Text("Whole-flash backups") } footer: {
                 Text("Raw images read through m-bootloader and checked against the chip's own CRC-32. M-Flasher can restore them from a computer.")
             }

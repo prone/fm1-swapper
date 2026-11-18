@@ -162,11 +162,7 @@ struct FirmwareDetailView: View {
 
             Section {
                 ForEach(firmware.sortedBackups) { b in BackupRow(backup: b, onDevice: onDevice) }
-                    .onDelete { idx in
-                        let list = firmware.sortedBackups
-                        for i in idx { context.delete(list[i]) }
-                        try? context.save()
-                    }
+                    .onDelete { context.delete(firmware.sortedBackups, at: $0) }
                 if onDevice, firmware.family.supportsArchive || firmware.family == .unknown {
                     Button {
                         Task { await device.backup(context: context, includeSamples: includeSamples) }
@@ -192,11 +188,7 @@ struct FirmwareDetailView: View {
                                 .buttonStyle(.borderless)
                         }
                     }
-                    .onDelete { idx in
-                        let list = (firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }
-                        for i in idx { context.delete(list[i]) }
-                        try? context.save()
-                    }
+                    .onDelete { context.delete((firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }, at: $0) }
                 } header: { Text("Emulator saves") } footer: {
                     Text("Settings and patches from the emulator, synced with your library. Restore them from the emulator's save menu.")
                 }
@@ -271,7 +263,7 @@ struct FirmwareDetailView: View {
                 firmware.sha256 = pkg.sha256
                 firmware.fileName = url.lastPathComponent
                 try context.save()
-            } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+            } catch { message = error.localizedDescription }
         }
         .messageAlert("Firmware", $message)
     }

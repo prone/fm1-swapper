@@ -236,6 +236,12 @@ extension [Firmware] {
 }
 
 extension ModelContext {
+    /// Deletes the rows a list's swipe-to-delete names, and saves.
+    func delete<T: PersistentModel>(_ list: [T], at rows: IndexSet) {
+        for i in rows { delete(list[i]) }
+        try? save()
+    }
+
     /// The library entry for whatever the device reports, creating a placeholder if needed.
     /// Keeps an archive as a backup of `firmware` (a song, a device backup, one taken before an install) and saves.
     @discardableResult

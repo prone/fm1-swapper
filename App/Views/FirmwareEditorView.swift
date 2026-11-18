@@ -127,14 +127,14 @@ struct SLOOPSongsView: View {
     }
 
     private func share(_ s: Backup) {
-        do { sharing = ShareItems(files: [try SongFiles.file(s)]) } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+        do { sharing = ShareItems(files: [try SongFiles.file(s)]) } catch { message = error.localizedDescription }
     }
 
     private func importOne(_ url: URL) -> String {
         do {
             return try SongFiles.add(try readImport(url, maxBytes: ImportLimit.backup), fileName: url.lastPathComponent, context: context)
         } catch {
-            return "\(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return "\(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 

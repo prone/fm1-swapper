@@ -42,14 +42,7 @@ public struct SLOOPArchive: Sendable {
     /// The editor protocol version when the running firmware is SLOOP-style (INFO ends with the track count and the
     /// protocol version, and Felucca's archive extension is absent), else nil.
     public static func protocolVersion(info a: [UInt8]) -> Int? {
-        guard var pos = a.firstIndex(of: 0) else { return nil }
-        pos += 1
-        guard pos < a.count else { return nil }
-        let engines = Int(a[pos]); pos += 5
-        for _ in 0..<engines {
-            guard pos <= a.count, let end = a[pos...].firstIndex(of: 0) else { return nil }
-            pos = end + 1
-        }
+        guard let zero = a.firstIndex(of: 0), zero + 1 < a.count, let pos = FeluccaArchive.afterEngines(a, at: zero + 1) else { return nil }
         guard a.count - pos == 2, (1...8).contains(a[pos]) else { return nil }
         return Int(a[pos + 1])
     }

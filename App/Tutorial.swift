@@ -67,11 +67,6 @@ struct Tutorial: Codable, Identifiable, Hashable {
         if let n = match.names, n.contains(where: { f.name.localizedCaseInsensitiveContains($0) }) { return true }
         return false
     }
-
-    /// Every control name a tutorial may use (the FM-1 panel as fm1-emu draws it).
-    static let controls: Set<String> = ["SCREEN", "KEYS", "MASTER", "SELECT", "PRESETS", "ALGORITHM", "KNOB1", "KNOB2", "KNOB3",
-                                        "KNOB4", "OCT-", "OCT+", "FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE",
-                                        "ARP", "SEQ", "PLAY", "REC"]
 }
 
 enum TutorialLibrary {

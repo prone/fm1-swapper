@@ -425,7 +425,7 @@ final class MonitorTests: XCTestCase {
 
 final class MappingTests: XCTestCase {
     func testPadsAndKnobs() {
-        var m = ControllerMapping.smcPadDefault()
+        var m = ControllerMapping.defaultLayout(for: .smcPad)
         m.channel = 1
         XCTAssertEqual(m.controls.count, 16 + 8 + 5)
         var e = MappingEngine(mapping: m)
@@ -449,7 +449,7 @@ final class MappingTests: XCTestCase {
     }
 
     func testRelativeKnobAndRemap() {
-        var m = ControllerMapping.smcPadDefault()
+        var m = ControllerMapping.defaultLayout(for: .smcPad)
         m.controls[16].knobMode = .relativeTwos
         m.controls[16].output = .cc
         m.controls[16].number = 21

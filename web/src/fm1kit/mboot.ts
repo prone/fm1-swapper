@@ -30,7 +30,6 @@ export function helperFor(family: Family): HelperKind | null {
 }
 
 export const RESTART = [0xf0, 0x22, 0x24, 0x35, 0x7e, 0xf7];
-export const DOWNLOAD_MODE = [0xf0, 0x22, 0x24, 0x35, 0x7d, 0xf7];
 export const SECTOR = 0x1000, READ_MAX = 512;
 
 export function frame(cmd: number, body: ArrayLike<number> = []): number[] {

@@ -121,7 +121,7 @@ struct SwapSheet: View {
                                     if viaV15 && DeviceController.viaV15Recommended(from: id, target: target) {
                                         preparing = "Getting official V15…"
                                         do { options.viaV15 = try await FirmwareHub.shared.stockV15(in: firmwares, context: context) }
-                                        catch { preparing = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription; return }
+                                        catch { preparing = error.localizedDescription; return }
                                         preparing = nil
                                     } else { options.viaV15 = nil }
                                     started = true

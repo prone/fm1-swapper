@@ -79,7 +79,6 @@ export const DEFAULT_TIMING: Timing = { replyDelay: 10, afterUpgrade: 2000, befo
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class Updater {
-  probeAllPorts = false;
   constructor(readonly provider: PortProvider, readonly timing: Timing = DEFAULT_TIMING, readonly log: (s: string) => void = () => {}) {}
 
   static expectedRequests(imageSize: number) { return Math.ceil(imageSize / MAX_DATA); }
@@ -102,7 +101,7 @@ export class Updater {
   /** The first port pair that answers the handshake (and passes `filter`). The link is left open. */
   async find(filter: (id: Identity) => boolean = () => true): Promise<Connected | null> {
     for (const c of this.provider.candidates()) {
-      if (!this.probeAllPorts && !looksLikeFM1(c.name)) continue;
+      if (!looksLikeFM1(c.name)) continue;
       let link: SysExLink;
       try { link = await this.provider.open(c); } catch { continue; }
       const id = await this.handshake(link, 2);

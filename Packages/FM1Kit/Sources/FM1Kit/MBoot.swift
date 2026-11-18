@@ -12,7 +12,6 @@ import Foundation
 public enum MBootProtocol {
     public static let version = "2.4-395e6cc"
     public static let restart: [UInt8] = [0xF0, 0x22, 0x24, 0x35, 0x7E, 0xF7]
-    public static let downloadMode: [UInt8] = [0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7]
     public static let readMax = 512
     public static let oldChip: UInt32 = 0x856014, newChip: UInt32 = 0xB36014
 

@@ -187,7 +187,6 @@ public final class CoreMIDIProvider: MIDIPortProvider, @unchecked Sendable {
         return id
     }
 
-    public func removeObserver(_ id: UUID) { lock.lock(); observers[id] = nil; lock.unlock() }
 
     private func notifyChange() {
         lock.lock(); let hs = Array(observers.values); lock.unlock()

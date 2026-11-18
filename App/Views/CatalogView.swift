@@ -216,7 +216,7 @@ struct PackageDownloadRow: View {
             try check(FirmwarePackage(data: data))
             trying = data
         } catch {
-            state = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            state = error.localizedDescription
         }
     }
 
@@ -231,7 +231,7 @@ struct PackageDownloadRow: View {
             if r.isNew, r.firmware.summary.isEmpty, !summary.isEmpty { r.firmware.summary = summary }
             state = r.warning ?? (r.isNew ? (expectedSHA != nil ? "Added (checksum matches The Firmware Hub)" : "Added to your library") : "Already in your library")
         } catch {
-            state = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            state = error.localizedDescription
         }
     }
 }
@@ -341,7 +341,7 @@ struct FeaturedDetail: View {
             }
             message = lines.joined(separator: "\n")
         } catch {
-            message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            message = error.localizedDescription
         }
     }
 }

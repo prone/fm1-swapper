@@ -75,8 +75,6 @@ final class ControllerHub {
     private var kitLoads: [PersistentIdentifier: Task<LoadedKit, Error>] = [:]
     /// The kit each model should end up with (a slower, older load must not win).
     private var kitWanted: [ControllerModel: PersistentIdentifier?] = [:]
-    /// Kits being decoded, by model.
-    private(set) var loadingKit: Set<ControllerModel> = []
 
     init() {
         let d = UserDefaults.standard
@@ -200,9 +198,7 @@ final class ControllerHub {
         kitWanted[model] = kit?.persistentModelID
         guard let kit else { sampler.setKit(nil, for: model); return }
         if let cached = kitCache[kit.persistentModelID], sampler.kit(for: model) === cached { return }
-        loadingKit.insert(model)
         Task {
-            defer { loadingKit.remove(model) }
             guard let loaded = try? await loadedKit(kit), kitWanted[model] == kit.persistentModelID else { return }
             sampler.setKit(loaded, for: model)
         }

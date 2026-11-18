@@ -113,8 +113,6 @@ public struct UpdateTiming: Sendable {
 public final class OTAUpdater: @unchecked Sendable {
     public let provider: MIDIPortProvider
     public var timing: UpdateTiming
-    /// Probe every port, not only ones whose names look like an FM-1.
-    public var probeAllPorts = false
     public var log: @Sendable (String) -> Void
 
     /// Expected total device read requests in a step for a given image (for progress bars).
@@ -141,7 +139,7 @@ public final class OTAUpdater: @unchecked Sendable {
 
     /// The first port pair that answers the handshake (and passes `filter`). The link is left open.
     public func find(where filter: (DeviceIdentity) -> Bool = { _ in true }) async -> ConnectedDevice? {
-        for c in provider.candidates() where probeAllPorts || looksLikeFM1(c.name) {
+        for c in provider.candidates() where looksLikeFM1(c.name) {
             guard let link = try? provider.open(c) else { continue }
             if let id = await handshake(link, tries: 2), filter(id) {
                 log("found \(id.text) on \(c.name)")

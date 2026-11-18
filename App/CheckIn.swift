@@ -300,7 +300,7 @@ extension CheckInReport {
             d.set(Date(), forKey: "checkin.lastSeen")
         }
         if let text = d.string(forKey: "checkin.lastIdentity"), let id = DeviceIdentity(text: text) {
-            let fw = firmwares.filter { $0.product == text }.max { ($0.lastInstalled ?? .distantPast) < ($1.lastInstalled ?? .distantPast) }
+            let fw = firmwares.installed(id)
             fm1 = FM1(identity: text, firmwareName: fw?.name, family: id.family.rawValue,
                       connected: device.identity?.text == text,
                       lastSeen: (d.object(forKey: "checkin.lastSeen") as? Date).map(iso.string(from:)))

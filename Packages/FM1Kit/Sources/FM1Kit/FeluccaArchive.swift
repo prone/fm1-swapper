@@ -42,6 +42,17 @@ public struct FeluccaArchive: Sendable {
         throw FM1Error.device(m[rc] ?? "Archive error \(rc)")
     }
 
+    /// INFO, from the engine count at `at`: the index after the engines' names (nil when they're cut off).
+    /// Felucca and SLOOP share this layout; what follows is Felucca's archive extension, or SLOOP's protocol version.
+    static func afterEngines(_ a: [UInt8], at start: Int) -> Int? {
+        var pos = start + 5
+        for _ in 0..<Int(a[start]) {
+            guard pos <= a.count, let end = a[pos...].firstIndex(of: 0) else { return nil }
+            pos = end + 1
+        }
+        return pos
+    }
+
     /// INFO: whether this Felucca supports complete archives.
     public func supportsArchive() async throws -> (version: String, supported: Bool) {
         let a = try await request(Cmd.info, [])
@@ -49,11 +60,8 @@ public struct FeluccaArchive: Sendable {
         let version = String(decoding: a[0..<pos], as: UTF8.self)
         pos += 1
         guard pos < a.count else { return (version, false) }
-        let engines = Int(a[pos]); pos += 5
-        for _ in 0..<engines {
-            guard pos <= a.count, let end = a[pos...].firstIndex(of: 0) else { throw FM1Error.protocolError("Invalid INFO") }
-            pos = end + 1
-        }
+        guard let after = Self.afterEngines(a, at: pos) else { throw FM1Error.protocolError("Invalid INFO") }
+        pos = after
         let ext = pos + 1 < a.count ? Array(a[(pos + 1)...]) : []
         let supported = version.uppercased().hasPrefix("FELUCCA ") && ext.count > 10 && ext[0] == 16 && ext[1] == 0x55 && ext[2] == 1 &&
             ext[4] == 0x4D && ext[5] == 1 && ext[8] == 0x42 && ext[9] == 1 && (ext[10] & 1) != 0

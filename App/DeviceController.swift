@@ -109,7 +109,7 @@ final class DeviceController {
             phase = .finished(title: title, detail: done)
             append("✓ \(done)")
         } catch {
-            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let msg = error.localizedDescription
             phase = .failed(title: title, detail: msg)
             append("✗ \(msg)")
         }
@@ -196,7 +196,7 @@ final class DeviceController {
             if let s = songs.first(where: { $0.archive.map { SLOOPArchive.matches($0, now) } ?? false }) { return .saved(s.label) }
             return .unsaved
         } catch {
-            return .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            return .failed(error.localizedDescription)
         }
     }
 

@@ -112,14 +112,9 @@ public final class SMCPadBLEChannel: NSObject, SincoChannel, CBCentralManagerDel
     private var peripheral: CBPeripheral?
     private var writer: CBCharacteristic?
     private var buffer: [UInt8] = []
-    /// Only pads whose name contains this (e.g. "Pocket") when set.
-    public var nameFilter: String?
-    public private(set) var peripheralName: String?
     public var onFrame: ((Sinco.Frame) -> Void)?
     public var onStateChange: ((String) -> Void)?
     public var isOpen: Bool { writer != nil }
-
-    public init(nameFilter: String? = nil) { self.nameFilter = nameFilter }
 
     public func start() {
         if central == nil { central = CBCentralManager(delegate: self, queue: .main) } else { connectKnown() }
@@ -144,10 +139,7 @@ public final class SMCPadBLEChannel: NSObject, SincoChannel, CBCentralManagerDel
         (name ?? "").lowercased().replacingOccurrences(of: " ", with: "-").hasPrefix("smc-pad")
     }
 
-    private func wanted(_ p: CBPeripheral) -> Bool {
-        guard Self.isSMCPadName(p.name) else { return false }
-        return nameFilter.map { (p.name ?? "").lowercased().contains($0.lowercased()) } ?? true
-    }
+    private func wanted(_ p: CBPeripheral) -> Bool { Self.isSMCPadName(p.name) }
 
     private func connectKnown() {
         guard let c = central, c.state == .poweredOn else { return }
@@ -163,7 +155,6 @@ public final class SMCPadBLEChannel: NSObject, SincoChannel, CBCentralManagerDel
     private func attach(_ p: CBPeripheral) {
         central?.stopScan()
         peripheral = p
-        peripheralName = p.name
         p.delegate = self
         onStateChange?("Connecting to \(p.name ?? "pad")…")
         central?.connect(p)
@@ -278,7 +269,6 @@ public final class SMCPadLightSession {
     public enum State: Equatable { case idle, connecting(String), unlocking(Int, Int), ready, failed(String) }
 
     public private(set) var state: State = .idle { didSet { onState?(state) } }
-    public private(set) var deviceName: String?
     public var onState: ((State) -> Void)?
     public var onName: ((String) -> Void)?
     public var preset = 0
@@ -300,7 +290,6 @@ public final class SMCPadLightSession {
         }
         channel.onFrame = { [weak self] f in
             guard let self, let n = SMCPadProtocol.name(fromReply: f) else { return }
-            self.deviceName = n
             self.onName?(n)
             self.identity(n)
         }

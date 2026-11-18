@@ -385,7 +385,7 @@ struct SLOOPSongEditor: View {
             let d = try SLOOPSongDoc(a)
             doc = d; saved = d
         } catch {
-            loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            loadError = error.localizedDescription
         }
     }
 
@@ -408,7 +408,7 @@ struct SLOOPSongEditor: View {
             catch where base != nil { text = try SLOOPFlash.emulatorSave(song: d.archive(), package: pkg, sha256: sha, name: fw.name, base: nil) }
             playing = EmulatorStart(firmware: fw, package: pkg, save: text)
         } catch {
-            problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            problem = error.localizedDescription
         }
     }
 

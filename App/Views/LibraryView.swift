@@ -115,10 +115,7 @@ struct LibraryView: View {
                         ForEach(filtered) { f in
                             NavigationLink(value: f) { FirmwareRow(firmware: f, installedIdentity: device.identity?.text) }
                         }
-                        .onDelete { idx in
-                            for i in idx { context.delete(filtered[i]) }
-                            try? context.save()
-                        }
+                        .onDelete { context.delete(filtered, at: $0) }
                     }
                 }
             }
@@ -169,7 +166,7 @@ struct LibraryView: View {
                         let r = try LibraryImport.add(try readImport(url, maxBytes: ImportLimit.firmware), fileName: url.lastPathComponent, context: context)
                         lines.append((r.isNew ? "Added " : "Already have ") + r.firmware.name + (r.warning.map { " — \($0)" } ?? ""))
                     } catch {
-                        lines.append("\(url.lastPathComponent): \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
+                        lines.append("\(url.lastPathComponent): \(error.localizedDescription)")
                     }
                 }
                 message = lines.joined(separator: "\n")
@@ -204,7 +201,7 @@ struct LibraryView: View {
                 message = (r.isNew ? "Added " : "Already have ") + r.firmware.name + (r.warning.map { "\n\n\($0)" } ?? "")
                 urlText = ""
             } catch {
-                message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                message = error.localizedDescription
             }
         }
     }

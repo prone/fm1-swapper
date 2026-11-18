@@ -187,8 +187,6 @@ public struct ControllerMapping: Codable, Hashable, Sendable {
         return ControllerMapping(name: name, model: model, channel: 0, controls: pads + knobs + buttons)
     }
 
-    public static func smcPadDefault(name: String = "Default") -> ControllerMapping { defaultLayout(for: .smcPad, name: name) }
-
     public func control(for key: MIDIInputKey) -> ControlMap? {
         if let c = controls.first(where: { $0.input == key }) { return c }
         // bank B: the same pad 16 notes up

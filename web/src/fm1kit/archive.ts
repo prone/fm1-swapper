@@ -64,9 +64,9 @@ export class FeluccaArchive {
     const version = String.fromCharCode(...a.slice(0, pos));
     pos++;
     if (pos >= a.length) return { version, supported: false };
-    const engines = a[pos]; pos += 5;
-    for (let i = 0; i < engines; i++) { const end = a.indexOf(0, pos); if (end < 0) throw new Error("Invalid INFO"); pos = end + 1; }
-    const ext = a.slice(pos + 1);
+    const after = afterEngines(a, pos);
+    if (after == null) throw new Error("Invalid INFO");
+    const ext = a.slice(after + 1);
     const supported = /^FELUCCA /i.test(version) && ext.length > 10 && ext[0] === 16 && ext[1] === 0x55 && ext[2] === 1 &&
       ext[4] === 0x4d && ext[5] === 1 && ext[8] === 0x42 && ext[9] === 1 && (ext[10] & 1) !== 0;
     return { version, supported };
@@ -376,11 +376,17 @@ export function sloopLabel(id: number): string {
 
 /** The editor protocol version when INFO is SLOOP-style (ends with the track count and the version, and has no
  *  Felucca archive extension), else null. */
+/** INFO, from the engine count at `at`: the index after the engines' names (null when they're cut off). Felucca and
+ *  SLOOP share this layout; what follows is Felucca's archive extension, or SLOOP's protocol version. */
+function afterEngines(a: number[], at: number): number | null {
+  let pos = at + 5;
+  for (let i = 0; i < a[at]; i++) { const end = a.indexOf(0, pos); if (end < 0) return null; pos = end + 1; }
+  return pos;
+}
+
 export function sloopProtocol(a: number[]): number | null {
-  let pos = a.indexOf(0);
-  if (pos < 0 || ++pos >= a.length) return null;
-  const engines = a[pos]; pos += 5;
-  for (let i = 0; i < engines; i++) { const end = a.indexOf(0, pos); if (end < 0) return null; pos = end + 1; }
+  const zero = a.indexOf(0), pos = zero < 0 || zero + 1 >= a.length ? null : afterEngines(a, zero + 1);
+  if (pos == null) return null;
   return a.length - pos === 2 && a[pos] >= 1 && a[pos] <= 8 ? a[pos + 1] : null;
 }
 

@@ -65,7 +65,7 @@ struct FM1SwapperApp: App {
             importMessage = (r.isNew ? "Added \(r.firmware.name) to your library." : "\(r.firmware.name) is already in your library.")
                 + (r.warning.map { "\n\n" + $0 } ?? "")
         } catch {
-            importMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            importMessage = error.localizedDescription
         }
     }
 }
