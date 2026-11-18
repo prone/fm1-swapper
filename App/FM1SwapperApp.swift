@@ -37,9 +37,18 @@ struct FM1SwapperApp: App {
                 .onAppear { let hub = pads; device.onBusyChange = { busy in hub.setDeviceBusy(busy) } }
                 .onOpenURL { url in importFile(url) }
                 .messageAlert("Import", $importMessage)
-                .task { await device.refresh() }
+                .task { importWaitingFiles(); await device.refresh() }
         }
         .modelContainer(container)
+    }
+
+    /// Files left in Documents/Inbox (delivered by "Open in" or AirDrop while the app wasn't there to take them, or
+    /// copied in from a Mac) are imported at launch, as if just opened; each is removed once imported.
+    @MainActor
+    func importWaitingFiles() {
+        let inbox = URL.documentsDirectory.appending(path: "Inbox")
+        let files = (try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: nil)) ?? []
+        for url in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) { importFile(url) }
     }
 
     /// A .fwsc shared from Files, Safari or AirDrop.
