@@ -72,11 +72,18 @@ struct SLOOPSongsView: View {
                                            description: Text("Start one above, or save the song on the FM-1 from Device → SLOOP songs. Songs here can be edited without the FM-1."))
                 }
                 ForEach(shown) { s in
-                    Button { editing = s } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(s.label).foregroundStyle(.primary)
-                            Text(detail(s)).font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button { editing = s } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.label).foregroundStyle(.primary)
+                                Text(detail(s)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        Button(role: .destructive) { deleting = s } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless).foregroundStyle(.red)
+                            .accessibilityLabel("Delete \(s.label)")
                     }
                     .swipeActions {
                         Button(role: .destructive) { deleting = s } label: { Label("Delete", systemImage: "trash") }
@@ -119,7 +126,7 @@ struct SLOOPSongsView: View {
         .confirmationDialog(deleting.map { "Delete \"\($0.label)\"?" } ?? "", isPresented: $deleting.isPresent(),
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) { if let d = deleting { context.delete(d); try? context.save() } }
-        } message: { Text("The saved song is removed from the app. The FM-1 isn't changed.") }
+        } message: { Text("The saved song is removed from the app, and from your other devices if they share its library. This can't be undone. The FM-1 isn't changed.") }
         .confirmationDialog(loading.map { "Load \"\($0.label)\"?" } ?? "", isPresented: $loading.isPresent(),
                             titleVisibility: .visible) {
             Button("Save the FM-1's song, then load") { if let l = loading { Task { await device.loadSong(l, saveFirstAs: DeviceController.autoSongName(), context: context) } } }

@@ -31,6 +31,7 @@ struct SLOOPSongEditor: View {
     @State private var noteLength = 0
     @State private var octave: [Int: Int] = [:]
     @State private var sending = false
+    @State private var deletingSong = false
     @State private var closing = false
     @State private var copyName = ""
     @State private var namingCopy = false
@@ -73,10 +74,20 @@ struct SLOOPSongEditor: View {
                         Button {
                             if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
                         } label: { Label("Share song file…", systemImage: "square.and.arrow.up") }
+                        Divider()
+                        Button(role: .destructive) { deletingSong = true } label: { Label("Delete this song…", systemImage: "trash") }
                     } label: { Label("Song", systemImage: "ellipsis.circle") }
                     .disabled(doc == nil)
                 }
             }
+            .confirmationDialog("Delete \"\(song.label)\"?", isPresented: $deletingSong, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    // (closed first: the editor reading a deleted song as it goes would crash)
+                    let s = song, c = context
+                    dismiss()
+                    Task { try? await Task.sleep(for: .milliseconds(700)); c.delete(s); try? c.save() }
+                }
+            } message: { Text("The saved song and your changes are removed from the app, and from your other devices if they share its library. This can't be undone. The FM-1 isn't changed.") }
             .confirmationDialog("Save your changes?", isPresented: $closing, titleVisibility: .visible) {
                 Button("Save changes") { if save() { dismiss() } }
                 Button("Discard changes", role: .destructive) { dismiss() }
