@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@spotify/basic-pitch": "^1.0.1",
     "preact": "10.29.8"
   },
   "devDependencies": {
