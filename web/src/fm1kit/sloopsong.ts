@@ -54,6 +54,11 @@ export class Track {
   private noteAt(i: number) { return this.raw[STEPS_AT + i * 10 + 5] === 0 && this.raw[STEPS_AT + i * 10 + 4] > 0; }
   private tieAt(i: number) { return this.raw[STEPS_AT + i * 10 + 5] === 1; }
   drum(i: number, lane: number) { return ((this.raw[STEPS_AT + i * 10 + (lane >> 3)] >> (lane & 7)) & 1) === 1; }
+  /** No note or drum hit in the steps it plays. */
+  get isSilent() {
+    for (let i = 0; i < this.length; i++) if (this.isDrum ? this.raw[STEPS_AT + i * 10] | this.raw[STEPS_AT + i * 10 + 1] : this.noteAt(i)) return false;
+    return true;
+  }
 
   get chords(): Chord[] {
     if (this.isDrum) return [];

@@ -43,6 +43,9 @@ export function applyImport(doc: SongDoc, plan: ImportPlan) {
     for (const [st, ln, n] of sec.lead) lead?.place(n, st, ln);
     if (drums?.isDrum) for (const [st, lanes] of sec.drums) for (const l of lanes) drums.toggleDrum(l, st);
   });
+  // the loop is what SLOOP plays when it starts: a silent one gets the first piece, so the song plays at once
+  const loop = doc.patterns.loop;
+  if (plan.targets.length && loop && !doc.locked.has("loop") && [0, 1, 2, 3].every((k) => loop.track(k).isSilent)) doc.copy(sectionSlot(plan.targets[0]), "loop");
   if (plan.tempo && doc.patterns.loop && !doc.locked.has("loop")) setBpm(doc.patterns.loop.raw, plan.tempo);
   if (plan.order && doc.order) doc.order = { loops: doc.order.loops, entries: plan.targets.map((section) => ({ section, bars: 4 })) };
 }

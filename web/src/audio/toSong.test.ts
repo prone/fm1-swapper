@@ -37,6 +37,7 @@ describe("import into a song", () => {
       expect(p.raw[76 + 122]).toBe(7);                                           // a sound byte of track 1: kept
     }
     expect(doc.patterns.loop!.bpm).toBe(92);
+    expect(doc.patterns.loop!.track(0).chords[0].notes).toEqual([36]);        // the silent loop: the first piece
     expect(doc.order!.entries).toEqual([{ section: 1, bars: 4 }, { section: 3, bars: 4 }]);
     expect(Pattern.parse(b.data)).not.toBeNull();                                 // SLOOP would load it
   });

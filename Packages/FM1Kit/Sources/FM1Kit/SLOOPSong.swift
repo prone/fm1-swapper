@@ -152,6 +152,8 @@ public struct SLOOPTrack: Equatable, Sendable {
     func isTie(_ i: Int) -> Bool { byte(i, 5) == 1 }
     /// Whether drum `lane` plays on step `i`.
     public func drum(at i: Int, lane: Int) -> Bool { (byte(i, lane >> 3) >> (lane & 7)) & 1 == 1 }
+    /// No note or drum hit in the steps it plays.
+    public var isSilent: Bool { (0..<length).allSatisfy { isDrum ? byte($0, 0) | byte($0, 1) == 0 : !isNote($0) } }
 
     // MARK: Synth track: the piano roll (SLOOP's web editor, ROLL)
 
@@ -549,6 +551,9 @@ extension SLOOPSongDoc {
             }
             patterns[slot] = p
         }
+        // the loop is what SLOOP plays when it starts: a silent one gets the first piece, so the song plays at once
+        if let k = plan.targets.first, !locked.contains(.loop), let l = patterns[.loop],
+           (0..<4).allSatisfy({ l[track: $0].isSilent }) { copy(.section(k), to: .loop) }
         if let t = plan.tempo, !locked.contains(.loop) { patterns[.loop]?.bpm = t }
         if plan.order, let o = order { order = SLOOPOrder(entries: plan.targets.map { .init(section: $0, bars: 4) }, loops: o.loops) }
     }

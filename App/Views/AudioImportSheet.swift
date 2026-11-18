@@ -124,7 +124,7 @@ struct AudioImportSheet: View {
             Toggle("Set the tempo to \(Int(r.bpm.rounded())) BPM", isOn: $setTempo)
             Toggle("Song order: these sections in turn, 4 bars each", isOn: $setOrder)
         } header: { Text("Onto the tracks") } footer: {
-            Text("The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; the loop itself isn't changed. Undo puts it all back."
+            Text("The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; an empty loop gets the first piece, so it plays as soon as SLOOP starts. Undo puts it all back."
                  + (Set(tracks.values).count < tracks.count ? " Two parts go on the same track: the later one replaces the earlier." : ""))
         }
         Section { Button("Use other audio") { player?.stop(); result = nil; sections = []; error = nil } }

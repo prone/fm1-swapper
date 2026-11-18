@@ -258,4 +258,15 @@ final class SLOOPBlankSongTests: XCTestCase {
         let settings = [UInt8](a.part("1")!.data)
         XCTAssertEqual(SysExCoding.le32(settings, 16), 0x5041_4E35, "SLOOP's default panel")
     }
+    func testImportIntoABlankSongFillsItsSilentLoop() throws {
+        var doc = try SLOOPSongDoc(SLOOPBlankSong.archive())
+        XCTAssertTrue((0..<4).allSatisfy { doc.patterns[.loop]![track: $0].isSilent })
+        let sec = SLOOPAudioSection(start: 0, bpm: 92, bass: [.init(step: 0, len: 4, pitch: 36)], lead: [], keys: [], drums: [.init(step: 0, lanes: [0])])
+        doc.apply(SLOOPImportPlan(sections: [sec], targets: [1], tempo: 92, order: true))
+        let loop = try XCTUnwrap(doc.patterns[.loop])
+        XCTAssertEqual(loop, doc.patterns[.b], "the loop plays the first piece when SLOOP starts")
+        XCTAssertFalse(loop[track: 0].isSilent || loop[track: 3].isSilent)
+        doc.apply(SLOOPImportPlan(sections: [sec], targets: [2], tempo: nil, order: false))
+        XCTAssertEqual(doc.patterns[.loop], loop, "a loop with notes stays")
+    }
 }
