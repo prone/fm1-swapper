@@ -205,3 +205,41 @@ final class SLOOPSongFileTests: XCTestCase {
         XCTAssertNoThrow(try SLOOPSongDoc(a))
     }
 }
+
+final class SLOOPAudioImportTests: XCTestCase {
+    func testAppliesPartsToTracksAndKeepsSounds() throws {
+        var doc = try SLOOPSongDoc(sloopSong(sections: [0]))
+        let json = """
+        {"start": 1.2, "bpm": 92, "bass": [{"step": 0, "len": 4, "pitch": 36}], "lead": [{"step": 8, "len": 1, "pitch": 72}],
+         "keys": [{"step": 4, "len": 2, "pitches": [60, 64]}], "drums": [{"step": 0, "lanes": [0, 4]}, {"step": 4, "lanes": [2]}]}
+        """
+        let sec = try JSONDecoder().decode(SLOOPAudioSection.self, from: Data(json.utf8))
+        let soundByte = doc.patterns[.a]![track: 0].raw[122]
+        doc.apply(SLOOPImportPlan(sections: [sec, sec], targets: [0, 2], tempo: 92, order: true))
+        for slot in [SLOOPSongDoc.Slot.a, .c] {
+            let p = try XCTUnwrap(doc.patterns[slot])
+            XCTAssertEqual(p.bpm, 92)
+            XCTAssertEqual(p[track: 0].length, 64)
+            XCTAssertEqual(p[track: 0].div, 2)
+            XCTAssertEqual(p[track: 0].chords, [SLOOPChord(at: 0, length: 4, notes: [36], velocity: 96)])
+            XCTAssertEqual(p[track: 1].chords.first?.notes, [60, 64])
+            XCTAssertEqual(p[track: 2].chords.first?.at, 8)
+            XCTAssertTrue(p[track: 3].drum(at: 0, lane: 0) && p[track: 3].drum(at: 0, lane: 4) && p[track: 3].drum(at: 4, lane: 2))
+            XCTAssertNotNil(SLOOPPattern(p.data), "SLOOP would load it")
+        }
+        XCTAssertEqual(doc.patterns[.a]![track: 0].raw[122], soundByte, "the track's sound stays")
+        XCTAssertTrue(doc.isEmpty(.b))
+        XCTAssertEqual(doc.patterns[.loop]?.bpm, 92)
+        XCTAssertEqual(doc.order?.entries, [.init(section: 0, bars: 4), .init(section: 2, bars: 4)])
+    }
+
+    func testSkippedPartsAndNoTempoLeaveThingsAsTheyAre() throws {
+        var doc = try SLOOPSongDoc(sloopSong(sections: [0]))
+        let sec = SLOOPAudioSection(start: 0, bpm: 92, bass: [.init(step: 0, len: 4, pitch: 36)], lead: [.init(step: 8, len: 1, pitch: 72)], keys: [], drums: [])
+        var tracks = SLOOPImportPlan.defaultTracks; tracks[.lead] = nil
+        doc.apply(SLOOPImportPlan(sections: [sec], targets: [0], tracks: tracks, tempo: nil, order: false))
+        XCTAssertEqual(doc.patterns[.a]![track: 2].length, 16, "the lead's track untouched")
+        XCTAssertEqual(doc.patterns[.a]!.bpm, 120)
+        XCTAssertEqual(doc.order?.entries.count, 4)
+    }
+}

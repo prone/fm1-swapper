@@ -345,6 +345,7 @@ struct WaveformSlices: View {
 /// Records from the mic into a temporary file.
 struct RecorderSheet: View {
     @Environment(\.dismiss) private var dismiss
+    var hint = "Record a loop, a phrase or some hits. It is sliced at its hits when you stop."
     let done: (URL) -> Void
     @State private var recorder: AVAudioRecorder?
     @State private var start: Date?
@@ -363,7 +364,7 @@ struct RecorderSheet: View {
                     }
                     Button { stop() } label: { Label("Stop", systemImage: "stop.circle.fill").font(.title2) }.buttonStyle(.borderedProminent).tint(.red)
                 } else {
-                    Text("Record a loop, a phrase or some hits. It is sliced at its hits when you stop.").multilineTextAlignment(.center).foregroundStyle(.secondary)
+                    Text(hint).multilineTextAlignment(.center).foregroundStyle(.secondary)
                     Button { begin() } label: { Label("Record", systemImage: "record.circle").font(.title2) }.buttonStyle(.borderedProminent).tint(.red)
                 }
             }

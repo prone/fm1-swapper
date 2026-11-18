@@ -40,7 +40,11 @@ public struct SLOOPPattern: Equatable, Sendable {
     /// Same content (the checksum is worked out when the bytes are sent).
     public static func == (a: SLOOPPattern, b: SLOOPPattern) -> Bool { a.raw[0..<sumAt] == b.raw[0..<sumAt] }
 
-    public var bpm: Int { Int(Int16(bitPattern: UInt16(raw[8]) | UInt16(raw[9]) << 8)) }
+    /// The tempo (G_BPM, 40–240).
+    public var bpm: Int {
+        get { Int(Int16(bitPattern: UInt16(raw[8]) | UInt16(raw[9]) << 8)) }
+        set { let v = UInt16(max(40, min(240, newValue))); raw[8] = UInt8(v & 255); raw[9] = UInt8(v >> 8) }
+    }
 
     public subscript(track k: Int) -> SLOOPTrack {
         get { SLOOPTrack(raw: Array(raw[Self.trackBase + k * Self.trackSize ..< Self.trackBase + (k + 1) * Self.trackSize]), isDrum: k == SLOOPTrack.drumTrack) }
@@ -128,8 +132,11 @@ public struct SLOOPTrack: Equatable, Sendable {
         get { max(1, min(Self.maxSteps, Int(Int16(bitPattern: UInt16(raw[Self.lenAt]) | UInt16(raw[Self.lenAt + 1]) << 8)))) }
         set { let v = UInt16(max(1, min(Self.maxSteps, newValue))); raw[Self.lenAt] = UInt8(v & 255); raw[Self.lenAt + 1] = UInt8(v >> 8) }
     }
-    /// DIV: the length of one step, an index into `divNames`.
-    public var div: Int { max(0, min(8, Int(raw[Self.divAt]))) }
+    /// DIV: the length of one step, an index into `divNames` (2: 1/16).
+    public var div: Int {
+        get { max(0, min(8, Int(raw[Self.divAt]))) }
+        set { raw[Self.divAt] = UInt8(max(0, min(8, newValue))); raw[Self.divAt + 1] = 0 }
+    }
     public var stepsPerBar: Double { Self.stepsPerBarForDiv[div] }
     /// Whole steps in a bar, or nil when a step is longer than a bar (bar edits don't apply).
     public var barSteps: Int? { stepsPerBar >= 1 ? Int(stepsPerBar) : nil }
@@ -481,5 +488,68 @@ public enum SLOOPSongFile {
             Dictionary(x.parts.filter { UInt8($0.id).map(SLOOPArchive.songIDs.contains) ?? false }.map { ($0.id, $0.crc) }, uniquingKeysWith: { a, _ in a })
         }
         return a.format == b.format && key(a) == key(b)
+    }
+}
+
+// MARK: Import from audio
+
+/// One 4-bar section found in audio (the song editor's Import from audio; the analysis runs in
+/// `App/AudioImport/`, built from `web/src/audio/`): 64 16ths of bassline, chords, lead and drums.
+public struct SLOOPAudioSection: Codable, Sendable, Equatable {
+    public struct Note: Codable, Sendable, Equatable { public let step, len, pitch: Int }
+    public struct Chord: Codable, Sendable, Equatable { public let step, len: Int; public let pitches: [Int] }
+    public struct Hit: Codable, Sendable, Equatable { public let step: Int; public let lanes: [Int] }
+    /// Where it starts in the audio (seconds), and its tempo there.
+    public let start, bpm: Double
+    public let bass, lead: [Note]
+    public let keys: [Chord]
+    public let drums: [Hit]
+}
+
+/// What goes where when sections are imported.
+public struct SLOOPImportPlan: Sendable {
+    public enum Part: String, CaseIterable, Sendable { case bass, keys, lead, drums }
+    public var sections: [SLOOPAudioSection]
+    /// The song section (0–3: A–D) each goes to; as many as `sections`.
+    public var targets: [Int]
+    /// The track each part goes on (0–2; the drums on 3); nil: not imported.
+    public var tracks: [Part: Int]
+    /// Every section's (and the loop's) tempo; nil: as they are.
+    public var tempo: Int?
+    /// The song order becomes the imported sections, 4 bars each.
+    public var order: Bool
+    public static let defaultTracks: [Part: Int] = [.bass: 0, .keys: 1, .lead: 2, .drums: SLOOPTrack.drumTrack]
+    public init(sections: [SLOOPAudioSection], targets: [Int], tracks: [Part: Int] = defaultTracks, tempo: Int?, order: Bool) {
+        self.sections = sections; self.targets = targets; self.tracks = tracks; self.tempo = tempo; self.order = order
+    }
+}
+
+extension SLOOPSongDoc {
+    /// The sections' parts onto the tracks chosen (64 16ths each; the tracks' sounds stay); an empty target section
+    /// starts as a copy of the loop. The same as the web app's applyImport (web/src/audio/toSong.ts).
+    public mutating func apply(_ plan: SLOOPImportPlan) {
+        for (i, sec) in plan.sections.enumerated() where i < plan.targets.count {
+            let slot = Slot.section(plan.targets[i])
+            guard !locked.contains(slot) else { continue }
+            if patterns[slot] == nil { copy(patterns[.loop] != nil ? .loop : .a, to: slot) }
+            guard var p = patterns[slot] else { continue }
+            if let t = plan.tempo { p.bpm = t }
+            func fresh(_ part: SLOOPImportPlan.Part) -> Int? {
+                guard let k = plan.tracks[part], (0..<4).contains(k) else { return nil }
+                p[track: k].div = 2
+                p[track: k].length = SLOOPTrack.maxSteps
+                p[track: k].clear()
+                return k
+            }
+            if let k = fresh(.bass) { for n in sec.bass { p[track: k].place(UInt8(clamping: n.pitch), at: n.step, steps: n.len) } }
+            if let k = fresh(.keys) { for c in sec.keys { for n in c.pitches { p[track: k].place(UInt8(clamping: n), at: c.step, steps: c.len) } } }
+            if let k = fresh(.lead) { for n in sec.lead { p[track: k].place(UInt8(clamping: n.pitch), at: n.step, steps: n.len) } }
+            if let k = fresh(.drums), p[track: k].isDrum {
+                for h in sec.drums { for l in h.lanes { p[track: k].toggleDrum(lane: l, at: h.step) } }
+            }
+            patterns[slot] = p
+        }
+        if let t = plan.tempo, !locked.contains(.loop) { patterns[.loop]?.bpm = t }
+        if plan.order, let o = order { order = SLOOPOrder(entries: plan.targets.map { .init(section: $0, bars: 4) }, loops: o.loops) }
     }
 }

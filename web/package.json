@@ -8,7 +8,8 @@
     "emu": "node tools/fetch-emu.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:ios-audio": "vite build --config vite.ios-audio.config.ts"
   },
   "dependencies": {
     "@spotify/basic-pitch": "^1.0.1",

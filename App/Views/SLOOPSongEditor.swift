@@ -34,6 +34,7 @@ struct SLOOPSongEditor: View {
     @State private var namingCopy = false
     @State private var sharing: ShareItems?
     @State private var playing: EmulatorStart?
+    @State private var importingAudio = false
     @State private var problem: String?
     @Query private var firmwares: [Firmware]
     @Query(sort: \EmulatorSave.date, order: .reverse) private var emulatorSaves: [EmulatorSave]
@@ -58,6 +59,7 @@ struct SLOOPSongEditor: View {
                         .disabled(undo.isEmpty)
                     Menu {
                         Button { save() } label: { Label("Save changes", systemImage: "square.and.arrow.down") }.disabled(!dirty)
+                        Button { importingAudio = true } label: { Label("Import from audio…", systemImage: "waveform.badge.plus") }
                         Button { copyName = "\(song.label) (edit)"; namingCopy = true } label: { Label("Save as a new song…", systemImage: "plus.square.on.square") }
                         Button {
                             if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
@@ -90,6 +92,9 @@ struct SLOOPSongEditor: View {
                 Button("Cancel", role: .cancel) {}
             }
             .shareSheet($sharing)
+            .sheet(isPresented: $importingAudio) {
+                if let d = doc { AudioImportSheet(doc: d) { plan in edit { $0.apply(plan) } } }
+            }
             .fullScreenCover(item: $playing) { p in
                 EmulatorScreen(title: "\(song.label) · \(p.firmware.name)", package: p.package, fileName: p.firmware.emulatorFileName,
                                firmware: p.firmware, startSave: p.save,

@@ -21,6 +21,11 @@ targets:
       Release: Config/Base.xcconfig
     sources:
       - path: App
+        excludes: [AudioImport]
+      # the audio import (web/src/audio, built by `npm run build:ios-audio`), served to a hidden web view
+      - path: App/AudioImport
+        type: folder
+        buildPhase: resources
       - path: Tutorials
         type: folder
         buildPhase: resources

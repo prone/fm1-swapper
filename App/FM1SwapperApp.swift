@@ -143,6 +143,8 @@ struct RootView: View {
     #if DEBUG
     /// Simulator testing: SIMCTL_CHILD_FM1_DEMO_EMULATOR=/path/to/x.fwsc opens the emulator on launch.
     @State private var demo: Data? = ProcessInfo.processInfo.environment["FM1_DEMO_EMULATOR"].flatMap { FileManager.default.contents(atPath: $0) }
+    /// SIMCTL_CHILD_FM1_DEMO_AUDIO=/path/to/audio analyses it with the audio import on launch and logs "AUDIOTEST …".
+    @State private var audioTest = AudioAnalyser()
     #endif
 
     var body: some View {
@@ -150,6 +152,18 @@ struct RootView: View {
             .modifier(CheckInDriver())
             .modifier(PadProfileDriver())
         #if DEBUG
+            .background {
+                if let path = ProcessInfo.processInfo.environment["FM1_DEMO_AUDIO"], let data = FileManager.default.contents(atPath: path) {
+                    AudioAnalyserView(analyser: audioTest).frame(width: 1, height: 1).opacity(0).task {
+                        let t0 = Date()
+                        do {
+                            let r = try await audioTest.analyse(data)
+                            NSLog("AUDIOTEST ok %.1f BPM, %d sections in %.1f s: %@", r.bpm, r.sections.count, Date().timeIntervalSince(t0),
+                                  r.sections.map { "\(String(format: "%.1f", $0.start))s bass \($0.bass.count) keys \($0.keys.count) lead \($0.lead.count) drums \($0.drums.count)" }.joined(separator: "; "))
+                        } catch { NSLog("AUDIOTEST failed: %@", "\(error)") }
+                    }
+                }
+            }
             .fullScreenCover(isPresented: $demo.isPresent()) {
                 if let d = demo {
                     let tut = ProcessInfo.processInfo.environment["FM1_DEMO_TUTORIAL"].flatMap(TutorialLibrary.byID)
