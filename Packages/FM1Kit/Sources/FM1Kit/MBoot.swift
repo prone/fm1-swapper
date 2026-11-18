@@ -39,18 +39,8 @@ public enum MBootProtocol {
         }
     }
 
-    public static func frame(_ cmd: UInt8, _ body: [UInt8] = []) -> [UInt8] {
-        let n = body.count
-        var sum = 0
-        for b in body { sum += Int(b) }
-        var unpacked: [UInt8] = [0, 0x59, cmd, UInt8(n & 0xFF), UInt8((n >> 8) & 0xFF), 0]
-        unpacked += body
-        unpacked.append(UInt8(~sum & 0xFF))
-        var out: [UInt8] = [0xF0]
-        out += SysExCoding.pack7(unpacked)
-        out.append(0xF7)
-        return out
-    }
+    /// A JieLi "00 59" command (the same framing as the FM-1's update loader and the SMC-PAD), packed for SysEx.
+    public static func frame(_ cmd: UInt8, _ body: [UInt8] = []) -> [UInt8] { Sinco.sysex(Sinco.packet(cmd, body)) }
 
     public static func parseFrame(_ pkt: [UInt8]) -> (cmd: UInt8, body: [UInt8])? {
         guard pkt.count >= 3, pkt.first == 0xF0, pkt.last == 0xF7 else { return nil }
@@ -58,9 +48,7 @@ public enum MBootProtocol {
         guard d.count >= 7, d[0] == 0, d[1] == 0x59, d[5] == 0 else { return nil }
         let length = Int(d[3]) | (Int(d[4]) << 8)
         guard length == d.count - 7 else { return nil }
-        var sum = 0
-        for b in d[6...] { sum += Int(b) }
-        guard sum & 0xFF == 0xFF else { return nil }
+        guard d[6...].reduce(0, { $0 &+ Int($1) }) & 0xFF == 0xFF else { return nil }
         return (d[2], Array(d[6..<(d.count - 1)]))
     }
 

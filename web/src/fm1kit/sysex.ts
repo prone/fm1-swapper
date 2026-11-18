@@ -94,6 +94,13 @@ export function crc32(bytes: ArrayLike<number>): number {
   return (~c) >>> 0;
 }
 
+/** The checksum of a JieLi "00 59" packet's payload (bytes `from`..`to`): the inverted low byte of their sum. */
+export function sum59(a: ArrayLike<number>, from = 0, to = a.length): number {
+  let s = 0;
+  for (let i = from; i < to; i++) s += a[i];
+  return ~s & 0xff;
+}
+
 export const le32 = (a: ArrayLike<number>, o: number): number => (a[o] | (a[o + 1] << 8) | (a[o + 2] << 16) | (a[o + 3] << 24)) >>> 0;
 export const le32Bytes = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
 

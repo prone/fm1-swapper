@@ -18,24 +18,17 @@ public enum OTAProtocol {
     public struct ReadRequest: Equatable, Sendable { public let flags: UInt8; public let addr: UInt32; public let len: Int }
 
     public static func response(addr: UInt32, data: [UInt8], flags: UInt8 = 0) -> [UInt8] {
-        let n = data.count
-        var body: [UInt8] = [0x00, 0x59, 0x30, UInt8((n + 8) & 0xFF), UInt8(((n + 8) >> 8) & 0xFF), 0, flags]
-        body += SysExCoding.le32Bytes(addr)
-        body += [UInt8(n & 0xFF), UInt8((n >> 8) & 0xFF), 0]
-        body += data
-        var s = 0
-        for b in body[6...] { s += Int(b) }
-        body.append(UInt8(~s & 0xFF))
-        return [0xF0] + SysExCoding.pack7(body) + [0xF7]
+        MBootProtocol.frame(0x30, [flags] + SysExCoding.le32Bytes(addr) + Sinco.le(data.count, 3) + data)
     }
+
+    /// The checksum of a "00 59" packet's payload.
+    static func sum(_ b: some Sequence<UInt8>) -> UInt8 { UInt8(~b.reduce(0) { $0 &+ Int($1) } & 0xFF) }
 
     public static func parseRequest(_ pkt: [UInt8]) -> ReadRequest? {
         guard pkt.count >= 2, pkt.first == 0xF0, pkt.last == 0xF7 else { return nil }
         let u = SysExCoding.unpack7(pkt[1..<(pkt.count - 1)])
         guard u.count == 15, u[0] == 0, u[1] == 0x59, u[2] == 0x30 else { return nil }
-        var s = 0
-        for b in u[6..<14] { s += Int(b) }
-        guard UInt8(~s & 0xFF) == u[14] else { return nil }
+        guard sum(u[6..<14]) == u[14] else { return nil }
         return ReadRequest(flags: u[6], addr: SysExCoding.le32(u, 7), len: Int(u[11]) | Int(u[12]) << 8 | Int(u[13]) << 16)
     }
 
@@ -43,10 +36,8 @@ public enum OTAProtocol {
         var u: [UInt8] = [0, 0x59, 0x30, 0, 0, 0, flags]
         u += SysExCoding.le32Bytes(addr)
         u += [UInt8(len & 0xFF), UInt8((len >> 8) & 0xFF), UInt8((len >> 16) & 0xFF)]
-        var s = 0
-        for b in u[6...] { s += Int(b) }
-        u.append(UInt8(~s & 0xFF))
-        return [0xF0] + SysExCoding.pack7(u) + [0xF7]
+        u.append(sum(u[6...]))
+        return Sinco.sysex(u)
     }
 
     public static func parseIdentity(_ pkt: [UInt8]) -> DeviceIdentity? {

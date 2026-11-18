@@ -10,7 +10,7 @@
 // answer to 0x12 first.
 import { Family } from "./package";
 import { SysExLink } from "./midi";
-import { crc32, le32, le32Bytes, pack7, unpack7 } from "./sysex";
+import { crc32, le32, le32Bytes, pack7, sum59, unpack7 } from "./sysex";
 
 export const MBOOT_VERSION = "2.4-395e6cc";
 /** The helper packages we ship (web/public/mboot, App/MBoot), pinned to m-bootloader's release SHA256SUMS. */
@@ -32,20 +32,17 @@ export function helperFor(family: Family): HelperKind | null {
 export const RESTART = [0xf0, 0x22, 0x24, 0x35, 0x7e, 0xf7];
 export const SECTOR = 0x1000, READ_MAX = 512;
 
+/** A JieLi "00 59" command (the same framing as the FM-1's update loader), packed for SysEx. */
 export function frame(cmd: number, body: ArrayLike<number> = []): number[] {
   const n = body.length;
-  let sum = 0;
-  for (let i = 0; i < n; i++) sum += body[i];
-  return [0xf0, ...pack7([0, 0x59, cmd, n & 0xff, (n >> 8) & 0xff, 0, ...Array.from(body), ~sum & 0xff]), 0xf7];
+  return [0xf0, ...pack7([0, 0x59, cmd, n & 0xff, (n >> 8) & 0xff, 0, ...Array.from(body), sum59(body)]), 0xf7];
 }
 
 export function parseFrame(pkt: number[]): { cmd: number; body: number[] } | null {
   if (pkt.length < 3 || pkt[0] !== 0xf0 || pkt[pkt.length - 1] !== 0xf7) return null;
   const d = unpack7(pkt.slice(1, -1));
   if (d.length < 7 || d[0] !== 0 || d[1] !== 0x59 || d[5] !== 0 || (d[3] | (d[4] << 8)) !== d.length - 7) return null;
-  let sum = 0;
-  for (let i = 6; i < d.length; i++) sum += d[i];
-  if ((sum & 0xff) !== 0xff) return null;
+  if (sum59(d, 6) !== 0) return null;
   return { cmd: d[2], body: d.slice(6, -1) };
 }
 

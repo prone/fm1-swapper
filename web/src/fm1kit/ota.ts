@@ -6,8 +6,8 @@
 // steps the device asks (cmd 0x30 read requests) and we answer.
 import { FirmwarePackage, Identity, isLoader, logicalImage, parseIdentity } from "./package";
 import { PortProvider, SysExLink, looksLikeFM1 } from "./midi";
-import { le32, le32Bytes, pack7, unpack7 } from "./sysex";
-import { MBoot } from "./mboot";
+import { le32, le32Bytes, pack7, sum59, unpack7 } from "./sysex";
+import { MBoot, frame } from "./mboot";
 
 export const HANDSHAKE = [0xf0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7f, 0xf7];
 export const UPGRADE = [0xf0, 0x22, 0x24, 0x35, 0x7f, 0xf7];
@@ -23,11 +23,7 @@ export class FM1Error extends Error {
 
 export function response(addr: number, data: ArrayLike<number>, flags = 0): number[] {
   const n = data.length;
-  const body = [0x00, 0x59, 0x30, (n + 8) & 0xff, ((n + 8) >> 8) & 0xff, 0, flags, ...le32Bytes(addr), n & 0xff, (n >> 8) & 0xff, 0, ...Array.from(data)];
-  let s = 0;
-  for (let i = 6; i < body.length; i++) s += body[i];
-  body.push(~s & 0xff);
-  return [0xf0, ...pack7(body), 0xf7];
+  return frame(0x30, [flags, ...le32Bytes(addr), n & 0xff, (n >> 8) & 0xff, 0, ...Array.from(data)]);
 }
 
 export interface ReadRequest { flags: number; addr: number; len: number }
@@ -36,17 +32,13 @@ export function parseRequest(pkt: number[]): ReadRequest | null {
   if (pkt.length < 2 || pkt[0] !== 0xf0 || pkt[pkt.length - 1] !== 0xf7) return null;
   const u = unpack7(pkt.slice(1, -1));
   if (u.length !== 15 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== 0x30) return null;
-  let s = 0;
-  for (let i = 6; i < 14; i++) s += u[i];
-  if ((~s & 0xff) !== u[14]) return null;
+  if (sum59(u, 6, 14) !== u[14]) return null;
   return { flags: u[6], addr: le32(u, 7), len: u[11] | (u[12] << 8) | (u[13] << 16) };
 }
 
 export function request(addr: number, len: number, flags = 0): number[] {
   const u = [0, 0x59, 0x30, 0, 0, 0, flags, ...le32Bytes(addr), len & 0xff, (len >> 8) & 0xff, (len >> 16) & 0xff];
-  let s = 0;
-  for (let i = 6; i < u.length; i++) s += u[i];
-  u.push(~s & 0xff);
+  u.push(sum59(u, 6));
   return [0xf0, ...pack7(u), 0xf7];
 }
 

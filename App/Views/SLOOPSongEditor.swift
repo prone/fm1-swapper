@@ -467,21 +467,8 @@ struct PianoRoll: View {
     private var rows: Int { min(25, 128 - low) }
 
     var body: some View {
-        let w = Self.label + Self.cell.width * 64, h = Self.cell.height * CGFloat(rows)
-        ScrollView(.horizontal) {
-            Canvas { ctx, _ in draw(ctx) }
-                .accessibilityElement()
-                .accessibilityLabel(gridSummary(track))
-                .frame(width: w, height: h)
-                .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { p in
-                    guard p.x >= Self.label else { return }
-                    let i = Int((p.x - Self.label) / Self.cell.width), r = Int(p.y / Self.cell.height)
-                    guard i < track.length, (0..<rows).contains(r) else { return }
-                    tap(UInt8(low + rows - 1 - r), i)
-                }
-        }
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        StepGrid(track: track, rows: rows, cell: Self.cell, label: Self.label, selection: selection,
+                 tap: { r, i in tap(UInt8(low + rows - 1 - r), i) }, draw: draw)
     }
 
     private func draw(_ ctx: GraphicsContext) {
@@ -493,9 +480,6 @@ struct PianoRoll: View {
             if pitch % 12 == 0 || r == rows - 1 {
                 ctx.draw(Text(Self.name(UInt8(pitch))).font(.caption2.monospacedDigit()).foregroundStyle(.secondary), at: CGPoint(x: 4, y: y + c.height / 2), anchor: .leading)
             }
-        }
-        if let s = selection {
-            ctx.fill(Path(CGRect(x: Self.label + CGFloat(s.lowerBound) * c.width, y: 0, width: CGFloat(s.count) * c.width, height: c.height * CGFloat(rows))), with: .color(.accentColor.opacity(0.12)))
         }
         for i in 0...64 {
             let x = Self.label + CGFloat(i) * c.width
@@ -509,14 +493,44 @@ struct PianoRoll: View {
                 ctx.fill(Path(roundedRect: rect, cornerRadius: 3), with: .color(.accentColor))
             }
         }
-        if track.length < 64 {
-            ctx.fill(Path(CGRect(x: Self.label + CGFloat(track.length) * c.width, y: 0, width: CGFloat(64 - track.length) * c.width, height: c.height * CGFloat(rows))),
-                     with: .color(Color(.systemBackground).opacity(0.6)))
-        }
     }
 }
 
-/// The drum track: 16 lanes by 64 steps.
+/// The shared frame of the two grids: 64 steps across and `rows` high, labels on the left. It scrolls sideways,
+/// highlights the selected steps, dims the steps past the track's length and reports taps as (row, step).
+private struct StepGrid: View {
+    let track: SLOOPTrack, rows: Int, cell: CGSize, label: CGFloat
+    let selection: Range<Int>?
+    let tap: (Int, Int) -> Void
+    let draw: (GraphicsContext) -> Void
+
+    var body: some View {
+        let h = cell.height * CGFloat(rows)
+        ScrollView(.horizontal) {
+            Canvas { ctx, _ in
+                if let s = selection {
+                    ctx.fill(Path(CGRect(x: label + CGFloat(s.lowerBound) * cell.width, y: 0, width: CGFloat(s.count) * cell.width, height: h)), with: .color(.accentColor.opacity(0.12)))
+                }
+                draw(ctx)
+                if track.length < 64 {
+                    ctx.fill(Path(CGRect(x: label + CGFloat(track.length) * cell.width, y: 0, width: CGFloat(64 - track.length) * cell.width, height: h)),
+                             with: .color(Color(.systemBackground).opacity(0.6)))
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel(gridSummary(track))
+            .frame(width: label + cell.width * 64, height: h)
+            .contentShape(Rectangle())
+            .onTapGesture(coordinateSpace: .local) { p in
+                let i = Int((p.x - label) / cell.width), r = Int(p.y / cell.height)
+                guard p.x >= label, i < track.length, (0..<rows).contains(r) else { return }
+                tap(r, i)
+            }
+        }
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 /// What a grid holds, for VoiceOver (the canvas has no elements of its own).
 private func gridSummary(_ t: SLOOPTrack) -> String {
     if t.isDrum {
@@ -527,6 +541,7 @@ private func gridSummary(_ t: SLOOPTrack) -> String {
     return "Piano roll, \(t.length) steps, \(c.count) note\(c.count == 1 ? "" : "s")" + (c.first.map { ", first \($0.notes.map(PianoRoll.name).joined(separator: " ")) on step \($0.at + 1)" } ?? "")
 }
 
+/// The drum track: 16 lanes by 64 steps.
 struct DrumGrid: View {
     let track: SLOOPTrack
     let selection: Range<Int>?
@@ -534,27 +549,11 @@ struct DrumGrid: View {
     static let cell = CGSize(width: 24, height: 20), label: CGFloat = 76
 
     var body: some View {
-        ScrollView(.horizontal) {
-            Canvas { ctx, _ in draw(ctx) }
-                .accessibilityElement()
-                .accessibilityLabel(gridSummary(track))
-                .frame(width: Self.label + Self.cell.width * 64, height: Self.cell.height * 16)
-                .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { p in
-                    guard p.x >= Self.label else { return }
-                    let i = Int((p.x - Self.label) / Self.cell.width), lane = Int(p.y / Self.cell.height)
-                    guard i < track.length, (0..<16).contains(lane) else { return }
-                    tap(lane, i)
-                }
-        }
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        StepGrid(track: track, rows: 16, cell: Self.cell, label: Self.label, selection: selection, tap: tap, draw: draw)
     }
 
     private func draw(_ ctx: GraphicsContext) {
         let c = Self.cell, per = track.barSteps ?? 16
-        if let s = selection {
-            ctx.fill(Path(CGRect(x: Self.label + CGFloat(s.lowerBound) * c.width, y: 0, width: CGFloat(s.count) * c.width, height: c.height * 16)), with: .color(.accentColor.opacity(0.12)))
-        }
         for lane in 0..<16 {
             let y = CGFloat(lane) * c.height
             ctx.draw(Text(SLOOPTrack.drumLanes[lane]).font(.caption2).foregroundStyle(.secondary), at: CGPoint(x: 4, y: y + c.height / 2), anchor: .leading)
@@ -564,10 +563,6 @@ struct DrumGrid: View {
                 ctx.fill(Path(roundedRect: r, cornerRadius: 3),
                          with: .color(on ? .accentColor : .primary.opacity((i / per) % 2 == 0 ? 0.08 : 0.04)))
             }
-        }
-        if track.length < 64 {
-            ctx.fill(Path(CGRect(x: Self.label + CGFloat(track.length) * c.width, y: 0, width: CGFloat(64 - track.length) * c.width, height: c.height * 16)),
-                     with: .color(Color(.systemBackground).opacity(0.6)))
         }
     }
 }
