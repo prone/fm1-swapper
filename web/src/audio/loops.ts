@@ -8,7 +8,6 @@
 import { SR, fft } from "./dsp";
 import { AudioNote, Rises, Section, SectionAudio, SongAudio, arrangeNotes, barStart, drumHits } from "./analysis";
 
-type Part = "bass" | "keys" | "lead" | "drums";
 /** (for checks: the last song's per-bar features) */
 export const debug: { last?: { F: Record<string, number[][]>; steps: number[]; nb: number } } = {};
 const CHUNK = 30;                                      // seconds of audio analysed at a time (memory: an iPad's web view)
@@ -105,7 +104,7 @@ export async function findLoops(song: SongAudio, notes: AudioNote[], max = 4, pr
     const q = (grid[63] - grid[0]) / 63;
     return {
       start: grid[0], bpm: 60 / (4 * q),
-      ...consensusNotes(notes, l.bars.map((s) => steps.slice(s * 16, s * 16 + 64)), lengths),
+      ...loopNotes(notes, l.bars.map((s) => steps.slice(s * 16, s * 16 + 64)), l.bars.indexOf(l.rep)),
       drums: consensusDrums(rises, l.bars, lengths.drums),
       repeats: l.bars.length, lengths,
       unsure: l.crosses || (l.bars.length < 3 && l.alike < 0.9),
@@ -221,32 +220,21 @@ function consensusDrums({ R, tone, ring }: Rises, bars: number[], length: number
   return out;
 }
 
-/** A loop's notes from its repeats: each repeat's bassline, chords and lead (arrangeNotes), a note kept when at least
- *  half the repeats (and the repeats of a shorter pattern inside them) have it; its length the median. */
-function consensusNotes(notes: AudioNote[], grids: number[][], lengths: Record<Part, number>): Pick<Section, "bass" | "keys" | "lead"> {
-  const parts = grids.map((g) => arrangeNotes(notes, g));
-  const vote = (lines: [number, number, number][][], len: number) => {
-    const n = lines.length * (64 / len), by = new Map<string, number[]>();
-    for (const line of lines) for (const [st, ln, p] of line) { const k = `${st % len},${p}`; by.set(k, [...(by.get(k) ?? []), ln]); }
-    const kept = [...by.entries()].filter(([, v]) => v.length >= Math.max(1, Math.ceil(n / 2)));
-    const out: [number, number, number][] = [];
-    for (let rep = 0; rep < 64; rep += len)
-      for (const [k, v] of kept) { const [st, p] = k.split(",").map(Number); out.push([st + rep, median(v), p]); }
-    return out.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+/** A loop's notes: the repeat it's taken from (what its preview plays). The lead as it is there: a voice slides,
+ *  comes in early or late, and sings other words (other notes) each time round, and votes across the repeats dropped
+ *  most of a sung line. The bass and the chords less their one-offs: with four or more repeats, a note goes when no
+ *  other repeat has that pitch within a 16th of it. */
+function loopNotes(notes: AudioNote[], grids: number[][], rep: number): Pick<Section, "bass" | "keys" | "lead"> {
+  const parts = grids.map((g) => arrangeNotes(notes, g)), mine = parts[rep], others = parts.filter((_, i) => i !== rep);
+  const heard = (line: (p: (typeof parts)[number]) => [number, number][], st: number, p: number) =>
+    others.length < 3 || others.some((o) => line(o).some(([s2, p2]) => p2 === p && Math.abs(s2 - st) <= 1));
+  const pairs = (key: "bass" | "lead") => (o: (typeof parts)[number]) => o[key].map(([st, , p]): [number, number] => [st, p]);
+  const chordNotes = (o: (typeof parts)[number]) => o.keys.flatMap(([st, , ps]) => ps.map((p): [number, number] => [st, p]));
+  return {
+    bass: mine.bass.filter(([st, , p]) => heard(pairs("bass"), st, p)),
+    lead: mine.lead,
+    keys: mine.keys.map(([st, ln, ps]): [number, number, number[]] => [st, ln, ps.filter((p) => heard(chordNotes, st, p))]).filter(([, , ps]) => ps.length),
   };
-  const mono = (line: [number, number, number][]) => {
-    const one = new Map<number, [number, number, number]>();
-    for (const n of line) if (!one.has(n[0])) one.set(n[0], n);                  // (one note a step: the lowest)
-    const l = [...one.values()].sort((a, b) => a[0] - b[0]);
-    return l.map(([st, ln, p], i): [number, number, number] => [st, Math.max(1, Math.min(ln, i + 1 < l.length ? l[i + 1][0] - st : ln, 64 - st)), p]);
-  };
-  const bass = mono(vote(parts.map((p) => p.bass), lengths.bass));
-  const lead = mono([...vote(parts.map((p) => p.lead), lengths.lead)].sort((a, b) => a[0] - b[0] || b[2] - a[2]));
-  const keyNotes = vote(parts.map((p) => p.keys.flatMap(([st, ln, ps]) => ps.map((x): [number, number, number] => [st, ln, x]))), lengths.keys);
-  const chords = new Map<number, { ln: number; ps: number[] }>();
-  for (const [st, ln, p] of keyNotes) { const c = chords.get(st) ?? { ln, ps: [] }; c.ln = Math.max(c.ln, ln); if (c.ps.length < 4) c.ps.push(p); chords.set(st, c); }
-  const keys = [...chords.entries()].sort((a, b) => a[0] - b[0]).map(([st, c]): [number, number, number[]] => [st, Math.min(c.ln, 64 - st), c.ps]);
-  return { bass, keys, lead };
 }
 
 const dot = (a: number[], b: number[]) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
