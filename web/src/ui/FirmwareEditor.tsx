@@ -7,7 +7,7 @@ import { Backup, Firmware, store, uid } from "../store";
 import { emulatorSaveText, emulatorSectors, putSong } from "../fm1kit/sloopflash";
 import { autoSongName, backupRecord, device } from "../device";
 import { totalBytes } from "../fm1kit/archive";
-import { Clip, SONG_EXT, readSongFile, sameSong, songFile, stepNotes, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
+import { Clip, SONG_EXT, blankSong, readSongFile, sameSong, songFile, stepNotes, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
 import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
 import { AudioImport } from "./AudioImport";
 
@@ -44,6 +44,7 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
   const busy = !!s.busy;
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [importOnOpen, setImportOnOpen] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -51,15 +52,28 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
   const songs = lib.backups.filter((b) => b.kind === "song").sort((a, b) => b.date - a.date);
   const shown = q ? songs.filter((b) => b.label.toLowerCase().includes(q.toLowerCase())) : songs;
   const open = songs.find((b) => b.id === editing);
-  if (open) return <SongEditor song={open} lib={lib} play={play} reopen={setEditing} close={() => setEditing(null)} />;
+  if (open) return <SongEditor song={open} lib={lib} play={play} reopen={setEditing} importOnOpen={importOnOpen} close={() => { setEditing(null); setImportOnOpen(false); }} />;
+  /** A blank song (SLOOP's starting project, sections A-D empty), opened in the editor; `fromAudio`: at Import from audio. */
+  const newSong = async (fromAudio: boolean) => {
+    let n = 1;
+    while (songs.some((b) => b.label === `New song ${n}`)) n++;
+    const sloop = lib.firmwares.find((f) => /sloop/i.test(f.name));
+    const b = { ...backupRecord(blankSong(), sloop?.id ?? "", "song"), label: `New song ${n}` };
+    await store.saveBackup(b);
+    setImportOnOpen(fromAudio); setEditing(b.id);
+  };
   const fwName = (b: Backup) => lib.firmwares.find((f) => f.id === b.firmwareId)?.name;
   return (
     <>
       <p><button class="linkbtn" onClick={back}>‹ Firmware Editor</button></p>
       <h1>SLOOP songs</h1>
+      <div class="tools" style={{ marginBottom: 10 }}>
+        <button class="btn small primary" onClick={() => void newSong(false)}>New song</button>
+        <button class="btn small" onClick={() => void newSong(true)}>New song from audio…</button>
+      </div>
       <DeviceBusy s={s} />
       {songs.length > 3 && <input type="text" placeholder="Search songs" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} style={{ width: "100%", marginBottom: 10 }} />}
-      {!songs.length && <div class="card dim">No SLOOP songs yet. With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1, or import a song file below (Share song file in the iPhone or iPad app).</div>}
+      {!songs.length && <div class="card dim">No SLOOP songs yet. Start one with New song (or from audio), save the song on the FM-1 from Device → SLOOP songs, or import a song file below.</div>}
       {shown.length > 0 && <div class="rows">
         {shown.map((b) => (
           <div key={b.id}>
@@ -122,7 +136,7 @@ const NOTE = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A�
 const noteName = (p: number) => `${NOTE[p % 12]}${Math.floor(p / 12) - 1}`;
 const fmtBars = (b: number) => Number.isInteger(b) ? String(b) : b.toFixed(2).replace(/0+$/, "");
 
-function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Library; play: Play; reopen: (id: string) => void; close: () => void }) {
+function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Backup; lib: Library; play: Play; reopen: (id: string) => void; importOnOpen?: boolean; close: () => void }) {
   const s = useDevice();
   const [doc, setDoc] = useState<SongDoc | null>(null);
   const [saved, setSaved] = useState<SongDoc | null>(null);
@@ -138,7 +152,7 @@ function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Lib
   const [low, setLow] = useState<Record<string, number>>({});
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
-  const [importing, setImporting] = useState(false);
+  const [importing, setImporting] = useState(!!importOnOpen);
 
   useEffect(() => {
     try { if (!song.archive) throw new Error("The saved song can't be read."); const d = SongDoc.open(song.archive); setDoc(d); setSaved(d.clone()); }

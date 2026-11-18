@@ -243,3 +243,19 @@ final class SLOOPAudioImportTests: XCTestCase {
         XCTAssertEqual(doc.order?.entries.count, 4)
     }
 }
+
+final class SLOOPBlankSongTests: XCTestCase {
+    func testABlankSongIsSLOOPsStartingProject() throws {
+        let a = SLOOPBlankSong.archive()
+        XCTAssertNoThrow(try SLOOPArchive.restoreOrder(a), "it loads as any saved song")
+        let doc = try SLOOPSongDoc(a)
+        let loop = try XCTUnwrap(doc.patterns[.loop])
+        XCTAssertEqual(loop.bpm, 90)
+        XCTAssertTrue((0..<3).allSatisfy { loop[track: $0].chords.isEmpty })
+        XCTAssertTrue((0..<64).allSatisfy { i in (0..<16).allSatisfy { !loop[track: 3].drum(at: i, lane: $0) } })
+        XCTAssertTrue([.a, .b, .c, .d].allSatisfy(doc.isEmpty))
+        XCTAssertEqual(doc.order?.entries.count, 4)
+        let settings = [UInt8](a.part("1")!.data)
+        XCTAssertEqual(SysExCoding.le32(settings, 16), 0x5041_4E35, "SLOOP's default panel")
+    }
+}

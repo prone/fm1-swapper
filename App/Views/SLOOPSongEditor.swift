@@ -14,7 +14,9 @@ struct SLOOPSongEditor: View {
     /// The saved song being edited (after "Save as a new song", the copy).
     @State private var song: Backup
 
-    init(song: Backup) { _song = State(initialValue: song) }
+    /// `importAudio`: open at Import from audio (a new song made from audio).
+    init(song: Backup, importAudio: Bool = false) { _song = State(initialValue: song); importOnOpen = importAudio }
+    private let importOnOpen: Bool
 
     @State private var doc: SLOOPSongDoc?
     @State private var saved: SLOOPSongDoc?
@@ -388,6 +390,7 @@ struct SLOOPSongEditor: View {
             guard let a = song.archive else { throw FM1Error.badPackage("The saved song can't be read.") }
             let d = try SLOOPSongDoc(a)
             doc = d; saved = d
+            if importOnOpen { importingAudio = true }
         } catch {
             loadError = error.localizedDescription
         }

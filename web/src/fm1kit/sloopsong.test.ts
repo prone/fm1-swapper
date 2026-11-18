@@ -141,3 +141,16 @@ describe("song files", () => {
     expect(() => readSongFile(JSON.stringify(bad))).toThrow();
   });
 });
+
+describe("a new song", () => {
+  it("is SLOOP's starting project, sections empty, default settings", async () => {
+    const { blankSong } = await import("./sloopsong");
+    const a = blankSong();
+    expect(() => SLOOPArchive.restoreOrder(a)).not.toThrow();
+    const d = SongDoc.open(a);
+    expect(d.patterns.loop!.bpm).toBe(90);
+    expect(d.patterns.loop!.track(0).chords).toEqual([]);
+    expect(["a", "b", "c", "d"].every((s) => d.isEmpty(s as "a"))).toBe(true);
+    expect(d.order!.entries.length).toBe(4);
+  });
+});

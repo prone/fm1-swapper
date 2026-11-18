@@ -40,6 +40,8 @@ struct SLOOPSongsView: View {
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Backup> { $0.kindRaw == "song" }, sort: \Backup.date, order: .reverse) private var songs: [Backup]
     @State private var editing: Backup?
+    @State private var importOnOpen = false
+    @Query private var firmwares: [Firmware]
     @State private var loading: Backup?
     @State private var renaming: Backup?
     @State private var deleting: Backup?
@@ -58,7 +60,7 @@ struct SLOOPSongsView: View {
             Section {
                 if songs.isEmpty {
                     ContentUnavailableView("No SLOOP songs yet", systemImage: "music.note.list",
-                                           description: Text("With SLOOP on the FM-1, use Device → SLOOP songs → Save the song on the FM-1. Saved songs appear here, and you can edit them without the FM-1."))
+                                           description: Text("Start one with + → New song (or New song from audio), or save the song on the FM-1 from Device → SLOOP songs. Songs here can be edited without the FM-1."))
                 }
                 ForEach(shown) { s in
                     Button { editing = s } label: {
@@ -90,6 +92,10 @@ struct SLOOPSongsView: View {
         }
         .navigationTitle("SLOOP songs")
         .toolbar {
+            Menu {
+                Button { newSong(fromAudio: false) } label: { Label("New song", systemImage: "doc.badge.plus") }
+                Button { newSong(fromAudio: true) } label: { Label("New song from audio…", systemImage: "waveform.badge.plus") }
+            } label: { Label("New song", systemImage: "plus") }
             Button { importing = true } label: { Label("Import song files", systemImage: "square.and.arrow.down") }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.fm1song, .json], allowsMultipleSelection: true) { r in
@@ -99,7 +105,7 @@ struct SLOOPSongsView: View {
         .shareSheet($sharing)
         .messageAlert("Song files", $message)
         .searchable(text: $search, prompt: "Songs")
-        .fullScreenCover(item: $editing) { SLOOPSongEditor(song: $0) }
+        .fullScreenCover(item: $editing, onDismiss: { importOnOpen = false }) { SLOOPSongEditor(song: $0, importAudio: importOnOpen) }
         .alert("Rename", isPresented: $renaming.isPresent()) {
             TextField("Name", text: $newName)
             Button("Rename") { let n = newName.trimmingCharacters(in: .whitespaces); if let r = renaming, !n.isEmpty { r.label = n; try? context.save() } }
@@ -136,6 +142,19 @@ struct SLOOPSongsView: View {
         } catch {
             return "\(url.lastPathComponent): \(error.localizedDescription)"
         }
+    }
+
+    /// A blank song (SLOOP's starting project, sections A–D empty), opened in the editor; with `fromAudio`, at Import
+    /// from audio.
+    private func newSong(fromAudio: Bool) {
+        let n = (1...).first { n in !songs.contains { $0.label == "New song \(n)" } } ?? 1
+        let sloop = firmwares.first { $0.name.localizedCaseInsensitiveContains("sloop") }
+        guard let b = try? context.addBackup(SLOOPBlankSong.archive(), label: "New song \(n)", kind: "song", firmware: sloop) else {
+            message = "Couldn't make a new song."
+            return
+        }
+        importOnOpen = fromAudio
+        editing = b
     }
 
     private func duplicate(_ s: Backup) {
