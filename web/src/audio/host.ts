@@ -9,7 +9,7 @@ import { decode, transcribe } from "./input";
 declare global {
   interface Window {
     webkit?: { messageHandlers?: { fm1audio?: { postMessage: (m: unknown) => void } } };
-    __fm1audio?: { analyse: (b64: string) => Promise<string>; section: (start: number) => string };
+    __fm1audio?: { analyse: (b64: string) => Promise<string>; section: (start: number) => Promise<string> | string };
   }
 }
 
@@ -25,11 +25,18 @@ const plain = (s: Section) => ({
   drums: s.drums.map(([step, lanes]) => ({ step, lanes })),
 });
 
-window.__fm1audio = {
-  async analyse(b64) {
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+/** Errors come back as {"error": …} (the app shows the message: WebKit only says "an exception occurred"). */
+const guarded = async (f: () => Promise<string> | string) => {
+  try { return await f(); } catch (e) { return JSON.stringify({ error: e instanceof Error ? e.message || String(e) : String(e) }); }
+};
+
+const api = {
+  /** `b64`: the file's bytes; or empty: the app has decoded the audio already (mono 22050 Hz float samples, served as
+   *  input.pcm: far less memory in the web view than decoding a whole song here). */
+  async analyse(b64: string) {
     tell("Reading the audio…"); await wait();
-    const y = await decode(bytes.buffer);
+    const y = b64 ? await decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer)
+      : new Float32Array(await (await fetch("input.pcm")).arrayBuffer());
     if (y.length < 22050 * 4) throw new Error("That's under 4 seconds: a 4-bar section needs more.");
     tell("Finding the notes (Basic Pitch)…", 0);
     notes = dropGhosts(await transcribe(y, (f) => tell("Finding the notes (Basic Pitch)…", f)));
@@ -42,9 +49,13 @@ window.__fm1audio = {
     }
     return JSON.stringify({ bpm: song.bpm, duration: song.duration, sections });
   },
-  section(start) {
+  section(start: number) {
     if (!song) throw new Error("No audio analysed yet.");
     return JSON.stringify(plain(analyseSection(song, notes, start)));
   },
+};
+window.__fm1audio = {
+  analyse: (b64) => guarded(() => api.analyse(b64)),
+  section: (start) => guarded(() => api.section(start)) as unknown as string,
 };
 tell("ready");

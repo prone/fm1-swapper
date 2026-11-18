@@ -162,11 +162,11 @@ struct RootView: View {
             .modifier(PadProfileDriver())
         #if DEBUG
             .background {
-                if let path = ProcessInfo.processInfo.environment["FM1_DEMO_AUDIO"], let data = FileManager.default.contents(atPath: path) {
+                if let path = ProcessInfo.processInfo.environment["FM1_DEMO_AUDIO"] {
                     AudioAnalyserView(analyser: audioTest).frame(width: 1, height: 1).opacity(0).task {
                         let t0 = Date()
                         do {
-                            let r = try await audioTest.analyse(data)
+                            let r = try await audioTest.analyse(URL(fileURLWithPath: path))
                             NSLog("AUDIOTEST ok %.1f BPM, %d sections in %.1f s: %@", r.bpm, r.sections.count, Date().timeIntervalSince(t0),
                                   r.sections.map { "\(String(format: "%.1f", $0.start))s bass \($0.bass.count) keys \($0.keys.count) lead \($0.lead.count) drums \($0.drums.count)" }.joined(separator: "; "))
                         } catch { NSLog("AUDIOTEST failed: %@", "\(error)") }

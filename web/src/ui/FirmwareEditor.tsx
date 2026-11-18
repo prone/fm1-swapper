@@ -68,8 +68,9 @@ function SloopSongs({ lib, play, back }: { lib: Library; play: Play; back: () =>
       <p><button class="linkbtn" onClick={back}>‹ Firmware Editor</button></p>
       <h1>SLOOP songs</h1>
       <div class="tools" style={{ marginBottom: 10 }}>
-        <button class="btn small primary" onClick={() => void newSong(false)}>New song</button>
-        <button class="btn small" onClick={() => void newSong(true)}>New song from audio…</button>
+        <button class="btn primary" onClick={() => void newSong(true)}>New song from audio…</button>
+        <button class="btn" onClick={() => void newSong(false)}>New blank song</button>
+        <span class="small dim">From audio: a song file or a recording becomes a bassline, chords, lead and drums.</span>
       </div>
       <DeviceBusy s={s} />
       {songs.length > 3 && <input type="text" placeholder="Search songs" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} style={{ width: "100%", marginBottom: 10 }} />}

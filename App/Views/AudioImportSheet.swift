@@ -152,7 +152,7 @@ struct AudioImportSheet: View {
             self.name = name
             Task {
                 do {
-                    let r = try await analyser.analyse(data)
+                    let r = try await analyser.analyse(copy)
                     result = r
                     sections = r.sections
                     targets = Array(0..<r.sections.count)
@@ -204,9 +204,11 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
 
     nonisolated static let scheme = "fm1audio"
 
+    @ObservationIgnored private let files = BundleFiles()
+
     func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(BundleFiles(), forURLScheme: Self.scheme)
+        config.setURLSchemeHandler(files, forURLScheme: Self.scheme)
         config.userContentController.add(WeakHandler(self), name: "fm1audio")
         config.websiteDataStore = .nonPersistent()
         let w = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
@@ -228,20 +230,70 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
         return web
     }
 
-    func analyse(_ audio: Data) async throws -> Result {
-        busy = true; status = "Starting…"; progress = nil
-        defer { busy = false }
+    /// Analyses an audio file: decoded here (to mono 22050 Hz, as the analysis wants), then read by the page as
+    /// binary (a whole song in the web view's own decoder can run it out of memory).
+    func analyse(_ file: URL) async throws -> Result {
+        busy = true; status = "Reading the audio…"; progress = nil
+        defer { busy = false; files.input = nil }
+        files.input = try await Task.detached { try Self.monoSamples(file) }.value
         let web = try await page()
-        let json = try await web.callAsyncJavaScript("return await window.__fm1audio.analyse(b64)", arguments: ["b64": audio.base64EncodedString()],
-                                                     contentWorld: .page) as? String ?? ""
-        return try JSONDecoder().decode(Result.self, from: Data(json.utf8))
+        return try decode(Result.self, try await run(web, "return await window.__fm1audio.analyse('')", [:]))
+    }
+
+    /// Any audio file AVFoundation reads, mixed to mono and resampled to 22050 Hz, as 32-bit float samples.
+    nonisolated static func monoSamples(_ url: URL) throws -> Data {
+        let file = try AVAudioFile(forReading: url)
+        guard let out = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 22050, channels: 1, interleaved: false),
+              let conv = AVAudioConverter(from: file.processingFormat, to: out) else { throw FM1Error.unsupported("That audio can't be read.") }
+        conv.downmix = true
+        let chunk: AVAudioFrameCount = 32768
+        guard let inBuf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunk) else { throw FM1Error.unsupported("Out of memory.") }
+        var data = Data()
+        var done = false
+        while true {
+            let ratio = 22050 / file.processingFormat.sampleRate
+            guard let outBuf = AVAudioPCMBuffer(pcmFormat: out, frameCapacity: AVAudioFrameCount(Double(chunk) * ratio) + 64) else { break }
+            var error: NSError?
+            let status = conv.convert(to: outBuf, error: &error) { _, outStatus in
+                if done { outStatus.pointee = .endOfStream; return nil }
+                do { try file.read(into: inBuf, frameCount: chunk) } catch { done = true; outStatus.pointee = .endOfStream; return nil }
+                if inBuf.frameLength == 0 { done = true; outStatus.pointee = .endOfStream; return nil }
+                outStatus.pointee = .haveData
+                return inBuf
+            }
+            if let error { throw error }
+            if let p = outBuf.floatChannelData?[0], outBuf.frameLength > 0 { data.append(UnsafeBufferPointer(start: p, count: Int(outBuf.frameLength))) }
+            if status == .endOfStream || status == .error { break }
+        }
+        guard data.count >= 22050 * 4 * 4 else { throw FM1Error.unsupported("That's under 4 seconds: a 4-bar section needs more.") }
+        return data
     }
 
     func section(at start: Double) async throws -> SLOOPAudioSection {
         busy = true; status = "Analysing…"
         defer { busy = false }
-        let json = try await page().callAsyncJavaScript("return window.__fm1audio.section(t)", arguments: ["t": start], contentWorld: .page) as? String ?? ""
-        return try JSONDecoder().decode(SLOOPAudioSection.self, from: Data(json.utf8))
+        return try decode(SLOOPAudioSection.self, try await run(page(), "return await window.__fm1audio.section(t)", ["t": start]))
+    }
+
+    /// Runs a call into the page; its answer is JSON text, or {"error": …}. WebKit's own errors say only that "an
+    /// exception occurred": the message it carries is shown instead.
+    private func run(_ web: WKWebView, _ js: String, _ args: [String: Any]) async throws -> String {
+        do {
+            guard let s = try await web.callAsyncJavaScript(js, arguments: args, contentWorld: .page) as? String else {
+                throw FM1Error.unsupported("The audio analysis didn't answer.")
+            }
+            return s
+        } catch let e as NSError where e.domain == WKError.errorDomain {
+            let detail = e.userInfo["WKJavaScriptExceptionMessage"] as? String ?? e.localizedDescription
+            throw FM1Error.unsupported("The audio analysis stopped: \(detail)")
+        }
+    }
+
+    private struct Failure: Decodable { let error: String }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
+        if let f = try? JSONDecoder().decode(Failure.self, from: Data(json.utf8)) { throw FM1Error.unsupported(f.error) }
+        return try JSONDecoder().decode(type, from: Data(json.utf8))
     }
 
     /// (WKUserContentController keeps its handlers strongly.)
@@ -254,12 +306,22 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// Serves `fm1audio://app/<path>` from the app's AudioImport folder only (nothing else, nothing from the network).
+/// Serves `fm1audio://app/<path>` from the app's AudioImport folder only (nothing else, nothing from the network), and
+/// `input.pcm`: the audio being analysed, decoded by the app.
 private final class BundleFiles: NSObject, WKURLSchemeHandler {
     private let root = Bundle.main.url(forResource: "AudioImport", withExtension: nil)?.standardizedFileURL
+    var input: Data?
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard let url = task.request.url, let root, url.host == "app" else { return fail(task) }
+        if url.path == "/input.pcm" {
+            guard let input else { return fail(task) }
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                            headerFields: ["Content-Type": "application/octet-stream", "Content-Length": "\(input.count)"])!)
+            task.didReceive(input)
+            task.didFinish()
+            return
+        }
         let file = root.appendingPathComponent(url.path).standardizedFileURL
         guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else { return fail(task) }
         let type: String = switch file.pathExtension {

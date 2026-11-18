@@ -58,9 +58,18 @@ struct SLOOPSongsView: View {
     var body: some View {
         List {
             Section {
+                Button { newSong(fromAudio: true) } label: {
+                    Label { VStack(alignment: .leading, spacing: 2) {
+                        Text("New song from audio").font(.headline)
+                        Text("A song file or a recording becomes a bassline, chords, lead and drums").font(.caption).foregroundStyle(.secondary)
+                    } } icon: { Image(systemName: "waveform.badge.plus").font(.title2) }
+                }
+                Button { newSong(fromAudio: false) } label: { Label("New blank song", systemImage: "doc.badge.plus") }
+            } header: { Text("Start a song") }
+            Section {
                 if songs.isEmpty {
                     ContentUnavailableView("No SLOOP songs yet", systemImage: "music.note.list",
-                                           description: Text("Start one with + → New song (or New song from audio), or save the song on the FM-1 from Device → SLOOP songs. Songs here can be edited without the FM-1."))
+                                           description: Text("Start one above, or save the song on the FM-1 from Device → SLOOP songs. Songs here can be edited without the FM-1."))
                 }
                 ForEach(shown) { s in
                     Button { editing = s } label: {
@@ -92,10 +101,6 @@ struct SLOOPSongsView: View {
         }
         .navigationTitle("SLOOP songs")
         .toolbar {
-            Menu {
-                Button { newSong(fromAudio: false) } label: { Label("New song", systemImage: "doc.badge.plus") }
-                Button { newSong(fromAudio: true) } label: { Label("New song from audio…", systemImage: "waveform.badge.plus") }
-            } label: { Label("New song", systemImage: "plus") }
             Button { importing = true } label: { Label("Import song files", systemImage: "square.and.arrow.down") }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.fm1song, .json], allowsMultipleSelection: true) { r in

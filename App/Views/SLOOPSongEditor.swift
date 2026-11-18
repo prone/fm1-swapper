@@ -55,13 +55,14 @@ struct SLOOPSongEditor: View {
                     Button("Close") { if dirty { closing = true } else { dismiss() } }
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    Button { importingAudio = true } label: { Label("Import from audio", systemImage: "waveform.badge.plus") }
+                        .disabled(doc == nil)
                     Button { play() } label: { Label("Play in the emulator", systemImage: "play.rectangle") }
                         .disabled(doc == nil)
                     Button { if let last = undo.popLast() { doc = last } } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                         .disabled(undo.isEmpty)
                     Menu {
                         Button { save() } label: { Label("Save changes", systemImage: "square.and.arrow.down") }.disabled(!dirty)
-                        Button { importingAudio = true } label: { Label("Import from audio…", systemImage: "waveform.badge.plus") }
                         Button { copyName = "\(song.label) (edit)"; namingCopy = true } label: { Label("Save as a new song…", systemImage: "plus.square.on.square") }
                         Button {
                             if let d = doc, let f = try? SongFiles.file(d.archive(), name: song.label) { sharing = ShareItems(files: [f]) }
