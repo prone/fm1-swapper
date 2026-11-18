@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 FM-1 Swapper contributors
-import CryptoKit
 import Foundation
 
 /// M-VAVE's FM1 Open Workbench is a single HTML file that carries its firmware packages
@@ -31,7 +30,7 @@ public enum WorkbenchExtractor {
             }
             guard let product = field("product"), let sha = field("sha256"),
                   let bytes = Data(base64Encoded: String(s[b64])),
-                  SHA256.hash(data: bytes).map({ String(format: "%02x", $0) }).joined() == sha,
+                  sha256Hex(bytes) == sha,
                   let pkg = try? FirmwarePackage(data: bytes), pkg.product == product else { continue }
             out.append(Embedded(product: product, releaseVersion: field("release_version") ?? "", profile: field("profile") ?? "",
                                 isStock: field("kind") == "stock", hardwareValidated: header.contains("\"hardware_validated\":false") ? false

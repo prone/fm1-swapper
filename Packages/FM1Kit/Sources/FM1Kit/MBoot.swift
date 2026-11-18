@@ -71,7 +71,7 @@ public struct MBootInfo: Sendable, Hashable, Codable {
         guard b.count >= 29, String(decoding: b[0..<5], as: UTF8.self) == "MBOOT" else { return nil }
         protocolVersion = Int(b[5]); isStage = b[6] == 2; flags = Int(b[7]); chipKey = UInt16(b[8]) | UInt16(b[9]) << 8
         capacity = Int(SysExCoding.le32(b, 10)); jedec = SysExCoding.le32(b, 14)
-        unitID = b[18..<26].map { String(format: "%02x", $0) }.joined()
+        unitID = b[18..<26].hex
         let end = b[28...].firstIndex(of: 0) ?? b.count
         version = String(decoding: b[28..<end], as: UTF8.self)
     }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 FM-1 Swapper contributors
-import CryptoKit
 import FM1Kit
 import SwiftData
 import SwiftUI
@@ -400,7 +399,7 @@ struct SLOOPSongEditor: View {
             problem = "The emulator needs SLOOP in your library. Add it from Library → Get firmware (SLOOP 2.6 or later), then try again."
             return
         }
-        let sha = fw.sha256.isEmpty ? SHA256.hash(data: pkg).map { String(format: "%02x", $0) }.joined() : fw.sha256
+        let sha = fw.sha256.isEmpty ? sha256Hex(pkg) : fw.sha256
         let base = emulatorSaves.first { $0.packageSHA == sha }?.payload.flatMap { String(data: $0, encoding: .utf8) }
         do {
             let text: String

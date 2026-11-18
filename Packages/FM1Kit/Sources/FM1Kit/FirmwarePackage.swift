@@ -24,7 +24,7 @@ public struct FirmwarePackage: Sendable, Equatable {
         guard Self.identityPattern.firstMatch(in: product, range: NSRange(product.startIndex..., in: product)) != nil else {
             throw FM1Error.badPackage("This is not an FM-1 firmware package (.fwsc): no package identity found.")
         }
-        sha256 = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        sha256 = sha256Hex(data)
     }
 
     static let identityPattern = try! NSRegularExpression(pattern: #"^[A-Za-z0-9\-]+_\d+$"#)
@@ -118,3 +118,13 @@ public enum FirmwareFamily: String, Sendable, Codable, CaseIterable {
     /// Whether this app can read the firmware's saved work over MIDI.
     public var supportsArchive: Bool { self == .felucca || self == .fm1Open }
 }
+
+public extension Sequence<UInt8> {
+    /// Lower-case hex, two digits a byte (checksums, ids).
+    var hex: String { map { String(format: "%02x", $0) }.joined() }
+    /// Upper-case hex bytes with spaces between, as MIDI monitors show them.
+    var spacedHex: String { map { String(format: "%02X", $0) }.joined(separator: " ") }
+}
+
+/// A file's SHA-256 in hex (the way packages are named and checked everywhere in the app).
+public func sha256Hex(_ data: Data) -> String { SHA256.hash(data: data).hex }

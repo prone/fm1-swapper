@@ -89,25 +89,23 @@ final class CheckInService {
     private var timer: Timer?
     private var pending: CheckInReport?
 
-    let installID: String = {
-        let d = UserDefaults.standard
-        if let id = d.string(forKey: "checkin.installID") { return id }
-        let id = UUID().uuidString
-        d.set(id, forKey: "checkin.installID")
-        return id
-    }()
+    /// A value kept in UserDefaults, made once the first time it's asked for.
+    private static func stored(_ key: String, _ make: () -> String) -> String {
+        if let v = UserDefaults.standard.string(forKey: key) { return v }
+        let v = make()
+        UserDefaults.standard.set(v, forKey: key)
+        return v
+    }
+
+    let installID = stored("checkin.installID") { UUID().uuidString }
 
     /// This install's private key: its first report registers it on the Mac (trust on first use), so no
     /// other device on the network can overwrite this install's report.
-    private let installKey: String = {
-        let d = UserDefaults.standard
-        if let k = d.string(forKey: "checkin.installKey") { return k }
+    private let installKey = stored("checkin.installKey") {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        let k = bytes.map { String(format: "%02x", $0) }.joined()
-        d.set(k, forKey: "checkin.installKey")
-        return k
-    }()
+        return bytes.hex
+    }
 
     /// Check-ins are opt-in: they share this install's library with the Mac on the local network.
     /// On by default in Debug (developer) builds, off in Release builds.

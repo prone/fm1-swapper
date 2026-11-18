@@ -64,9 +64,7 @@
       await sleep(100);
     }
     await sleep(400); // the page's module attaches its handlers right after filling the list
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const open = $("open");
     if (!open) return "The emulator page changed: no file input found.";
     open.files = fileFrom(bytes, name);
@@ -211,20 +209,22 @@
     }
     return null;
   };
-  document.addEventListener("pointerdown", (e) => { if (e.target === canvas()) { const n = hitName(e.clientX, e.clientY); if (n) report(n, true); } }, true);
-  document.addEventListener("pointerup", (e) => { if (e.target === canvas()) { const n = hitName(e.clientX, e.clientY); if (n) report(n, false); } }, true);
-  document.addEventListener("wheel", (e) => { if (e.target === canvas() && e.isTrusted) { const n = hitName(e.clientX, e.clientY); if (n) report("turn:" + n, true); } }, true);
+  // the user's own touches on the panel: presses, releases, knob turns
+  const onPanel = (prefix, down, trusted) => (e) => {
+    const n = e.target === canvas() && (!trusted || e.isTrusted) ? hitName(e.clientX, e.clientY) : null;
+    if (n) report(prefix + n, down);
+  };
+  document.addEventListener("pointerdown", onPanel("", true), true);
+  document.addEventListener("pointerup", onPanel("", false), true);
+  document.addEventListener("wheel", onPanel("turn:", true, true), true);
   const KEYNAME = Object.fromEntries(Object.entries(KEYOF).map(([n, k]) => [k, n]));
-  addEventListener("keydown", (e) => {
-    if (!e.isTrusted || e.repeat) return;
+  const onKey = (down) => (e) => {
+    if (!e.isTrusted || (down && e.repeat)) return;
     const k = e.key.toLowerCase(), i = PIANO.indexOf(k);
-    if (KEYNAME[k]) report(KEYNAME[k], true); else if (i >= 0) report("#" + (60 + i), true);
-  }, true);
-  addEventListener("keyup", (e) => {
-    if (!e.isTrusted) return;
-    const k = e.key.toLowerCase(), i = PIANO.indexOf(k);
-    if (KEYNAME[k]) report(KEYNAME[k], false); else if (i >= 0) report("#" + (60 + i), false);
-  }, true);
+    if (KEYNAME[k]) report(KEYNAME[k], down); else if (i >= 0) report("#" + (60 + i), down);
+  };
+  addEventListener("keydown", onKey(true), true);
+  addEventListener("keyup", onKey(false), true);
 
   // save | export | import (arg: .fm1save text) | reset  ->  { ok, message, name?, text? }
   window.__fm1action = async (kind, arg) => {
@@ -232,6 +232,8 @@
     const result = (extra = {}) => ({ ok: status?.dataset.error !== "true", message: status?.textContent || "", ...extra });
     const before = status?.textContent;
     const changed = async (ms) => { for (let t = 0; t < ms; t += 100) { if (status?.textContent !== before) break; await sleep(100); } await sleep(150); };
+    // the page asks "are you sure?" for an import or a reset: the app already asked, so the bridge says yes once
+    const confirmed = async (act) => { autoConfirm = 1; act(); await changed(6000); autoConfirm = 0; return result(); };
     if (status) status.dataset.error = "false";
     switch (kind) {
       case "save": {
@@ -250,20 +252,11 @@
       }
       case "import": {
         const inp = $("import-save"); if (!inp) return { ok: false, message: "No import control on the page." };
-        autoConfirm = 1;
-        inp.files = fileFrom(arg, "restore.fm1save");
-        inp.dispatchEvent(new Event("change"));
-        await changed(6000);
-        autoConfirm = 0;
-        return result();
+        return confirmed(() => { inp.files = fileFrom(arg, "restore.fm1save"); inp.dispatchEvent(new Event("change")); });
       }
       case "reset": {
         const b = $("reset-save"); if (!b) return { ok: false, message: "No reset control on the page." };
-        autoConfirm = 1;
-        b.click();
-        await changed(6000);
-        autoConfirm = 0;
-        return result();
+        return confirmed(() => b.click());
       }
     }
     return { ok: false, message: "unknown action" };

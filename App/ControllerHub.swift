@@ -101,7 +101,7 @@ final class ControllerHub {
         router.onSysEx = { [weak self] source, m in
             Task { @MainActor in
                 guard let self else { return }
-                var text = m.map { String(format: "%02X", $0) }.joined(separator: " ")
+                var text = m.spacedHex
                 if var u = Sinco.fromSysex(m) {
                     for f in Sinco.frames(&u) {
                         if let n = SMCPadProtocol.name(fromReply: f) { self.padName = n; text = "Pad reports \(n)" }
@@ -329,7 +329,7 @@ final class ControllerHub {
         case 0xC0: return "Program \(d1) ch\(ch)"
         case 0xD0: return "Ch pressure \(d1) ch\(ch)"
         case 0xE0: return "Pitch bend \(((d2 << 7) | d1) - 8192) ch\(ch)"
-        default: return m.map { String(format: "%02X", $0) }.joined(separator: " ")
+        default: return m.spacedHex
         }
     }
 
@@ -394,7 +394,7 @@ final class ControllerHub {
     }
 
     func sendRaw(_ bytes: [UInt8], model: ControllerModel) {
-        addLog("app → \(model.displayName)", bytes.map { String(format: "%02X", $0) }.joined(separator: " "), sysex: bytes.first == 0xF0)
+        addLog("app → \(model.displayName)", bytes.spacedHex, sysex: bytes.first == 0xF0)
         router.sendToController(bytes, model: model)
     }
 

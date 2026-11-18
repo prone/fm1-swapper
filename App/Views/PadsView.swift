@@ -133,7 +133,6 @@ struct PadGrid: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
                     ForEach(knobs) { k in
                         Button { onTap(k) } label: { KnobCell(control: k, value: hub.value(model, k.id), learning: isLearning(k)) }
-                            .buttonStyle(.plain)
                     }
                 }
             }
@@ -149,7 +148,6 @@ struct PadGrid: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(hub.value(model, b.id) > 0 ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.15)))
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isLearning(b) ? Color.accentColor : .clear, lineWidth: 3))
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -160,12 +158,12 @@ struct PadGrid: View {
                     HStack(spacing: 8) {
                         ForEach(rows[r]) { p in
                             Button { onTap(p) } label: { PadCell(control: p, value: hub.value(model, p.id), learning: isLearning(p)) }
-                                .buttonStyle(.plain)
                         }
                     }
                 }
             }
         }
+        .buttonStyle(.plain)                                   // (every button in the grid is a control cell)
     }
 
     func isLearning(_ c: ControlMap) -> Bool { hub.learning?.model == model && hub.learning?.control == c.id }

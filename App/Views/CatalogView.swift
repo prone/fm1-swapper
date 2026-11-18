@@ -381,10 +381,7 @@ struct HubDetail: View {
                 LabeledContent("By", value: entry.author)
                 if !entry.version.isEmpty { LabeledContent("Version", value: entry.version) }
                 if !entry.lic.isEmpty { LabeledContent("Licence", value: entry.lic) }
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack { Text("Flash chip"); Spacer(); Text(entry.chip.badge).font(.caption.weight(.semibold)).foregroundStyle(entry.chip.color) }
-                    Text(entry.chip.explanation).font(.caption).foregroundStyle(.secondary)
-                }
+                ChipRow(chip: entry.chip)
             }
             Section {
                 PackageDownloadRow(title: entry.pkg.split(separator: "/").last.map(String.init) ?? "package",
@@ -394,10 +391,7 @@ struct HubDetail: View {
                                    author: entry.author, version: entry.version, repo: entry.repo, expectedSHA: entry.sha256, summary: entry.what)
             } header: { Text("Package") } footer: { Text("Checked against the SHA-256 The Firmware Hub publishes before it's used.") }
             Section("Links") {
-                if let u = entry.editor { Button("Editor") { openURL(u) } }
-                if let u = entry.manual { Button("Manual") { openURL(u) } }
-                if let u = entry.play { Button("Play in browser") { openURL(u) } }
-                if let u = entry.talk { Button("Discussions") { openURL(u) } }
+                HubLinks(entry: entry)
                 if !entry.repo.isEmpty, let u = URL(string: "https://github.com/\(entry.repo)") { Button("Source on GitHub") { openURL(u) } }
                 Button("The Firmware Hub") { openURL(FirmwareHub.base) }
             }

@@ -59,6 +59,33 @@ extension View {
     }
 }
 
+/// A firmware's flash chip support (nil: not in The Firmware Hub's list, so unknown).
+struct ChipRow: View {
+    let chip: FlashChipSupport?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("Flash chip")
+                Spacer()
+                if let chip { Text(chip.badge).font(.caption.weight(.semibold)).foregroundStyle(chip.color) }
+            }
+            Text(chip?.explanation ?? FlashChipSupport.unknownExplanation).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The links The Firmware Hub has for a firmware, one row each.
+struct HubLinks: View {
+    let entry: HubFirmware
+    @Environment(\.openURL) private var openURL
+    var body: some View {
+        if let u = entry.editor { Button("Editor") { openURL(u) } }
+        if let u = entry.manual { Button("Manual") { openURL(u) } }
+        if let u = entry.play { Button("Play in browser") { openURL(u) } }
+        if let u = entry.talk { Button("Discussions") { openURL(u) } }
+    }
+}
+
 /// A share button that prepares its files on tap.
 struct ShareFilesButton<Label: View>: View {
     let files: () -> [(name: String, data: Data)]
@@ -84,6 +111,8 @@ struct FirmwareDetailView: View {
     @AppStorage("includeSamples") private var includeSamples = true
 
     var onDevice: Bool { device.identity?.text == firmware.product }
+    /// The emulator saves kept for this firmware, newest first.
+    private var saves: [EmulatorSave] { (firmware.emulatorSaves ?? []).sorted { $0.date > $1.date } }
 
     var body: some View {
         Form {
@@ -175,9 +204,9 @@ struct FirmwareDetailView: View {
                      : "This firmware has no backup protocol the app knows, so attach files or write notes to keep its settings.")
             }
 
-            if !(firmware.emulatorSaves ?? []).isEmpty {
+            if !saves.isEmpty {
                 Section {
-                    ForEach((firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }) { s in
+                    ForEach(saves) { s in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(s.isAuto ? "Last session" : s.label).font(.subheadline)
@@ -188,7 +217,7 @@ struct FirmwareDetailView: View {
                                 .buttonStyle(.borderless)
                         }
                     }
-                    .onDelete { context.delete((firmware.emulatorSaves ?? []).sorted { $0.date > $1.date }, at: $0) }
+                    .onDelete { context.delete(saves, at: $0) }
                 } header: { Text("Emulator saves") } footer: {
                     Text("Settings and patches from the emulator, synced with your library. Restore them from the emulator's save menu.")
                 }
@@ -203,15 +232,7 @@ struct FirmwareDetailView: View {
                 }
                 if firmware.isStock { Label("Unmodified official M-VAVE file", systemImage: "checkmark.seal").foregroundStyle(.green) }
                 if firmware.hasPackage {
-                    let chip = FirmwareHub.shared.chip(sha256: firmware.sha256)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            Text("Flash chip")
-                            Spacer()
-                            if let chip { Text(chip.badge).font(.caption.weight(.semibold)).foregroundStyle(chip.color) }
-                        }
-                        Text(chip?.explanation ?? FlashChipSupport.unknownExplanation).font(.caption).foregroundStyle(.secondary)
-                    }
+                    ChipRow(chip: FirmwareHub.shared.chip(sha256: firmware.sha256))
                     if !firmware.isStock {
                         LabeledContent("Checksum", value: FirmwareHub.shared.bySha[firmware.sha256] != nil ? "Matches The Firmware Hub" : "Not in The Firmware Hub's list")
                     }
@@ -219,10 +240,7 @@ struct FirmwareDetailView: View {
                 LabeledContent("Added", value: firmware.addedAt.formatted(date: .abbreviated, time: .omitted))
                 if let u = URL(string: firmware.sourceURL), isWebLink(u) { Button("Source") { openURL(u) } }
                 if let (e, exact) = FirmwareHub.shared.entry(for: firmware) {
-                    if let u = e.editor { Button("Editor") { openURL(u) } }
-                    if let u = e.manual { Button("Manual") { openURL(u) } }
-                    if let u = e.play { Button("Play in browser") { openURL(u) } }
-                    if let u = e.talk { Button("Discussions") { openURL(u) } }
+                    HubLinks(entry: e)
                     if !exact, e.editor ?? e.manual ?? e.play ?? e.talk != nil {
                         Text("Links for \(e.name) \(e.version), from The Firmware Hub").font(.caption2).foregroundStyle(.tertiary)
                     }

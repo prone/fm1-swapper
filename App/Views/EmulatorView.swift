@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 FM-1 Swapper contributors
 import AVFoundation
-import CryptoKit
 import FM1Kit
 import Observation
 import SwiftData
@@ -111,7 +110,7 @@ struct EmulatorScreen: View {
     @State private var shaCache: String?
     private var sha: String {
         if let s = shaCache ?? firmware.map(\.sha256), !s.isEmpty { return s }
-        return SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined()
+        return sha256Hex(package)
     }
     private var saves: [EmulatorSave] { allSaves.filter { $0.packageSHA == sha } }
 
@@ -160,7 +159,7 @@ struct EmulatorScreen: View {
                 }
         }
         .onAppear {
-            if shaCache == nil, firmware == nil { shaCache = SHA256.hash(data: package).map { String(format: "%02x", $0) }.joined() }
+            if shaCache == nil, firmware == nil { shaCache = sha }
             // play through the silent switch, like an instrument
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try? AVAudioSession.sharedInstance().setActive(true)
