@@ -5,7 +5,7 @@ import { backupRecord, device, mboot } from "../device";
 import { FAMILY_NAMES, familyOf, isLoader, supportsArchive } from "../fm1kit/package";
 import { readArchiveFile } from "../fm1kit/archive";
 import { FlashImage, Firmware, latestBackup, store } from "../store";
-import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, saveFile, useDevice, useLibrary } from "./common";
+import { DeviceBusy, FileDrop, Library, fmtBytes, fmtDateTime, isoDay, saveFile, useDevice, useLibrary } from "./common";
 import { officialFirmware } from "../catalog";
 import { MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
 import { chipOfJedec, helperFor, hex } from "../fm1kit/mboot";
@@ -200,7 +200,7 @@ function FlashImages() {
           <div key={f.id}>
             <span class="row-main">{fmtDateTime(f.date)} · {f.firmware || "FM-1"}
               <div class="small dim">unit {f.unit.slice(0, 8)}… · chip {hex(f.jedec)} · {fmtBytes(f.size)} · CRC-32 {hex(f.crc, 8)}</div></span>
-            <button class="linkbtn small" onClick={() => saveFile(`fm1-flash-${f.unit.slice(0, 8)}-${new Date(f.date).toISOString().slice(0, 10)}.bin`, f.data)}>Download .bin</button>
+            <button class="linkbtn small" onClick={() => saveFile(`fm1-flash-${f.unit.slice(0, 8)}-${isoDay(f.date)}.bin`, f.data)}>Download .bin</button>
             <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => confirm("Delete this whole-flash backup?") && store.deleteFlash(f)}>Delete</button>
           </div>
         ))}

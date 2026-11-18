@@ -7,6 +7,8 @@ import { useEffect, useState } from "preact/hooks";
 import { STOCK } from "./fm1kit/package";
 
 export const HUB = "https://thefirmwarehub.com/";
+/** Where the hub keeps official V15, when its catalog doesn't say. */
+export const STOCK_PKG = "fw/mvave/FM-1_015.fwsc";
 export { RESCUE_URL } from "./fm1kit/ota";
 
 /** new: works with both flash chips · any: doesn't check the chip · old: only the first FM-1s' chip. */
@@ -42,7 +44,7 @@ function parse(j: unknown, loadedAt: number): Hub {
       editor: https(f.editor), play: https(f.play), cheat: https(f.cheat), site: https(f.site), talk: https(f.talk), source: https(f.source),
     });
   }
-  const stockPkg = typeof d.stock?.pkg === "string" && safePath(d.stock.pkg) ? d.stock.pkg : "fw/mvave/FM-1_015.fwsc";
+  const stockPkg = typeof d.stock?.pkg === "string" && safePath(d.stock.pkg) ? d.stock.pkg : STOCK_PKG;
   return { list, bySha: new Map(list.map((f) => [f.sha256, f])), byRepo: new Map(list.filter((f) => f.repo).map((f) => [f.repo.toLowerCase(), f])),
     stockURL: HUB + stockPkg, loadedAt };
 }

@@ -43,9 +43,7 @@ public enum MBootProtocol {
     public static func frame(_ cmd: UInt8, _ body: [UInt8] = []) -> [UInt8] { Sinco.sysex(Sinco.packet(cmd, body)) }
 
     public static func parseFrame(_ pkt: [UInt8]) -> (cmd: UInt8, body: [UInt8])? {
-        guard pkt.count >= 3, pkt.first == 0xF0, pkt.last == 0xF7 else { return nil }
-        let d = SysExCoding.unpack7(pkt[1..<(pkt.count - 1)])
-        guard d.count >= 7, d[0] == 0, d[1] == 0x59, d[5] == 0 else { return nil }
+        guard let d = SysExCoding.unwrap(pkt), d.count >= 7, d[0] == 0, d[1] == 0x59, d[5] == 0 else { return nil }
         let length = Int(d[3]) | (Int(d[4]) << 8)
         guard length == d.count - 7 else { return nil }
         guard d[6...].reduce(0, { $0 &+ Int($1) }) & 0xFF == 0xFF else { return nil }

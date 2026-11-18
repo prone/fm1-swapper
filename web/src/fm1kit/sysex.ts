@@ -101,6 +101,11 @@ export function sum59(a: ArrayLike<number>, from = 0, to = a.length): number {
   return ~s & 0xff;
 }
 
+/** The 7-bit-packed payload of a SysEx message (between F0 and F7), unpacked; null when it isn't one. */
+export function unwrap(m: number[]): number[] | null {
+  return m.length >= 2 && m[0] === 0xf0 && m[m.length - 1] === 0xf7 ? unpack7(m.slice(1, -1)) : null;
+}
+
 export const le32 = (a: ArrayLike<number>, o: number): number => (a[o] | (a[o + 1] << 8) | (a[o + 2] << 16) | (a[o + 3] << 24)) >>> 0;
 export const le32Bytes = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
 

@@ -384,7 +384,7 @@ public final class ControllerRouter: @unchecked Sendable {
     }
 
     private func matches(_ name: String) -> Bool {
-        controllerPattern.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+        controllerPattern.matches(name)
     }
 
     /// Controllers currently visible to CoreMIDI.
@@ -395,14 +395,8 @@ public final class ControllerRouter: @unchecked Sendable {
     /// All MIDI ports (for picking the FM-1 output).
     public func endpoints() -> [Endpoint] {
         var byName: [String: (MIDIUniqueID?, MIDIUniqueID?)] = [:]
-        for i in 0..<MIDIGetNumberOfSources() {
-            let s = MIDIGetSource(i)
-            byName[CoreMIDIProvider.name(of: s), default: (nil, nil)].0 = CoreMIDIProvider.uid(of: s)
-        }
-        for i in 0..<MIDIGetNumberOfDestinations() {
-            let d = MIDIGetDestination(i)
-            byName[CoreMIDIProvider.name(of: d), default: (nil, nil)].1 = CoreMIDIProvider.uid(of: d)
-        }
+        for s in CoreMIDIProvider.allSources { byName[CoreMIDIProvider.name(of: s), default: (nil, nil)].0 = CoreMIDIProvider.uid(of: s) }
+        for d in CoreMIDIProvider.allDestinations { byName[CoreMIDIProvider.name(of: d), default: (nil, nil)].1 = CoreMIDIProvider.uid(of: d) }
         return byName.map { Endpoint(name: $0.key, sourceUID: $0.value.0, destinationUID: $0.value.1) }.sorted { $0.name < $1.name }
     }
 
@@ -410,8 +404,7 @@ public final class ControllerRouter: @unchecked Sendable {
     /// ("…Private") for SysEx replies (identity) only.
     public func reconnect() {
         var found: [MIDIEndpointRef: String] = [:]
-        for i in 0..<MIDIGetNumberOfSources() {
-            let s = MIDIGetSource(i)
+        for s in CoreMIDIProvider.allSources {
             let n = CoreMIDIProvider.name(of: s)
             if matches(n) { found[s] = n }
         }

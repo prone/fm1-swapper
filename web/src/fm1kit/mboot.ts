@@ -10,7 +10,7 @@
 // answer to 0x12 first.
 import { Family } from "./package";
 import { SysExLink } from "./midi";
-import { crc32, le32, le32Bytes, pack7, sum59, unpack7 } from "./sysex";
+import { crc32, le32, le32Bytes, pack7, sum59, unwrap } from "./sysex";
 
 export const MBOOT_VERSION = "2.4-395e6cc";
 /** The helper packages we ship (web/public/mboot, App/MBoot), pinned to m-bootloader's release SHA256SUMS. */
@@ -39,9 +39,8 @@ export function frame(cmd: number, body: ArrayLike<number> = []): number[] {
 }
 
 export function parseFrame(pkt: number[]): { cmd: number; body: number[] } | null {
-  if (pkt.length < 3 || pkt[0] !== 0xf0 || pkt[pkt.length - 1] !== 0xf7) return null;
-  const d = unpack7(pkt.slice(1, -1));
-  if (d.length < 7 || d[0] !== 0 || d[1] !== 0x59 || d[5] !== 0 || (d[3] | (d[4] << 8)) !== d.length - 7) return null;
+  const d = unwrap(pkt);
+  if (!d || d.length < 7 || d[0] !== 0 || d[1] !== 0x59 || d[5] !== 0 || (d[3] | (d[4] << 8)) !== d.length - 7) return null;
   if (sum59(d, 6) !== 0) return null;
   return { cmd: d[2], body: d.slice(6, -1) };
 }

@@ -25,6 +25,8 @@ export function useDevice(): DeviceState {
 
 export const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 export const fmtDateTime = (ms: number) => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+/** A date as YYYY-MM-DD, for file names. */
+export const isoDay = (ms: number = Date.now()) => new Date(ms).toISOString().slice(0, 10);
 export const fmtBytes = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${Math.round(n / 1024)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`;
 export function ago(ms: number) {
   const d = (Date.now() - ms) / 1000;

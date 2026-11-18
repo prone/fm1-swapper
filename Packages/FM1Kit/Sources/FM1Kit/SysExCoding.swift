@@ -116,6 +116,12 @@ public enum SysExCoding {
         return c
     }
 
+    /// The 7-bit-packed payload of a SysEx message (between F0 and F7), unpacked; nil when it isn't one.
+    static func unwrap(_ m: [UInt8]) -> [UInt8]? {
+        guard m.count >= 2, m.first == 0xF0, m.last == 0xF7 else { return nil }
+        return unpack7(m[1..<(m.count - 1)])
+    }
+
     static func le32(_ a: [UInt8], _ o: Int) -> UInt32 {
         UInt32(a[o]) | UInt32(a[o + 1]) << 8 | UInt32(a[o + 2]) << 16 | UInt32(a[o + 3]) << 24
     }

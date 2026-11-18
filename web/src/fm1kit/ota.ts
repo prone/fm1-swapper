@@ -6,7 +6,7 @@
 // steps the device asks (cmd 0x30 read requests) and we answer.
 import { FirmwarePackage, Identity, isLoader, logicalImage, parseIdentity } from "./package";
 import { PortProvider, SysExLink, looksLikeFM1 } from "./midi";
-import { le32, le32Bytes, pack7, sum59, unpack7 } from "./sysex";
+import { le32, le32Bytes, pack7, sum59, unwrap } from "./sysex";
 import { MBoot, frame } from "./mboot";
 
 export const HANDSHAKE = [0xf0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7f, 0xf7];
@@ -29,9 +29,8 @@ export function response(addr: number, data: ArrayLike<number>, flags = 0): numb
 export interface ReadRequest { flags: number; addr: number; len: number }
 
 export function parseRequest(pkt: number[]): ReadRequest | null {
-  if (pkt.length < 2 || pkt[0] !== 0xf0 || pkt[pkt.length - 1] !== 0xf7) return null;
-  const u = unpack7(pkt.slice(1, -1));
-  if (u.length !== 15 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== 0x30) return null;
+  const u = unwrap(pkt);
+  if (!u || u.length !== 15 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== 0x30) return null;
   if (sum59(u, 6, 14) !== u[14]) return null;
   return { flags: u[6], addr: le32(u, 7), len: u[11] | (u[12] << 8) | (u[13] << 16) };
 }
@@ -43,9 +42,8 @@ export function request(addr: number, len: number, flags = 0): number[] {
 }
 
 export function parseIdentityReply(pkt: number[]): Identity | null {
-  if (pkt.length < 2 || pkt[0] !== 0xf0 || pkt[pkt.length - 1] !== 0xf7) return null;
-  const d = unpack7(pkt.slice(1, -1));
-  if (d.length !== 34 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x11) return null;
+  const d = unwrap(pkt);
+  if (!d || d.length !== 34 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x11) return null;
   const txt = d.slice(6, 33).map((c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : c === 0 ? "\0" : "?")).join("").replace(/\0+$/, "");
   return parseIdentity(txt);
 }

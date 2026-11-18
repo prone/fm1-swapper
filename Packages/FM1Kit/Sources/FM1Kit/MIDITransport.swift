@@ -31,7 +31,7 @@ public protocol MIDIPortProvider: AnyObject, Sendable {
 public let fm1PortPattern = try! NSRegularExpression(pattern: "fm-1|fm1|felucca|ota|composite|sinco|usb-midi", options: .caseInsensitive)
 
 public func looksLikeFM1(_ name: String) -> Bool {
-    fm1PortPattern.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+    fm1PortPattern.matches(name)
 }
 
 /// Thread-safe queue of received SysEx messages with an async, timed read.
@@ -105,7 +105,7 @@ struct SysEx7Assembler {
         while i < words.count {
             let w0 = words[i]
             let type = Int(w0 >> 28)
-            let size = [1, 1, 1, 2, 2, 4, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4][type]
+            let size = umpWords[type]
             if type == 3, i + 1 < words.count {
                 let w1 = words[i + 1]
                 let status = (w0 >> 20) & 0xF
@@ -217,9 +217,8 @@ public final class CoreMIDIProvider: MIDIPortProvider, @unchecked Sendable {
     /// Every source paired with a destination of the same entity (or, failing that, the same name).
     public func candidates() -> [PortCandidate] {
         var out: [PortCandidate] = []
-        let dests = (0..<MIDIGetNumberOfDestinations()).map { MIDIGetDestination($0) }
-        for i in 0..<MIDIGetNumberOfSources() {
-            let src = MIDIGetSource(i)
+        let dests = Self.allDestinations
+        for src in Self.allSources {
             var srcEntity = MIDIEntityRef()
             MIDIEndpointGetEntity(src, &srcEntity)
             let name = Self.name(of: src)
@@ -332,7 +331,7 @@ enum UMPToMIDI1 {
         while i < words.count {
             let w = words[i]
             let type = Int(w >> 28)
-            let size = [1, 1, 1, 2, 2, 4, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4][type]
+            let size = umpWords[type]
             let status = UInt8((w >> 16) & 0xFF), d1 = UInt8((w >> 8) & 0x7F), d2 = UInt8(w & 0x7F)
             if type == 2 {
                 let hi = status & 0xF0
@@ -384,15 +383,12 @@ public final class MIDIInputMonitor: @unchecked Sendable {
 
     /// Names of the sources currently listened to.
     public var sourceNames: [String] {
-        (0..<MIDIGetNumberOfSources()).map { CoreMIDIProvider.name(of: MIDIGetSource($0)) }
+        CoreMIDIProvider.allSources.map(CoreMIDIProvider.name(of:))
     }
 
     public func connectAll() {
         lock.lock(); defer { lock.unlock() }
-        let now = Set((0..<MIDIGetNumberOfSources()).map { MIDIGetSource($0) }.filter { s in
-            let n = CoreMIDIProvider.name(of: s)
-            return exclude?.firstMatch(in: n, range: NSRange(n.startIndex..., in: n)) == nil
-        })
+        let now = Set(CoreMIDIProvider.allSources.filter { exclude?.matches(CoreMIDIProvider.name(of: $0)) != true })
         for s in now.subtracting(connected) { MIDIPortConnectSource(port, s, nil) }
         for s in connected.subtracting(now) { MIDIPortDisconnectSource(port, s) }
         connected = now
@@ -409,4 +405,18 @@ public final class MIDIInputMonitor: @unchecked Sendable {
         MIDIPortDispose(port)
         MIDIClientDispose(client)
     }
+}
+
+/// Words in a Universal MIDI Packet, by its message type (the top 4 bits of the first word).
+let umpWords = [1, 1, 1, 2, 2, 4, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4]
+
+extension CoreMIDIProvider {
+    /// Every MIDI source and destination in the system now.
+    static var allSources: [MIDIEndpointRef] { (0..<MIDIGetNumberOfSources()).map(MIDIGetSource) }
+    static var allDestinations: [MIDIEndpointRef] { (0..<MIDIGetNumberOfDestinations()).map(MIDIGetDestination) }
+}
+
+extension NSRegularExpression {
+    /// Whether the pattern matches anywhere in `s`.
+    func matches(_ s: String) -> Bool { firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil }
 }

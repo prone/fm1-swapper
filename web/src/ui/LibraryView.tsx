@@ -9,7 +9,7 @@ import { FeluccaArchive } from "../fm1kit/archive";
 import { tutorialFor } from "../tutorial";
 import { CHIP_TEXT, Chip, MyChip, RESCUE_URL, chipOf, myChip, setMyChip, useHub } from "../hub";
 import { ChipBadge } from "./GetFirmware";
-import { DeviceBusy, FileDrop, Library, Stars, ago, fmtBytes, fmtDate, fmtDateTime, saveFile, useDevice } from "./common";
+import { DeviceBusy, FileDrop, Library, Stars, ago, fmtBytes, fmtDate, fmtDateTime, isoDay, saveFile, useDevice } from "./common";
 
 type Sort = "recent" | "name" | "rating" | "installed";
 
@@ -85,7 +85,7 @@ export function LibraryView({ lib, openId, setOpenId, tryIt, swapNow, swapped }:
       <DeviceBusy s={dev} />
       {lib.firmwares.length > 0 && (
         <div class="btnrow">
-          <button class="btn" onClick={async () => saveFile(`fm1-library-${new Date().toISOString().slice(0, 10)}.json`, await store.exportLibrary(), "application/json")}>Export library</button>
+          <button class="btn" onClick={async () => saveFile(`fm1-library-${isoDay()}.json`, await store.exportLibrary(), "application/json")}>Export library</button>
         </div>
       )}
       <p class="small faint">The library lives in this browser. Export it to move it to another computer, or to keep a copy.</p>
@@ -195,7 +195,7 @@ function BackupRow({ b, f }: { b: Backup; f: Firmware }) {
       <span class="row-main">{b.label}<div class="small dim">{fmtDateTime(b.date)} · {b.partsSummary}{b.sizeBytes ? ` · ${fmtBytes(b.sizeBytes)}` : ""}</div></span>
       {b.archive && <button class="linkbtn small" disabled={!canRestore || !!dev.busy} title={canRestore ? "" : `Install ${f.name} first`} onClick={() => confirm(`Restore “${b.label}”? It replaces the saved work on the FM-1.`) && device.restore(b)}>Restore</button>}
       <button class="linkbtn small" onClick={() => {
-        if (b.archive) saveFile(`${f.name}-${new Date(b.date).toISOString().slice(0, 10)}.json`, b.family === "felucca" ? FeluccaArchive.toNativeJSON(b.archive) : JSON.stringify(b.archive), "application/json");
+        if (b.archive) saveFile(`${f.name}-${isoDay(b.date)}.json`, b.family === "felucca" ? FeluccaArchive.toNativeJSON(b.archive) : JSON.stringify(b.archive), "application/json");
         else if (b.file) saveFile(b.file.name, Uint8Array.from(atob(b.file.data), (c) => c.charCodeAt(0)));
       }}>Download</button>
       <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => confirm("Delete this backup?") && store.deleteBackup(b)}>Delete</button>

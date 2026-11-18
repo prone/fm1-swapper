@@ -4,7 +4,7 @@
 // (CORS): The Firmware Hub, GitHub Pages and raw.githubusercontent.com do; GitHub release files and M-VAVE's server
 // don't, so those open as a normal download for the user to drop into the app.
 import { Family, STOCK, STOCK_V15, familyOf, parseIdentity, readPackage } from "./fm1kit/package";
-import { HUB, HubFirmware, loadHub } from "./hub";
+import { HUB, HubFirmware, STOCK_PKG, loadHub } from "./hub";
 import { workbenchPackages } from "./fm1kit/workbench";
 import { Firmware, store, uid } from "./store";
 
@@ -130,7 +130,7 @@ export async function stockV15(): Promise<Firmware> {
   const have = (await store.firmwares()).find((f) => f.sha256 === STOCK_V15.sha256);
   if (have) return have;
   const hub = await loadHub();
-  const bytes = await tryDownload(hub?.stockURL ?? HUB + "fw/mvave/FM-1_015.fwsc");
+  const bytes = await tryDownload(hub?.stockURL ?? HUB + STOCK_PKG);
   if (!bytes) throw new Error("Couldn't download official V15. Check the connection, or turn off \"Go via official V15\".");
   const pkg = await readPackage(bytes);
   if (pkg.stock?.version !== "V15") throw new Error("The downloaded file isn't M-VAVE's official V15 (its checksum doesn't match), so it wasn't used.");

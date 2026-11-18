@@ -20,8 +20,7 @@ public enum Sinco {
     public static func sysex(_ logical: [UInt8]) -> [UInt8] { [0xF0] + SysExCoding.pack7(logical) + [0xF7] }
 
     public static func fromSysex(_ m: [UInt8]) -> [UInt8]? {
-        guard m.count > 2, m.first == 0xF0, m.last == 0xF7 else { return nil }
-        let u = SysExCoding.unpack7(m[1..<(m.count - 1)])
+        guard let u = SysExCoding.unwrap(m) else { return nil }
         return u.count >= 7 && u[0] == 0 && u[1] == 0x59 ? u : nil
     }
 

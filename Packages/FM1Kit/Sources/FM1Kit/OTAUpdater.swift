@@ -25,9 +25,7 @@ public enum OTAProtocol {
     static func sum(_ b: some Sequence<UInt8>) -> UInt8 { UInt8(~b.reduce(0) { $0 &+ Int($1) } & 0xFF) }
 
     public static func parseRequest(_ pkt: [UInt8]) -> ReadRequest? {
-        guard pkt.count >= 2, pkt.first == 0xF0, pkt.last == 0xF7 else { return nil }
-        let u = SysExCoding.unpack7(pkt[1..<(pkt.count - 1)])
-        guard u.count == 15, u[0] == 0, u[1] == 0x59, u[2] == 0x30 else { return nil }
+        guard let u = SysExCoding.unwrap(pkt), u.count == 15, u[0] == 0, u[1] == 0x59, u[2] == 0x30 else { return nil }
         guard sum(u[6..<14]) == u[14] else { return nil }
         return ReadRequest(flags: u[6], addr: SysExCoding.le32(u, 7), len: Int(u[11]) | Int(u[12]) << 8 | Int(u[13]) << 16)
     }
@@ -41,9 +39,7 @@ public enum OTAProtocol {
     }
 
     public static func parseIdentity(_ pkt: [UInt8]) -> DeviceIdentity? {
-        guard pkt.count >= 2, pkt.first == 0xF0, pkt.last == 0xF7 else { return nil }
-        let d = SysExCoding.unpack7(pkt[1..<(pkt.count - 1)])
-        guard d.count == 34, d[0] == 0, d[1] == 0x59, d[2] == 0x11 else { return nil }
+        guard let d = SysExCoding.unwrap(pkt), d.count == 34, d[0] == 0, d[1] == 0x59, d[2] == 0x11 else { return nil }
         var txt = d[6..<33].map { (32..<127).contains($0) ? Character(Unicode.Scalar($0)) : $0 == 0 ? "\0" : "?" }
         while txt.last == "\0" { txt.removeLast() }
         return DeviceIdentity(text: String(txt))
@@ -55,7 +51,7 @@ public enum OTAProtocol {
         t += [UInt8](repeating: 0, count: 27 - t.count)
         d += t
         d.append(0)
-        return [0xF0] + SysExCoding.pack7(d) + [0xF7]
+        return Sinco.sysex(d)
     }
 }
 
