@@ -14,7 +14,8 @@ const PARTS: [Part, string][] = [["bass", "Bassline"], ["keys", "Chords"], ["lea
 const mmss = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 const yieldUI = () => new Promise((r) => setTimeout(r, 30));                     // (let the page paint the status)
 
-export function AudioImport({ doc, edit, close }: { doc: SongDoc; edit: (f: (d: SongDoc) => void) => void; close: () => void }) {
+/** `show`: opens a section in the editor (after Apply, the first one imported). */
+export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f: (d: SongDoc) => void) => void; show: (section: number) => void; close: () => void }) {
   const [phase, setPhase] = useState<"pick" | "recording" | "working" | "review">("pick");
   const [status, setStatus] = useState(""), [progress, setProgress] = useState<number | null>(null), [err, setErr] = useState("");
   const [name, setName] = useState("");
@@ -85,6 +86,7 @@ export function AudioImport({ doc, edit, close }: { doc: SongDoc; edit: (f: (d: 
   const apply = () => {
     const bpm = song.current?.bpm ?? 120;
     edit((d) => applyImport(d, { sections, targets, tracks, tempo: setTempo ? bpm : null, order: setOrder }));
+    if (targets.length) show(targets[0]);
     close();
   };
 

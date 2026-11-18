@@ -262,7 +262,7 @@ function SongEditor({ song, lib, play, reopen, importOnOpen, close }: { song: Ba
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
       <DeviceBusy s={s} />
       {problem && <div class="banner warn">{problem}</div>}
-      {importing && <AudioImport doc={doc} edit={edit} close={() => setImporting(false)} />}
+      {importing && <AudioImport doc={doc} edit={edit} show={(k) => { setSlot(sectionSlot(k)); setBars(null); }} close={() => setImporting(false)} />}
       {sending && (
         <div class="banner warn">
           <b>Send “{song.label}” to the FM-1?</b>

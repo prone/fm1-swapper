@@ -96,7 +96,10 @@ struct SLOOPSongEditor: View {
             }
             .shareSheet($sharing)
             .sheet(isPresented: $importingAudio) {
-                if let d = doc { AudioImportSheet(doc: d) { plan in edit { $0.apply(plan) } } }
+                if let d = doc { AudioImportSheet(doc: d) { plan in
+                    edit { $0.apply(plan) }
+                    if let k = plan.targets.first { slot = .section(k); bars = nil }   // (show what came in: not the loop)
+                } }
             }
             .fullScreenCover(item: $playing) { p in
                 EmulatorScreen(title: "\(song.label) · \(p.firmware.name)", package: p.package, fileName: p.firmware.emulatorFileName,
