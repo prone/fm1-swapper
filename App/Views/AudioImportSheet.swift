@@ -30,6 +30,7 @@ struct AudioImportSheet: View {
     @State private var audioURL: URL?
     @State private var player: AVAudioPlayer?
     @State private var name = ""
+    @State private var confirmClose = false
     /// A piece's start while its slider is dragged (analysed when let go).
     @State private var scrub: [Int: Double] = [:]
 
@@ -42,7 +43,14 @@ struct AudioImportSheet: View {
             .navigationTitle(name.isEmpty ? "Import from audio" : name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { player?.stop(); dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    // (the results took a while: ask before they go)
+                    Button("Close") { if result != nil { confirmClose = true } else { player?.stop(); dismiss() } }
+                        .confirmationDialog("Close without importing?", isPresented: $confirmClose, titleVisibility: .visible) {
+                            Button("Discard the results", role: .destructive) { player?.stop(); dismiss() }
+                            Button("Keep reviewing", role: .cancel) {}
+                        } message: { Text("The analysis of \"\(name)\" goes, and you'd have to run it again.") }
+                }
                 if result != nil {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Import") {
@@ -62,6 +70,7 @@ struct AudioImportSheet: View {
                 RecorderSheet(hint: "Play the part, or the song near the mic, then stop. 10–30 seconds is plenty.") { run($0, name: "Recording \(Date().formatted(date: .abbreviated, time: .shortened))") }
             }
             .background(AudioAnalyserView(analyser: analyser).frame(width: 1, height: 1).opacity(0))
+            .interactiveDismissDisabled(result != nil || analyser.busy)    // (no swiping the results away by accident)
         }
     }
 

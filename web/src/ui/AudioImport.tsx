@@ -101,7 +101,11 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
     <div class="card" style={{ marginTop: 10 }}>
       <div class="tools" style={{ marginTop: 0 }}>
         <b style={{ flex: 1 }}>Import from audio{name ? ` · ${name}` : ""}</b>
-        <button class="linkbtn" onClick={close}>Close</button>
+        <button class="linkbtn" onClick={() => {
+          // (the results took a while: ask before they go)
+          if (phase === "review" && !window.confirm(`Close without importing? The analysis of “${name}” goes, and you'd have to run it again.`)) return;
+          close();
+        }}>Close</button>
       </div>
       {err && <div class="banner warn">{err}</div>}
       {phase === "pick" && (

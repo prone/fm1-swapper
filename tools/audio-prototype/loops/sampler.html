@@ -1,0 +1,92 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop sampler</title><style>
+:root { --bg:#fff; --fg:#1d1d1f; --dim:#6e6e73; --card:#f5f5f7; --pad:#e3e3e8; --on:#ff9f0a; --onfg:#000; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#f2f2f2; --dim:#a1a1a6; --card:#1c1c1e; --pad:#2c2c2e; } }
+body { font:16px/1.4 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--fg); margin:0 auto; max-width:900px; padding:20px 16px; }
+p, .dim { color:var(--dim); } section { background:var(--card); border-radius:14px; padding:14px 16px; margin:14px 0; }
+h2 { margin:0 0 2px; font-size:20px; } .meta { font-size:13px; color:var(--dim); margin-bottom:10px; word-break:break-all; }
+.pads { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:10px; }
+button.pad { position:relative; overflow:hidden; border:0; border-radius:12px; background:var(--pad); color:var(--fg); padding:14px 10px; text-align:left; font:inherit; cursor:pointer; min-height:86px; }
+button.pad b { font-size:26px; display:block; } button.pad span { font-size:12px; color:var(--dim); display:block; }
+button.pad .clock { font:600 15px ui-monospace, SFMono-Regular, Menlo, monospace; color:inherit; margin-top:4px; }
+#now { font:600 20px ui-monospace, SFMono-Regular, Menlo, monospace; }
+button.pad.on { background:var(--on); color:var(--onfg); } button.pad.on span { color:#000a; }
+button.pad.queued { outline:3px dashed var(--on); outline-offset:-3px; }
+.bar { position:absolute; left:0; bottom:0; height:5px; background:#0006; width:0; }
+.top { display:flex; gap:12px; align-items:center; flex-wrap:wrap; } .top button { font:inherit; padding:8px 14px; border-radius:10px; border:0; background:var(--pad); color:var(--fg); cursor:pointer; }
+label { font-size:14px; color:var(--dim); }
+</style></head><body>
+<h1>Loop sampler</h1>
+<p>The loops found in each song: tap a pad to play it on repeat. Tap another and it takes over at the next bar; tap the
+playing pad to stop. Each loop is exactly 4 bars of the original song, the most typical of its repeats. The letters
+under the song's name are its 4-bar phrases in order: the same letter, the same loop.</p>
+<div class="top"><button id="stop">■ Stop</button><label><input type="checkbox" id="quant" checked> Switch at the next bar</label><span id="now"></span></div>
+<div id="songs"></div>
+<script>
+const SONGS = __DATA__;
+let ctx = null, cur = null, queued = null, raf = 0;
+const buffers = new Map();
+async function buffer(key, b64) {
+  if (!buffers.has(key)) { const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); buffers.set(key, await ctx.decodeAudioData(bin.buffer)); }
+  return buffers.get(key);
+}
+function reset(el) { el.classList.remove("on"); el.querySelector(".bar").style.width = 0; el.querySelector(".clock").textContent = `${el.dataset.secs} s`; }
+function stop(at) { if (cur) { try { cur.src.stop(at ?? 0); } catch {} reset(cur.el); cur = null; document.getElementById("now").textContent = ""; } }
+async function tap(el, key, pad) {
+  ctx ??= new AudioContext(); await ctx.resume();
+  if (cur && cur.key === key) { stop(); return; }
+  const buf = await buffer(key, pad.wav);
+  let when = ctx.currentTime + 0.02;
+  if (cur && document.getElementById("quant").checked) {
+    const bar = cur.buf.duration / 4, into = (ctx.currentTime - cur.t0) % cur.buf.duration;
+    when = ctx.currentTime + (bar - (into % bar));
+  }
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(ctx.destination); src.start(when);
+  if (queued) queued.classList.remove("queued");
+  const prev = cur; if (prev) { try { prev.src.stop(when); } catch {} }
+  el.classList.add("queued"); queued = el;
+  setTimeout(() => {
+    el.classList.remove("queued"); if (queued === el) queued = null;
+    if (prev) reset(prev.el);
+    el.classList.add("on");
+  }, Math.max(0, (when - ctx.currentTime) * 1000));
+  cur = { key, el, src, buf, t0: when, from: pad.from };
+  cancelAnimationFrame(raf);
+  const tick = () => {
+    if (cur && ctx.currentTime >= cur.t0) {
+      const d = cur.buf.duration, at = (ctx.currentTime - cur.t0) % d, beat = d / 16;
+      cur.el.querySelector(".bar").style.width = (at / d * 100) + "%";
+      cur.el.querySelector(".clock").textContent = `${at.toFixed(3)} / ${d.toFixed(3)} s`;
+      document.getElementById("now").textContent =
+        `${cur.el.querySelector("b").textContent} · bar ${Math.floor(at / (d / 4)) + 1}.${Math.floor(at / beat) % 4 + 1} · ${at.toFixed(3)} s of ${d.toFixed(3)} s · song ${clock(cur.from + at)}`;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+/** m:ss.mmm */
+const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, "0")}`;
+const root = document.getElementById("songs");
+SONGS.forEach((s, si) => {
+  const sec = document.createElement("section");
+  const L = s.lengths, len = n => n === 1 ? "1 bar" : n + " bars";
+  sec.innerHTML = `<h2></h2><div class="meta"></div><div class="pads"></div>`;
+  sec.querySelector("h2").textContent = s.song;
+  sec.querySelector(".meta").textContent = `${s.bpm} BPM · patterns: drums ${len(L.drums)}, bass ${len(L.bass)}, chords ${len(L.chords)} · phrases: ${s.order}`;
+  s.pads.forEach((p, pi) => {
+    const b = document.createElement("button"); b.className = "pad";
+    b.innerHTML = `<b></b><span></span><span class="when"></span><span class="clock"></span><div class="bar"></div>`;
+    b.querySelector(".when").textContent = `${clock(p.from)}–${clock(p.to)} in the song`;
+    b.querySelector(".clock").textContent = `${p.secs.toFixed(3)} s`;
+    b.querySelector("b").textContent = p.name;
+    b.querySelector("span").textContent = `plays ${p.repeats}× · first at ${p.first}`;
+    b.dataset.secs = p.secs.toFixed(3);
+    b.onclick = () => tap(b, `${si}:${pi}`, p);
+    sec.querySelector(".pads").append(b);
+  });
+  if (!s.pads.length) sec.querySelector(".pads").textContent = "No loop that repeats was found.";
+  root.append(sec);
+});
+document.getElementById("stop").onclick = () => { if (queued) queued.classList.remove("queued"); stop(); };
+addEventListener("keydown", e => { if (e.key === " " || e.key === "Escape") { e.preventDefault(); stop(); } });
+</script></body></html>
