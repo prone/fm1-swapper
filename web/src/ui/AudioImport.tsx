@@ -8,11 +8,14 @@ import { SR } from "../audio/dsp";
 import { AudioNote, Section, SongAudio, analyseSection, dropGhosts, suggestSections } from "../audio/analysis";
 import { decode, startRecording, transcribe } from "../audio/input";
 import { findLoops } from "../audio/loops";
+import { bothLoop, originalLoop, sloopLoop } from "../audio/preview";
 import { fmtDateTime } from "./common";
 import { DEFAULT_TRACKS, Part, applyImport } from "../audio/toSong";
 import { Bar, FileDrop } from "./common";
 
 const PARTS: [Part, string][] = [["bass", "Bassline"], ["keys", "Chords"], ["lead", "Lead"], ["drums", "Drums"]];
+type Preview = "original" | "sloop" | "both";
+const PREVIEWS: [Preview, string][] = [["original", "Original"], ["sloop", "What SLOOP will play"], ["both", "Both"]];
 const mmss = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 const yieldUI = () => new Promise((r) => setTimeout(r, 30));                     // (let the page paint the status)
 
@@ -61,6 +64,7 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
   const moveSection = (i: number, by: number) => moveTo(i, sections[i].start + by * (60 / (song.current?.bpm ?? 120)));
   /** The piece analysed again from `t` (snapped by the analysis to the downbeat nearby). */
   const moveTo = async (i: number, t: number) => {
+    stopPreview();
     const s = song.current; if (!s) return;
     const start = Math.max(0, Math.min(s.duration - 16 * (60 / s.bpm), t));
     setStatus(`Analysing section ${"ABCD"[targets[i]]}…`); setPhase("working"); await yieldUI();
@@ -78,18 +82,26 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
     setPhase("review");
   };
 
-  /** Plays the original audio of a section's 4 bars (to compare with what was found). */
-  const listen = (sec: Section) => {
-    const y = song.current?.y; if (!y) return;
-    player.current?.src?.stop();
+  /** A piece on repeat: its original 4 bars, what SLOOP will play from it (the parts going onto tracks, each at its
+   *  track's length), or both; the same again stops it. */
+  const [playing, setPlaying] = useState<{ i: number; mode: Preview } | null>(null);
+  const stopPreview = () => { try { player.current?.src?.stop(); } catch { /* not started */ } setPlaying(null); };
+  const preview = (i: number, mode: Preview) => {
+    const y = song.current?.y, sec = sections[i]; if (!y || !sec) return;
+    const same = playing?.i === i && playing.mode === mode;
+    stopPreview();
+    if (same) return;
+    const parts = new Set(PARTS.map(([p]) => p).filter((p) => tracks[p] != null));
+    const orig = mode !== "sloop" ? originalLoop(y, sec) : null, sloop = mode !== "original" ? sloopLoop(sec, parts) : null;
+    const x = orig && sloop ? bothLoop(orig, sloop) : (orig ?? sloop)!;
     const ctx = player.current?.ctx ?? new AudioContext();
-    const buf = ctx.createBuffer(1, y.length, SR); buf.copyToChannel(y as Float32Array<ArrayBuffer>, 0);
-    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
-    src.start(0, sec.start, 16 * (60 / sec.bpm));
-    player.current = { ctx, src };
+    const buf = ctx.createBuffer(1, x.length, SR); buf.copyToChannel(x as Float32Array<ArrayBuffer>, 0);
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(ctx.destination); src.start();
+    player.current = { ctx, src }; setPlaying({ i, mode });
   };
 
   const apply = () => {
+    stopPreview();
     const bpm = song.current?.bpm ?? 120;
     edit((d) => applyImport(d, { sections, targets, tracks, tempo: setTempo ? bpm : null, order: setOrder }));
     if (targets.length) show(targets[0]);
@@ -144,7 +156,8 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
               don't want.</> : "No pieces left to import: add one below."}</p>
           <Overview y={song.current.y} duration={song.current.duration} pieces={sections.map((s, i) => [s.start, 16 * (60 / s.bpm), "ABCD"[targets[i]]] as const)} />
           <p class="small dim">Drag a piece's slider to where it should start, then fine-tune by a beat or a bar; it snaps to the nearest
-            downbeat when you let go. ▶ plays exactly the 4 bars that are imported.</p>
+            downbeat when you let go. The ▶ buttons play a piece on repeat: the original, what SLOOP will play from it (the parts going
+            onto tracks, each looping at its own length, in plain sounds: on the FM-1 they play with the tracks' own sounds), or both.</p>
           <div class="rows" style={{ background: "transparent" }}>
             {sections.map((sec, i) => (
               <div key={i} style={{ flexWrap: "wrap", padding: "8px 0", alignItems: "flex-start" }}>
@@ -162,12 +175,17 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
                     <button class="btn small" onClick={() => void moveSection(i, -1)} aria-label="A beat earlier">−beat</button>
                     <button class="btn small" onClick={() => void moveSection(i, 1)} aria-label="A beat later">+beat</button>
                     <button class="btn small" onClick={() => void moveSection(i, 4)} aria-label="A bar later">+bar</button>
-                    <button class="btn small" onClick={() => listen(sec)}>▶ Listen</button>
-                    <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => { setSections(sections.filter((_, j) => j !== i)); setTargets(targets.filter((_, j) => j !== i)); }}>Leave out</button>
+                    <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => { stopPreview(); setSections(sections.filter((_, j) => j !== i)); setTargets(targets.filter((_, j) => j !== i)); }}>Leave out</button>
                   </div>
                   {sec.repeats ? <div class="small">A loop of the song: plays <b>{sec.repeats}×</b>{sec.lengths ? ` · drums ${bars(sec.lengths.drums)}, bass ${bars(sec.lengths.bass)}, chords ${bars(sec.lengths.keys)}` : ""}.
                     {sec.unsure ? <span class="dim"> Not sure of this one: it repeats little, or a new sound comes in during it.</span> : null}</div>
                     : <div class="small dim">Your pick (not one of the song's loops).</div>}
+                  <div class="tools" role="group" aria-label={`Hear piece ${i + 1} on repeat`}>
+                    {PREVIEWS.map(([mode, label]) => {
+                      const on = playing?.i === i && playing.mode === mode;
+                      return <button key={mode} class={"btn small" + (on ? " primary" : "")} aria-pressed={on} onClick={() => preview(i, mode)}>{on ? "■" : "▶"} {label}</button>;
+                    })}
+                  </div>
                   <div class="small dim">{sec.bass.length} bass notes · {sec.keys.length} chords · {sec.lead.length} lead notes · {sec.drums.length} drum steps</div>
                   <DrumRows sec={sec} />
                 </div>
@@ -195,7 +213,7 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
           <p class="small faint">The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; an empty loop gets the first piece, so it plays as soon as SLOOP starts. Undo puts it all back.</p>
           <div class="tools">
             <button class="btn primary" disabled={!sections.length} onClick={apply}>Import into {[...new Set(targets.map((k) => "ABCD"[k]))].join(", ")}</button>
-            <button class="linkbtn" onClick={() => { setPhase("pick"); setSections([]); }}>Use other audio</button>
+            <button class="linkbtn" onClick={() => { stopPreview(); setPhase("pick"); setSections([]); }}>Use other audio</button>
           </div>
         </>
       )}

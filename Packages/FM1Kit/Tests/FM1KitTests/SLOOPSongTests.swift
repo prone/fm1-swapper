@@ -284,3 +284,26 @@ final class SLOOPBlankSongTests: XCTestCase {
         XCTAssertEqual(doc.patterns[.loop], loop, "a loop with notes stays")
     }
 }
+
+final class SLOOPPreviewTests: XCTestCase {
+    private func section() throws -> SLOOPAudioSection {
+        let json = #"{"start": 1, "bpm": 120, "bass": [{"step": 0, "len": 4, "pitch": 36}], "lead": [{"step": 8, "len": 2, "pitch": 72}], "keys": [], "drums": [{"step": 0, "lanes": [0]}, {"step": 4, "lanes": [2]}], "lengths": {"bass": 16, "keys": 64, "lead": 64, "drums": 16}}"#
+        return try JSONDecoder().decode(SLOOPAudioSection.self, from: Data(json.utf8))
+    }
+    private func rms(_ x: [Float], _ a: Int, _ b: Int) -> Double { sqrt(x[a..<b].reduce(0) { $0 + Double($1 * $1) } / Double(b - a)) }
+
+    func testPreviewsAreExactlyFourBars() throws {
+        let sec = try section(), n = Int((64 * 15 / 120 * SLOOPPreview.sampleRate).rounded())
+        XCTAssertEqual(SLOOPPreview.sloop(sec, parts: [.bass, .lead, .drums]).count, n)
+        XCTAssertEqual(SLOOPPreview.original([Float](repeating: 0.1, count: 10 * 22050), sec).count, n)
+    }
+
+    func testEachPartLoopsAtItsLengthAndSkippedPartsAreSilent() throws {
+        let sec = try section(), bar = Int((16 * 15 / 120 * SLOOPPreview.sampleRate).rounded())
+        let drums = SLOOPPreview.sloop(sec, parts: [.drums])
+        for b in 1..<4 { XCTAssertEqual(rms(drums, b * bar, b * bar + bar), rms(drums, 0, bar), accuracy: 0.01, "a 1-bar drum part: every bar the same") }
+        let withLead = SLOOPPreview.sloop(sec, parts: [.drums, .lead])
+        XCTAssertGreaterThan(rms(withLead, bar / 2, bar * 3 / 4), rms(drums, bar / 2, bar * 3 / 4) * 1.2, "the lead plays in bar 1")
+        XCTAssertEqual(rms(SLOOPPreview.sloop(sec, parts: []), 0, 4 * bar), 0)
+    }
+}

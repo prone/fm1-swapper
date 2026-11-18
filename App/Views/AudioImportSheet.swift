@@ -28,7 +28,9 @@ struct AudioImportSheet: View {
     @State private var recording = false
     @State private var error: String?
     @State private var audioURL: URL?
-    @State private var player: AVAudioPlayer?
+    @State private var player = LoopPlayer()
+    /// The piece on repeat, and how (original, what SLOOP will play, both).
+    @State private var playing: (i: Int, mode: Preview)?
     @State private var name = ""
     @State private var confirmClose = false
     /// A piece's start while its slider is dragged (analysed when let go).
@@ -45,16 +47,16 @@ struct AudioImportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // (the results took a while: ask before they go)
-                    Button("Close") { if result != nil { confirmClose = true } else { player?.stop(); dismiss() } }
+                    Button("Close") { if result != nil { confirmClose = true } else { stopPreview(); dismiss() } }
                         .confirmationDialog("Close without importing?", isPresented: $confirmClose, titleVisibility: .visible) {
-                            Button("Discard the results", role: .destructive) { player?.stop(); dismiss() }
+                            Button("Discard the results", role: .destructive) { stopPreview(); dismiss() }
                             Button("Keep reviewing", role: .cancel) {}
                         } message: { Text("The analysis of \"\(name)\" goes, and you'd have to run it again.") }
                 }
                 if result != nil {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Import") {
-                            player?.stop()
+                            stopPreview()
                             apply(SLOOPImportPlan(sections: sections, targets: targets, tracks: tracks,
                                                   tempo: setTempo ? Int((result?.bpm ?? 120).rounded()) : nil, order: setOrder), name)
                             dismiss()
@@ -100,7 +102,7 @@ struct AudioImportSheet: View {
             AudioOverview(envelope: analyser.envelope, duration: r.duration,
                           pieces: sections.indices.map { (start: scrub[$0] ?? sections[$0].start, length: 16 * 60 / sections[$0].bpm, name: ["A", "B", "C", "D"][targets[$0]]) })
                 .frame(height: 56)
-        } footer: { Text("Drag a piece's slider to where it should start, then fine-tune by a beat or a bar; it snaps to the nearest downbeat when you let go. ▶ plays exactly the 4 bars that are imported.") }
+        } footer: { Text("Drag a piece's slider to where it should start, then fine-tune by a beat or a bar; it snaps to the nearest downbeat when you let go. ▶ plays a piece on repeat: the original, what SLOOP will play from it (the parts going onto tracks, each looping at its own length, in plain sounds: on the FM-1 they play with the tracks' own sounds), or both.") }
         ForEach(sections.indices, id: \.self) { i in
             let sec = sections[i]
             Section {
@@ -122,9 +124,17 @@ struct AudioImportSheet: View {
                     Button("−beat") { move(i, beats: -1) }.accessibilityLabel("A beat earlier")
                     Button("+beat") { move(i, beats: 1) }.accessibilityLabel("A beat later")
                     Button("+bar") { move(i, beats: 4) }.accessibilityLabel("A bar later")
-                    Button { listen(sec) } label: { Image(systemName: "play.fill") }.accessibilityLabel("Listen to the original")
                 }
                 .buttonStyle(.bordered).disabled(analyser.busy)
+                HStack {
+                    ForEach(Preview.allCases, id: \.self) { mode in
+                        let on = playing?.i == i && playing?.mode == mode
+                        Button { preview(i, mode) } label: { Label(mode.title, systemImage: on ? "stop.fill" : "play.fill") }
+                            .buttonStyle(.bordered).tint(on ? .accentColor : nil)
+                            .accessibilityLabel(on ? "Stop" : "Play \(mode.title.lowercased()) on repeat")
+                    }
+                }
+                .font(.caption)
                 if let r = sec.repeats {
                     Text(LocalizedStringKey("A loop of the song: plays **\(r)×**" + (sec.lengths.map { " · drums \(bars($0["drums"])), bass \(bars($0["bass"])), chords \(bars($0["keys"]))" } ?? "") + "."
                          + (sec.unsure == true ? " Not sure of this one: it repeats little, or a new sound comes in during it." : "")))
@@ -157,7 +167,7 @@ struct AudioImportSheet: View {
             Text("The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; an empty loop gets the first piece, so it plays as soon as SLOOP starts. Undo puts it all back."
                  + (Set(tracks.values).count < tracks.count ? " Two parts go on the same track: the later one replaces the earlier." : ""))
         }
-        Section { Button("Use other audio") { player?.stop(); result = nil; sections = []; error = nil } }
+        Section { Button("Use other audio") { stopPreview(); result = nil; sections = []; error = nil } }
     }
 
     private func label(_ p: SLOOPImportPlan.Part) -> String {
@@ -202,6 +212,7 @@ struct AudioImportSheet: View {
 
     /// The piece analysed again from `start` (snapped by the analysis to the downbeat nearby).
     private func moveTo(_ i: Int, _ start: Double) {
+        stopPreview()
         guard let r = result else { return }
         let t = max(0, min(r.duration - 16 * 60 / r.bpm, start))
         Task {
@@ -226,18 +237,20 @@ struct AudioImportSheet: View {
         }
     }
 
-    /// Plays the original audio of a section's 4 bars.
-    private func listen(_ sec: SLOOPAudioSection) {
-        guard let url = audioURL else { return }
-        player?.stop()
-        try? AVAudioSession.sharedInstance().setCategory(.playback)
-        guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
-        p.currentTime = sec.start
-        p.play()
-        player = p
-        let bars = 16 * 60 / sec.bpm
-        Task { try? await Task.sleep(for: .seconds(bars)); if player === p { p.stop() } }
+    /// A piece on repeat: its original 4 bars, what SLOOP will play from it (the parts going onto tracks, each at its
+    /// track's length), or both; the same again stops it.
+    private func preview(_ i: Int, _ mode: Preview) {
+        let same = playing?.i == i && playing?.mode == mode
+        stopPreview()
+        guard !same, i < sections.count else { return }
+        let sec = sections[i], parts = Set(SLOOPImportPlan.Part.allCases.filter { tracks[$0] != nil })
+        let orig = mode == .sloop ? nil : SLOOPPreview.original(analyser.samples, sec)
+        let sloop = mode == .original ? nil : SLOOPPreview.sloop(sec, parts: parts)
+        player.play(orig.flatMap { o in sloop.map { SLOOPPreview.both(o, $0) } } ?? orig ?? sloop ?? [])
+        playing = (i, mode)
     }
+
+    private func stopPreview() { player.stop(); playing = nil }
 }
 
 /// Runs the audio analysis (the web app's) in a hidden web view loading only the app's own files.
@@ -249,6 +262,8 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     var busy = false
     /// The audio's loudness, 0...1, in 400 slices (the review's overview).
     var envelope: [Float] = []
+    /// The audio as analysed (mono 22050 Hz): the previews play pieces of it.
+    @ObservationIgnored var samples: [Float] = []
     @ObservationIgnored private var ready = false
     @ObservationIgnored var web: WKWebView?
 
@@ -291,6 +306,7 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
         let samples = try await Task.detached { try Self.monoSamples(file) }.value
         files.input = samples
         envelope = Self.envelope(samples)
+        self.samples = samples.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         // the notes' model on the Neural Engine / GPU (Core ML); if it can't run, the page runs it itself
         status = "Finding the notes (Basic Pitch)…"
         let t0 = Date()
@@ -459,4 +475,31 @@ struct AudioOverview: View {
         }
         .accessibilityLabel("The audio, with the pieces marked")
     }
+}
+
+/// How a piece is previewed.
+enum Preview: CaseIterable {
+    case original, sloop, both
+    var title: String { switch self { case .original: "Original"; case .sloop: "What SLOOP will play"; case .both: "Both" } }
+}
+
+/// Plays mono 22050 Hz samples on repeat, without a seam (a buffer scheduled to loop).
+final class LoopPlayer {
+    private let engine = AVAudioEngine(), node = AVAudioPlayerNode()
+    private let format = AVAudioFormat(standardFormatWithSampleRate: SLOOPPreview.sampleRate, channels: 1)!
+    init() { engine.attach(node); engine.connect(node, to: engine.mainMixerNode, format: format) }
+
+    func play(_ x: [Float]) {
+        stop()
+        guard !x.isEmpty, let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(x.count)) else { return }
+        buf.frameLength = AVAudioFrameCount(x.count)
+        x.withUnsafeBufferPointer { buf.floatChannelData![0].update(from: $0.baseAddress!, count: x.count) }
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        do { if !engine.isRunning { try engine.start() } } catch { return }
+        node.scheduleBuffer(buf, at: nil, options: .loops)
+        node.play()
+    }
+
+    func stop() { node.stop() }
 }
