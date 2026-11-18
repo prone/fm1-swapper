@@ -32,6 +32,7 @@ export default defineConfig({
   base: "./",
   plugins: [preact(), serviceWorker()],
   server: { fs: { allow: [".."] } },          // Tutorials/*.json live in the repo root
-  build: { target: "es2022", chunkSizeWarningLimit: 800 },
+  // (the audio import loads Basic Pitch and TensorFlow.js, about 1 MB, as its own chunk, only when used)
+  build: { target: "es2022", chunkSizeWarningLimit: 1100 },
   test: { environment: "node" },
 });

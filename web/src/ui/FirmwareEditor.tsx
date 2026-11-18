@@ -9,6 +9,7 @@ import { autoSongName, backupRecord, device } from "../device";
 import { totalBytes } from "../fm1kit/archive";
 import { Clip, SONG_EXT, readSongFile, sameSong, songFile, stepNotes, DIV_NAMES, DRUM_LANES, DRUM_TRACK, MAX_ENTRIES, MAX_STEPS, SLOTS, Slot, SongDoc, Track, sectionSlot, slotName, slotSection, totalBars } from "../fm1kit/sloopsong";
 import { DeviceBusy, FileDrop, Library, fmtDateTime, saveFile, useDevice } from "./common";
+import { AudioImport } from "./AudioImport";
 
 /** Whether the song editor has unsaved changes (main.tsx asks before another tab replaces it). */
 export const unsavedEdits = { dirty: false };
@@ -137,6 +138,7 @@ function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Lib
   const [low, setLow] = useState<Record<string, number>>({});
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     try { if (!song.archive) throw new Error("The saved song can't be read."); const d = SongDoc.open(song.archive); setDoc(d); setSaved(d.clone()); }
@@ -238,12 +240,14 @@ function SongEditor({ song, lib, play, reopen, close }: { song: Backup; lib: Lib
         <button class="btn small" disabled={!dirty} onClick={() => void save()}>Save changes</button>
         <button class="btn small" onClick={() => void saveCopy()}>Save as new…</button>
         <button class="btn small" onClick={() => { const f = songFile(doc.archive(), song.label); saveFile(f.name, f.text, "application/json"); }}>Download</button>
+        <button class="btn small" onClick={() => setImporting(!importing)}>Import from audio…</button>
         <button class="btn small" onClick={() => void playIt()}>▶ Play in the emulator</button>
         <button class="btn small primary" disabled={!!s.busy} onClick={() => setSending(true)}>Send to FM-1…</button>
       </div>
       <h1>{song.label}{dirty && <span class="dim small"> · edited</span>}</h1>
       <DeviceBusy s={s} />
       {problem && <div class="banner warn">{problem}</div>}
+      {importing && <AudioImport doc={doc} edit={edit} close={() => setImporting(false)} />}
       {sending && (
         <div class="banner warn">
           <b>Send “{song.label}” to the FM-1?</b>
