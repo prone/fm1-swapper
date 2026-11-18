@@ -30,6 +30,8 @@ struct AudioImportSheet: View {
     @State private var audioURL: URL?
     @State private var player: AVAudioPlayer?
     @State private var name = ""
+    /// A piece's start while its slider is dragged (analysed when let go).
+    @State private var scrub: [Int: Double] = [:]
 
     var body: some View {
         NavigationStack {
@@ -86,15 +88,26 @@ struct AudioImportSheet: View {
             Text(LocalizedStringKey(sections.isEmpty ? "No pieces left to import: add one below."
                  : "\(sections.count == 1 ? "One 4-bar piece" : "\(sections.count) 4-bar pieces") of the song, picked from different parts of it. **All of them are imported** when you tap Import, each into the SLOOP section it's set to (A–D). Leave out any you don't want."))   // (a key: the bold renders)
             if analyser.busy { Label(analyser.status, systemImage: "hourglass").foregroundStyle(.secondary) }
-        } footer: { Text("Each piece starts on the downbeat found from the kicks and snares. Move it by a beat or a bar if it's off, and ▶ to hear the original.") }
+            AudioOverview(envelope: analyser.envelope, duration: r.duration,
+                          pieces: sections.indices.map { (start: scrub[$0] ?? sections[$0].start, length: 16 * 60 / sections[$0].bpm, name: ["A", "B", "C", "D"][targets[$0]]) })
+                .frame(height: 56)
+        } footer: { Text("Drag a piece's slider to where it should start, then fine-tune by a beat or a bar; it snaps to the nearest downbeat when you let go. ▶ plays exactly the 4 bars that are imported.") }
         ForEach(sections.indices, id: \.self) { i in
             let sec = sections[i]
             Section {
                 Picker("Goes into", selection: Binding(get: { targets[i] }, set: { targets[i] = $0 })) {
                     ForEach(0..<4, id: \.self) { k in Text("Section \(["A", "B", "C", "D"][k])\(doc.isEmpty(.section(k)) ? "" : " (replaces it)")").tag(k) }
                 }
+                let length = 16 * 60 / sec.bpm, latest = max(0, r.duration - length)
                 HStack {
-                    Text("From \(String(format: "%d:%04.1f", Int(sec.start) / 60, sec.start.truncatingRemainder(dividingBy: 60)))").monospacedDigit()
+                    Text(clock(scrub[i] ?? sec.start) + "–" + clock((scrub[i] ?? sec.start) + length)).monospacedDigit()
+                    Slider(value: Binding(get: { min(latest, scrub[i] ?? sec.start) }, set: { scrub[i] = $0 }), in: 0...max(0.1, latest)) { editing in
+                        if !editing, let t = scrub[i] { moveTo(i, t) }
+                    }
+                    .accessibilityLabel("Where the piece starts")
+                }
+                .disabled(analyser.busy)
+                HStack {
                     Spacer()
                     Button("−bar") { move(i, beats: -4) }.accessibilityLabel("A bar earlier")
                     Button("−beat") { move(i, beats: -1) }.accessibilityLabel("A beat earlier")
@@ -107,7 +120,7 @@ struct AudioImportSheet: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Text(drumRows(sec)).font(.system(size: 11, design: .monospaced)).lineLimit(nil)
                     .accessibilityLabel("Drums found: \(sec.drums.count) steps")
-                Button("Leave this piece out", role: .destructive) { sections.remove(at: i); targets.remove(at: i) }
+                Button("Leave this piece out", role: .destructive) { sections.remove(at: i); targets.remove(at: i); scrub = [:] }
                     .disabled(analyser.busy)
             } header: { Text("Piece \(i + 1) → Section \(["A", "B", "C", "D"][targets[i]])") }
             .swipeActions { Button("Remove", role: .destructive) { sections.remove(at: i); targets.remove(at: i) } }
@@ -168,9 +181,21 @@ struct AudioImportSheet: View {
 
     private func move(_ i: Int, beats: Int) {
         guard let r = result else { return }
-        let beat = 60 / r.bpm, start = max(0, min(r.duration - 16 * beat, sections[i].start + Double(beats) * beat))
-        Task { do { sections[i] = try await analyser.section(at: start) } catch { self.error = error.localizedDescription } }
+        moveTo(i, sections[i].start + Double(beats) * 60 / r.bpm)
     }
+
+    /// The piece analysed again from `start` (snapped by the analysis to the downbeat nearby).
+    private func moveTo(_ i: Int, _ start: Double) {
+        guard let r = result else { return }
+        let t = max(0, min(r.duration - 16 * 60 / r.bpm, start))
+        Task {
+            do { let s = try await analyser.section(at: t); if i < sections.count { sections[i] = s } }
+            catch { self.error = error.localizedDescription }
+            scrub[i] = nil
+        }
+    }
+
+    private func clock(_ t: Double) -> String { String(format: "%d:%04.1f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60)) }
 
     private func add() {
         guard let r = result else { return }
@@ -204,6 +229,8 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     var status = ""
     var progress: Double?
     var busy = false
+    /// The audio's loudness, 0...1, in 400 slices (the review's overview).
+    var envelope: [Float] = []
     @ObservationIgnored private var ready = false
     @ObservationIgnored weak var web: WKWebView?
 
@@ -242,6 +269,7 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
         defer { busy = false; files.input = nil; files.pitch = nil }
         let samples = try await Task.detached { try Self.monoSamples(file) }.value
         files.input = samples
+        envelope = Self.envelope(samples)
         // the notes' model on the Neural Engine / GPU (Core ML); if it can't run, the page runs it itself
         status = "Finding the notes (Basic Pitch)…"
         let t0 = Date()
@@ -262,6 +290,21 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
     }
 
     /// Any audio file AVFoundation reads, mixed to mono and resampled to 22050 Hz, as 32-bit float samples.
+    /// The peak of each of `n` slices of Float32 samples, scaled to the loudest.
+    nonisolated static func envelope(_ samples: Data, n: Int = 400) -> [Float] {
+        samples.withUnsafeBytes { raw in
+            let y = raw.bindMemory(to: Float.self), size = max(1, y.count / n)
+            var out = (0..<n).map { k in
+                var m: Float = 0
+                for i in stride(from: k * size, to: min(y.count, (k + 1) * size), by: 4) { m = max(m, abs(y[i])) }
+                return m
+            }
+            let top = out.max() ?? 0
+            if top > 0 { out = out.map { $0 / top } }
+            return out
+        }
+    }
+
     nonisolated static func monoSamples(_ url: URL) throws -> Data {
         let file = try AVAudioFile(forReading: url)
         guard let out = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 22050, channels: 1, interleaved: false),
@@ -368,4 +411,31 @@ struct AudioAnalyserView: UIViewRepresentable {
     let analyser: AudioAnalyser
     func makeUIView(context: Context) -> WKWebView { analyser.makeWebView() }
     func updateUIView(_ v: WKWebView, context: Context) {}
+}
+
+/// The whole audio's loudness, with each piece's 4 bars marked by the section it goes into.
+struct AudioOverview: View {
+    let envelope: [Float]
+    let duration: Double
+    let pieces: [(start: Double, length: Double, name: String)]
+
+    var body: some View {
+        Canvas { g, size in
+            guard duration > 0 else { return }
+            let x = { (t: Double) in CGFloat(t / duration) * size.width }
+            for p in pieces {
+                let r = CGRect(x: x(p.start), y: 0, width: max(2, x(p.start + p.length) - x(p.start)), height: size.height)
+                g.fill(Path(r), with: .color(.accentColor.opacity(0.25)))
+                g.draw(Text(p.name).font(.caption2.bold()), at: CGPoint(x: r.minX + 7, y: 8))
+            }
+            let w = size.width / CGFloat(max(1, envelope.count))
+            var bars = Path()
+            for (k, v) in envelope.enumerated() {
+                let h = max(1, CGFloat(v) * (size.height - 16))
+                bars.addRect(CGRect(x: CGFloat(k) * w, y: size.height - h, width: max(1, w - 0.5), height: h))
+            }
+            g.fill(bars, with: .color(.secondary))
+        }
+        .accessibilityLabel("The audio, with the pieces marked")
+    }
 }

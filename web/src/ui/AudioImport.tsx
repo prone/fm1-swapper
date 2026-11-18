@@ -55,9 +55,11 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
     } catch (e) { setErr((e as Error).message || String(e)); setPhase("pick"); }
   };
 
-  const moveSection = async (i: number, by: number) => {
+  const moveSection = (i: number, by: number) => moveTo(i, sections[i].start + by * (60 / (song.current?.bpm ?? 120)));
+  /** The piece analysed again from `t` (snapped by the analysis to the downbeat nearby). */
+  const moveTo = async (i: number, t: number) => {
     const s = song.current; if (!s) return;
-    const beat = 60 / s.bpm, start = Math.max(0, Math.min(s.duration - 16 * beat, sections[i].start + by * beat));
+    const start = Math.max(0, Math.min(s.duration - 16 * (60 / s.bpm), t));
     setStatus(`Analysing section ${"ABCD"[targets[i]]}…`); setPhase("working"); await yieldUI();
     const sec = analyseSection(s, notes.current, start);
     setSections(sections.map((x, j) => (j === i ? sec : x))); setPhase("review");
@@ -133,7 +135,9 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
             {sections.length ? <>{sections.length === 1 ? "One 4-bar piece" : `${sections.length} 4-bar pieces`} of the song, picked from
               different parts of it. <b>All of them are imported</b>, each into the SLOOP section it's set to (A–D). Leave out any you
               don't want.</> : "No pieces left to import: add one below."}</p>
-          <p class="small dim">Each piece starts on the downbeat found from the kicks and snares; move it by a beat or a bar if it's off, and ▶ to hear the original.</p>
+          <Overview y={song.current.y} duration={song.current.duration} pieces={sections.map((s, i) => [s.start, 16 * (60 / s.bpm), "ABCD"[targets[i]]] as const)} />
+          <p class="small dim">Drag a piece's slider to where it should start, then fine-tune by a beat or a bar; it snaps to the nearest
+            downbeat when you let go. ▶ plays exactly the 4 bars that are imported.</p>
           <div class="rows" style={{ background: "transparent" }}>
             {sections.map((sec, i) => (
               <div key={i} style={{ flexWrap: "wrap", padding: "8px 0", alignItems: "flex-start" }}>
@@ -143,7 +147,10 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
                     <select value={targets[i]} aria-label={`Piece ${i + 1} goes into`} onChange={(e) => setTargets(targets.map((x, j) => (j === i ? Number((e.target as HTMLSelectElement).value) : x)))}>
                       {[0, 1, 2, 3].map((k) => <option key={k} value={k}>Section {"ABCD"[k]}{doc.isEmpty(["a", "b", "c", "d"][k] as "a") ? "" : " (replaces it)"}</option>)}
                     </select>
-                    <span class="small">from {mmss(sec.start)}</span>
+                    <span class="small mono">{mmss(sec.start)}–{mmss(sec.start + 16 * (60 / sec.bpm))}</span>
+                    <input type="range" min={0} max={Math.max(0.1, song.current!.duration - 16 * (60 / sec.bpm))} step={0.05} value={sec.start}
+                      style={{ flex: "1 1 160px" }} aria-label={`Where piece ${i + 1} starts`}
+                      onChange={(e) => void moveTo(i, Number((e.target as HTMLInputElement).value))} />
                     <button class="btn small" onClick={() => void moveSection(i, -4)} aria-label="A bar earlier">−bar</button>
                     <button class="btn small" onClick={() => void moveSection(i, -1)} aria-label="A beat earlier">−beat</button>
                     <button class="btn small" onClick={() => void moveSection(i, 1)} aria-label="A beat later">+beat</button>
@@ -196,4 +203,33 @@ function DrumRows({ sec }: { sec: Section }) {
       {lanes.map((l) => `${DRUM_LANES[l].padEnd(8)} ${[0, 1, 2, 3].map((b) => Array.from({ length: 16 }, (_, s) => (at.has(`${b * 16 + s},${l}`) ? "x" : "·")).join("")).join(" ")}`).join("\n")}
     </div>
   );
+}
+
+/** The whole audio's loudness, with each piece's 4 bars marked by the section it goes into. */
+function Overview({ y, duration, pieces }: { y: Float32Array; duration: number; pieces: readonly (readonly [number, number, string])[] }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const env = useRef<Float32Array | null>(null);
+  if (!env.current) {                                                     // (the peak of each of 400 slices, once)
+    const n = 400, size = Math.max(1, Math.floor(y.length / n)), e = new Float32Array(n);
+    for (let k = 0; k < n; k++) { let m = 0; for (let i = k * size; i < Math.min(y.length, (k + 1) * size); i += 4) m = Math.max(m, Math.abs(y[i])); e[k] = m; }
+    const top = Math.max(...e) || 1;
+    env.current = e.map((v) => v / top);
+  }
+  useEffect(() => {
+    const c = canvas.current, g = c?.getContext("2d"); if (!c || !g || !env.current) return;
+    const w = (c.width = c.clientWidth * devicePixelRatio), h = (c.height = 56 * devicePixelRatio), css = getComputedStyle(c);
+    g.clearRect(0, 0, w, h);
+    const x = (t: number) => (t / duration) * w;
+    g.font = `bold ${11 * devicePixelRatio}px system-ui`;
+    for (const [start, len, name] of pieces) {
+      g.fillStyle = css.getPropertyValue("--accent-soft") || "rgba(80,140,255,.25)";
+      g.fillRect(x(start), 0, Math.max(2, x(start + len) - x(start)), h);
+      g.fillStyle = css.color; g.fillText(name, x(start) + 3 * devicePixelRatio, 12 * devicePixelRatio);
+    }
+    g.fillStyle = css.color; g.globalAlpha = 0.55;
+    const bw = w / env.current.length;
+    env.current.forEach((v, k) => { const bh = Math.max(1, v * (h - 16 * devicePixelRatio)); g.fillRect(k * bw, h - bh, Math.max(1, bw - 0.5), bh); });
+    g.globalAlpha = 1;
+  }, [pieces.map((p) => p.join()).join("|")]);
+  return <canvas ref={canvas} style={{ width: "100%", height: 56, display: "block", margin: "6px 0" }} aria-label="The audio, with the pieces marked" />;
 }
