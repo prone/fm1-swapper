@@ -42,7 +42,7 @@ struct AudioImportSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { player?.stop(); dismiss() } }
                 if result != nil {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Apply") {
+                        Button("Import") {
                             player?.stop()
                             apply(SLOOPImportPlan(sections: sections, targets: targets, tracks: tracks,
                                                   tempo: setTempo ? Int((result?.bpm ?? 120).rounded()) : nil, order: setOrder))
@@ -82,12 +82,14 @@ struct AudioImportSheet: View {
     @ViewBuilder private func found(_ r: AudioAnalyser.Result) -> some View {
         Section {
             Text("\(Duration.seconds(r.duration).formatted(.time(pattern: .minuteSecond))) at about \(Int(r.bpm.rounded())) BPM.")
+            Text(LocalizedStringKey(sections.isEmpty ? "No pieces left to import: add one below."
+                 : "\(sections.count == 1 ? "One 4-bar piece" : "\(sections.count) 4-bar pieces") of the song, picked from different parts of it. **All of them are imported** when you tap Import, each into the SLOOP section it's set to (A–D). Leave out any you don't want."))   // (a key: the bold renders)
             if analyser.busy { Label(analyser.status, systemImage: "hourglass").foregroundStyle(.secondary) }
-        } footer: { Text("Each section starts on the downbeat found from the kicks and snares. Move it by a beat or a bar if it's off, and ▶ to hear the original.") }
+        } footer: { Text("Each piece starts on the downbeat found from the kicks and snares. Move it by a beat or a bar if it's off, and ▶ to hear the original.") }
         ForEach(sections.indices, id: \.self) { i in
             let sec = sections[i]
             Section {
-                Picker("Song section", selection: Binding(get: { targets[i] }, set: { targets[i] = $0 })) {
+                Picker("Goes into", selection: Binding(get: { targets[i] }, set: { targets[i] = $0 })) {
                     ForEach(0..<4, id: \.self) { k in Text("Section \(["A", "B", "C", "D"][k])\(doc.isEmpty(.section(k)) ? "" : " (replaces it)")").tag(k) }
                 }
                 HStack {
@@ -104,11 +106,13 @@ struct AudioImportSheet: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Text(drumRows(sec)).font(.system(size: 11, design: .monospaced)).lineLimit(nil)
                     .accessibilityLabel("Drums found: \(sec.drums.count) steps")
-            } header: { Text("Section \(i + 1)") }
+                Button("Leave this piece out", role: .destructive) { sections.remove(at: i); targets.remove(at: i) }
+                    .disabled(analyser.busy)
+            } header: { Text("Piece \(i + 1) → Section \(["A", "B", "C", "D"][targets[i]])") }
             .swipeActions { Button("Remove", role: .destructive) { sections.remove(at: i); targets.remove(at: i) } }
         }
         if sections.count < 4 {
-            Section { Button("Add a section") { add() }.disabled(analyser.busy) }
+            Section { Button("Add another piece") { add() }.disabled(analyser.busy) }
         }
         Section {
             ForEach(SLOOPImportPlan.Part.allCases, id: \.self) { part in
@@ -118,9 +122,9 @@ struct AudioImportSheet: View {
                 }
             }
             Toggle("Set the tempo to \(Int(r.bpm.rounded())) BPM", isOn: $setTempo)
-            Toggle("Song order: these sections, 4 bars each", isOn: $setOrder)
+            Toggle("Song order: these sections in turn, 4 bars each", isOn: $setOrder)
         } header: { Text("Onto the tracks") } footer: {
-            Text("The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds. Undo puts it all back."
+            Text("The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; the loop itself isn't changed. Undo puts it all back."
                  + (Set(tracks.values).count < tracks.count ? " Two parts go on the same track: the later one replaces the earlier." : ""))
         }
         Section { Button("Use other audio") { player?.stop(); result = nil; sections = []; error = nil } }

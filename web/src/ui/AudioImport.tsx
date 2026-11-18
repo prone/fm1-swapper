@@ -127,14 +127,18 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
       {phase === "working" && (<><p class="small">{status}</p><Bar value={progress} /></>)}
       {phase === "review" && song.current && (
         <>
-          <p class="small dim" style={{ marginTop: 0 }}>{mmss(song.current.duration)} at about <b>{Math.round(song.current.bpm)} BPM</b>.
-            Each section starts on the downbeat found from the kicks and snares; move it by a beat or a bar if it's off, and ▶ to hear the original.</p>
+          <p class="small" style={{ marginTop: 0 }}>{mmss(song.current.duration)} at about <b>{Math.round(song.current.bpm)} BPM</b>.{" "}
+            {sections.length ? <>{sections.length === 1 ? "One 4-bar piece" : `${sections.length} 4-bar pieces`} of the song, picked from
+              different parts of it. <b>All of them are imported</b>, each into the SLOOP section it's set to (A–D). Leave out any you
+              don't want.</> : "No pieces left to import: add one below."}</p>
+          <p class="small dim">Each piece starts on the downbeat found from the kicks and snares; move it by a beat or a bar if it's off, and ▶ to hear the original.</p>
           <div class="rows" style={{ background: "transparent" }}>
             {sections.map((sec, i) => (
               <div key={i} style={{ flexWrap: "wrap", padding: "8px 0", alignItems: "flex-start" }}>
                 <div style={{ minWidth: 220, flex: 1 }}>
                   <div class="tools" style={{ marginTop: 0 }}>
-                    <select value={targets[i]} aria-label="Song section" onChange={(e) => setTargets(targets.map((x, j) => (j === i ? Number((e.target as HTMLSelectElement).value) : x)))}>
+                    <b class="small">Piece {i + 1} → into</b>
+                    <select value={targets[i]} aria-label={`Piece ${i + 1} goes into`} onChange={(e) => setTargets(targets.map((x, j) => (j === i ? Number((e.target as HTMLSelectElement).value) : x)))}>
                       {[0, 1, 2, 3].map((k) => <option key={k} value={k}>Section {"ABCD"[k]}{doc.isEmpty(["a", "b", "c", "d"][k] as "a") ? "" : " (replaces it)"}</option>)}
                     </select>
                     <span class="small">from {mmss(sec.start)}</span>
@@ -143,7 +147,7 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
                     <button class="btn small" onClick={() => void moveSection(i, 1)} aria-label="A beat later">+beat</button>
                     <button class="btn small" onClick={() => void moveSection(i, 4)} aria-label="A bar later">+bar</button>
                     <button class="btn small" onClick={() => listen(sec)}>▶ Listen</button>
-                    <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => { setSections(sections.filter((_, j) => j !== i)); setTargets(targets.filter((_, j) => j !== i)); }}>Remove</button>
+                    <button class="linkbtn small" style={{ color: "var(--red)" }} onClick={() => { setSections(sections.filter((_, j) => j !== i)); setTargets(targets.filter((_, j) => j !== i)); }}>Leave out</button>
                   </div>
                   <div class="small dim">{sec.bass.length} bass notes · {sec.keys.length} chords · {sec.lead.length} lead notes · {sec.drums.length} drum steps</div>
                   <DrumRows sec={sec} />
@@ -151,7 +155,7 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
               </div>
             ))}
           </div>
-          {sections.length < 4 && <div class="tools"><button class="btn small" onClick={() => void addSection()}>Add a section</button></div>}
+          {sections.length < 4 && <div class="tools"><button class="btn small" onClick={() => void addSection()}>Add another piece</button></div>}
           <h2 style={{ marginLeft: 0 }}>Onto the tracks</h2>
           <div class="tools">
             {PARTS.map(([part, label]) => (
@@ -165,13 +169,13 @@ export function AudioImport({ doc, edit, show, close }: { doc: SongDoc; edit: (f
           </div>
           <div class="tools">
             <label class="small"><input type="checkbox" checked={setTempo} onChange={(e) => setSetTempo((e.target as HTMLInputElement).checked)} /> Set the tempo to {Math.round(song.current.bpm)} BPM</label>
-            <label class="small"><input type="checkbox" checked={setOrder} onChange={(e) => setSetOrder((e.target as HTMLInputElement).checked)} /> Song order: these sections, 4 bars each</label>
+            <label class="small"><input type="checkbox" checked={setOrder} onChange={(e) => setSetOrder((e.target as HTMLInputElement).checked)} /> Song order: these sections in turn, 4 bars each</label>
           </div>
           {new Set(Object.values(tracks).filter((v) => v != null)).size < Object.values(tracks).filter((v) => v != null).length &&
             <div class="banner warn small">Two parts go on the same track: the later one replaces the earlier.</div>}
-          <p class="small faint">The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds. Undo puts it all back.</p>
+          <p class="small faint">The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; the loop itself isn't changed. Undo puts it all back.</p>
           <div class="tools">
-            <button class="btn primary" disabled={!sections.length} onClick={apply}>Apply to {sections.map((_, i) => "ABCD"[targets[i]]).join(", ")}</button>
+            <button class="btn primary" disabled={!sections.length} onClick={apply}>Import into {[...new Set(targets.map((k) => "ABCD"[k]))].join(", ")}</button>
             <button class="linkbtn" onClick={() => { setPhase("pick"); setSections([]); }}>Use other audio</button>
           </div>
         </>
