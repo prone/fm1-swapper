@@ -210,7 +210,7 @@ export function AudioImport({ doc, edit, show, named, close }: { doc: SongDoc; e
           </div>
           {new Set(Object.values(tracks).filter((v) => v != null)).size < Object.values(tracks).filter((v) => v != null).length &&
             <div class="banner warn small">Two parts go on the same track: the later one replaces the earlier.</div>}
-          <p class="small faint">The tracks chosen get 64 steps of 16ths with these notes; their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; an empty loop gets the first piece, so it plays as soon as SLOOP starts. Undo puts it all back.</p>
+          <p class="small faint">The tracks chosen get these notes on 16ths, each as long as its part's pattern (a loop's 1-bar beat: 16 steps; otherwise up to 64); their sounds stay (change them on the FM-1). An empty section starts as a copy of the loop's sounds; an empty loop gets the first piece, so it plays as soon as SLOOP starts. Undo puts it all back.</p>
           <div class="tools">
             <button class="btn primary" disabled={!sections.length} onClick={apply}>Import into {[...new Set(targets.map((k) => "ABCD"[k]))].join(", ")}</button>
             <button class="linkbtn" onClick={() => { stopPreview(); setPhase("pick"); setSections([]); }}>Use other audio</button>
