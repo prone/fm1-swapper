@@ -240,7 +240,15 @@ final class AudioAnalyser: NSObject, WKScriptMessageHandler {
         // the notes' model on the Neural Engine / GPU (Core ML); if it can't run, the page runs it itself
         status = "Finding the notes (Basic Pitch)…"
         let t0 = Date()
-        files.pitch = try? await Task.detached { try BasicPitchCoreML.output(samples: samples) }.value
+        progress = 0
+        // (at most a minute: then the page runs the model itself)
+        let coreML = Task.detached { [weak self] in
+            try BasicPitchCoreML.output(samples: samples) { f in Task { @MainActor in self?.progress = f } }
+        }
+        let limit = Task { try await Task.sleep(for: .seconds(60)); coreML.cancel() }
+        files.pitch = try? await coreML.value
+        limit.cancel()
+        progress = nil
         #if DEBUG
         NSLog("AUDIOTEST Core ML %@ in %.1f s", files.pitch == nil ? "unavailable" : "ran", Date().timeIntervalSince(t0))
         #endif

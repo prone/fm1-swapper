@@ -13,12 +13,14 @@ enum BasicPitchCoreML {
 
     /// The model's output for mono 22050 Hz float samples, as pitch.bin: Int32 frame count, then note (n x 88), onset
     /// (n x 88), contour (n x 264), Float32.
-    static func output(samples: Data) throws -> Data {
+    /// `progress` gets the share of the windows done (0...1); a cancelled task stops between windows.
+    static func output(samples: Data, progress: @Sendable (Double) -> Void = { _ in }) throws -> Data {
         guard let url = Bundle.main.url(forResource: "BasicPitch", withExtension: "mlmodelc") else {
             throw CocoaError(.fileNoSuchFile)
         }
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        // GPU and CPU: the Neural Engine first compiles the model for itself, which can take minutes on a device
+        config.computeUnits = .cpuAndGPU
         let model = try MLModel(contentsOf: url, configuration: config)
         let y = samples.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         let pad = overlapFrames * fftHop / 2, hop = windowSamples - overlapFrames * fftHop, cut = overlapFrames / 2
@@ -27,6 +29,8 @@ enum BasicPitchCoreML {
         var note: [Float] = [], onset: [Float] = [], contour: [Float] = []
         var i = 0
         while i < padded.count {
+            try Task.checkCancellation()
+            progress(Double(i) / Double(padded.count))
             input.withUnsafeMutableBufferPointer(ofType: Float.self) { buf, _ in
                 for k in 0..<windowSamples { buf[k] = i + k < padded.count ? padded[i + k] : 0 }
             }
@@ -34,7 +38,13 @@ enum BasicPitchCoreML {
             func rows(_ name: String, _ width: Int, into a: inout [Float]) {
                 guard let m = out.featureValue(for: name)?.multiArrayValue else { return }
                 let s1 = m.strides[1].intValue, s2 = m.strides[2].intValue, frames = m.shape[1].intValue
-                for t in cut..<(frames - cut) { for k in 0..<width { a.append(m[t * s1 + k * s2].floatValue) } }
+                if m.dataType == .float32 {                         // (read in place: no boxing per value)
+                    m.withUnsafeBufferPointer(ofType: Float.self) { p in
+                        for t in cut..<(frames - cut) { for k in 0..<width { a.append(p[t * s1 + k * s2]) } }
+                    }
+                } else {
+                    for t in cut..<(frames - cut) { for k in 0..<width { a.append(m[t * s1 + k * s2].floatValue) } }
+                }
             }
             rows("Identity_1", 88, into: &note)
             rows("Identity_2", 88, into: &onset)
